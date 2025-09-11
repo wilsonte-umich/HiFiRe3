@@ -1,0 +1,12 @@
+# never include nested, i.e., suite-centric MDI installations
+# within this suite's git repository, or suite-centric containers
+/mdi/
+/containers/
+**/crates/*/target
+**/crates/*/Cargo.lock
+
+unused/
+old/
+_unused/
+_old/
+test.*

@@ -1,0 +1,16 @@
+---
+options:
+    enzyme-name: 
+        order: 1
+        short: e
+        type: string
+        required: true
+        default: null # set to NA when a RE was not used to cleave the input gDNA fragments
+        description: "name of the restriction enzyme used to cleave genomic DNA (from shared/modules/REs/blunt_enzymes.csv, or 'NA')" 
+    # site-tolerance: # used during both intial site localization and SV-site matching
+    #     order: 2
+    #     short: s
+    #     type: integer
+    #     required: false
+    #     default: null
+    #     description: "allowed distance of read sequence endpoint from putative RE site [platform default]" 

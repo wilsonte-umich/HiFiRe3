@@ -1,0 +1,19 @@
+---
+# options that set the path to the input read files for alignment
+options:
+    read-file-dir: 
+        order: 1
+        short: i
+        type: string
+        required: false
+        default: null
+        directory:
+            must-exist: false # since might still need to be created by a basecaller
+        description: "directory with one or more *.fastq.gz or [ubam/]*.unaligned.bam [TASK_DIR]"
+    read-file-prefix: 
+        order: 2
+        short: x
+        type: string
+        required: false
+        default: null
+        description: "file name prefix identifying files in --read-file-dir to align [use all files]"

@@ -1,0 +1,144 @@
+---
+pipeline:
+    name: analyze
+    description: "Parse read alignments to match them to RE fragments and find true mosaic variants"
+    version: v0.0.1
+actions:
+    _global:
+        environment: hf3Main
+        condaFamilies:
+            - base
+            - main
+        optionFamilies:
+            - library-properties
+            - genome
+            - restriction-enzyme
+    align:
+        order: 1
+        optionFamilies:
+            - read-file
+            - alignment
+        resources:
+            required:
+                total-ram: 64G
+            recommended: 
+                n-cpu: 16
+                ram-per-cpu: 6G
+        job-manager:
+            recommended:
+                time-limit: 24:00:00
+        description: "align read sequences to a haploid reference genome"
+    fragments:
+        order: 2
+        optionFamilies:
+        #     - name-bam-file # TODO: to implement will likely need additional support for parsing to custom tags, etc.
+            - targets
+        resources:
+            required:
+                total-ram: 16G
+            recommended: 
+                n-cpu: 4 # TODO: reduce even further? most of the action is a single stream that runs multiple perl and other processes
+                ram-per-cpu: 4G
+        job-manager:
+            recommended:
+                time-limit: 12:00:00
+        description: "match aligned read sequences to RE sites, apply quality filters, scan for chimeras"
+    SVs:
+        order: 3
+        optionFamilies:
+            - targets
+        #     - target-restriction
+        resources:
+            required:
+                total-ram: 24G
+            recommended: 
+                n-cpu: 8 # fragment indexing, the slowest step, is parallelized by chromosome
+                ram-per-cpu: 6G
+        job-manager:
+            recommended:
+                time-limit: 12:00:00
+        description: "parse prepared fragments to describe and count unique non-SV and SV paths"
+    SNVs:
+        order: 4
+        optionFamilies:
+            # - target-restriction
+            - pileup
+            - genotype
+        resources:
+            required:
+                total-ram: 24G
+            recommended: 
+                n-cpu: 12
+                ram-per-cpu: 8G
+        job-manager:
+            recommended:
+                time-limit: 12:00:00
+        description: "parse prepared fragments to describe and count unique SNV combinations"
+package:
+    SVs: # the pipeline action after which a data package should assembled
+        uploadType: hf3AnalyzeSVs # a signal to the Stage 2 framework regarding the package contents
+        files:
+            chromsFile:
+                type: txt
+                file: $ANALYSIS_CHROMS_FILE
+            filteringSitesBgz:
+                type: txt.bgz
+                file: $SITE_COLLECTION_BGZ
+            filteringSitesTbi:
+                type: txt.bgz.tbi
+                file: $SITE_COLLECTION_BGZ.tbi
+            genesBed:
+                type: bed
+                file: $GENES_BED
+            targetsBed:
+                type: bed
+                file: $TARGETS_BED
+            exclusionsBed:
+                type: bed
+                file: $GENOME_EXCLUSIONS_BED
+            svJunctions1Bgz:
+                type: txt.bgz
+                file: $SV_MASKED_JUNCTIONS_FILE_1
+            svJunctions1Tbi:
+                type: txt.bgz.tbi
+                file: $SV_MASKED_JUNCTIONS_FILE_1.tbi
+            svJunctions2Bgz:
+                type: txt.bgz
+                file: $SV_MASKED_JUNCTIONS_FILE_2
+            svJunctions2Tbi:
+                type: txt.bgz.tbi
+                file: $SV_MASKED_JUNCTIONS_FILE_2.tbi
+            genomeTally:
+                type: txt
+                file: $GENOME_TALLY_FILE
+            junctionTally:
+                type: txt
+                file: $JUNCTION_TALLY_FILE
+            svAlignmentsBgz:
+                type: txt.bgz
+                file: $SV_ALIGNMENTS_FILE
+                maxSize: 500M
+            svAlignmentsTbi:
+                type: txt.bgz.tbi
+                file: $SV_ALIGNMENTS_FILE.tbi
+                maxSize: 500M
+            # svReadPaths:
+            #     type: txt.gz
+            #     file: $SV_READ_PATHS_FILE
+    SNVs:
+        uploadType: agFreeAnalyzeSNVs
+        files:
+            snvSummaryBgz:
+                type: txt.bgz
+                file: $SNV_SUMMARY_TABLE
+            snvSummaryTbi:
+                type: txt.bgz.tbi
+                file: $SNV_SUMMARY_TABLE.tbi
+            readPileupGz:
+                type: txt.gz
+                file: $SNV_READ_PILEUP
+# container:
+#     supported: false    # set to true if you maintain a container registry for this pipeline [false]
+#     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]
+#     owner:     wilsontelab # REQUIRED: the name of the owner, e.g., user or organization, at 'registry'
+#     installer: apt-get  # the installer program used by the container OS, typically apt-get or yum [apt-get]

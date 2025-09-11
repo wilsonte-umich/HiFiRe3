@@ -1,0 +1,28 @@
+﻿category,environment_variable,ONT,PacBio,description
+platform general,HAS_BASE_ACCURACY,,TRUE,TRUE if platform base accuracy supports single-read variant calling
+,IS_END_TO_END_READ,,TRUE,TRUE if all reads always span the entire insert (other platforms assess reads individually for end-to-end status)
+pre-alignment processing,ADAPTER_SEQUENCE,ACTTCGTTCAGTTACGTATTGCT,,read1 adapter sequence
+,INSERTION_ADAPTER_SEQUENCE,ACTTCGTTCAGTTACGTATTGCT,,adapter common sequence used for chimera splitting at adapter insertions
+read alignment (minimap2),ALIGNMENT_MODE,lr:hq,map-hifi,minimap2 option -x; use lr:hq not map-ont
+RE fragment analysis,MIN_ADAPTER_LENGTH,20,20,minimum junction insertion length required to perform chimera splitting at adapter insertions
+,MAX_ADAPTER_LENGTH,120,120,maximum junction insertion length allowed to perform chimera splitting at adapter insertions
+,MIN_ADAPTER_SCORE,12,12,SW scores greater than this threshold are considered to have adapter sequences and split as chimeras
+,MAX_INSERT_SIZE,5000000,100000,maximum insert size expected/allowed for library or considered a proper read pair (may be reduced by PLATFORM_MAX_INSERT_SIZE)
+,CHECK_ENDPOINT_RE_MATCH,TRUE,,TRUE if ligFree and outer insert alignment nodes should match RE sites
+,CHECK_JUNCTION_RE_MATCH,TRUE,,TRUE if RE-digested input and junction node positions should NOT match RE sites
+,,,,
+,MIN_TRAVERSAL_DELTA,1000,250,a set of junctions with less than this many bp difference in reference vs. read traversal are disregarded as suspect
+,MIN_MAPQ,50,50,minimum minimap2 MAPQ for an alignment to be used for analysis
+,MAX_DIVERGENCE,0.05,0.05,maximum gap-compressed sequence divergence for an alignment to be used for analysis
+,MIN_FLANK_LEN,250,50,ignore SV junctions if either flanking alignment is fewer than this many bases
+,MIN_AVG_BASE_QUAL,35,NA,ignore SV junctions if either flanking alignment has less than this average base quality
+,CLIP_TOLERANCE,20,10,endpoints with more than this many clipped bp on outer molecule endpoints are discarded
+,ACCEPT_ENDPOINT_DISTANCE,10,5,outer molecule endpoints within this many bp of a RE site are taken as matching that site and kept
+,REJECT_JUNCTION_DISTANCE,25,10,junction node positions within this many bp of a RE site are rejected and split as presumptive artifacts
+,INSERTION_WINDOW_SIZE,20,0,size of the window in bp to use when applying --min-insertion-window-qual
+,MIN_INSERTION_WINDOW_QUAL,15,0,drop distal alignment(s) if a window of junction insertion bases has < this avg base quality
+SNV analysis,MIN_SNV_INDEL_QUAL,,30,SNVs and indels are masked and ignored if the average local base quality is less than this number
+SV analysis,MAX_JXN_BASES,10,1000,for junction insertions/microhomologies longer than this many bp do not use junction bases during indexing
+,GROUP_BREAKPOINT_DISTANCE,500,20,pairs of junction breakpoints within this many bp may be aggregated as the same breakpoint
+,GROUP_STEM_DISTANCE,100,5,pairs of SV adjusted summed stem lengths within this many bp may be aggregated as the same SV
+,CROSS_REFERENCE_PADDING,1000,1000,extra bases to include on pseudo-reference contigs when performing junction realignment

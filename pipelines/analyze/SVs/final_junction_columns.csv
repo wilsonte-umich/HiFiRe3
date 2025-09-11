@@ -1,0 +1,37 @@
+column_number,column_name,data_type,description
+1,OJXN_CHROM_INDEX1_1,integer,numeric index of the first breakpoint chromosome (see chroms.txt file to match to chromosome name)
+2,OJXN_REF_POS1_1,integer,1-indexed breakpoint position on OJXN_CHROM_INDEX1_1
+3,OJXN_STRAND_INDEX0_1,integer,strand of the alignment at OJXN_REF_POS1_1; 0=top strand; 1=bottom strand
+4,OJXN_CHROM_INDEX1_2,integer,numeric index of the second breakpoint chromosome (see chroms.txt file to match to chromosome name)
+5,OJXN_REF_POS1_2,integer,1-indexed breakpoint position on OJXN_CHROM_INDEX1_2
+6,OJXN_STRAND_INDEX0_2,integer,strand of the alignment at OJXN_REF_POS1_2; 0=top strand; 1=bottom strand
+7,OJXN_JXN_TYPE,integer,numeric index of the junction type; 1=deletion; 2=duplication; 3=inversion; 4=translocation
+8,UJXN_N_OBSERVED,integer,number of independent reads in which this junction was observed after any required deduplication
+9,UJXN_ALN_OFFSET,integer,offset of the breakpoint positions at the junction; 0=blunt; >0=insertion; <0=microhomology; * if not analyzed
+10,UJXN_JXN_BASES,string,inserted or microhomologous bases at the junction in canonical read (not reference) orientation
+11,UJXN_PATHS,string,comma-delimited list of the path identifiers that sequenced the junction
+12,UJXN_N_PATH_JUNCTIONS,integer,number of junctions in the path(s) that contained this junction
+13,UJXN_READ_HAS_SV,integer,boolean 0|1 indicating whether any read with this junction had an SV relative to the genotype (0 means the SV was expected for the genotype)
+14,UJXN_JSRC_MAPQ,integer,smallest MAPQ of the two alignments flanking the junction (the best of these values over all reads is reported)
+15,UJXN_JSRC_DE_TAG,double,largest minimap2 de tag value of the two alignments flanking the junction (the best of these values over all reads is reported)
+16,UJXN_JSRC_SITE_DIST,integer,smallest distance in bp of the two breakpoint positions to their nearest RE sites
+17,UJXN_JSRC_QNAMES,string,comma-delimited list of the QNAMEs of the reads that sequenced the junction
+18,UJXN_JSRC_SEQS,string,comma-delimited list of the base sequences of the reads that matched the junction provided in the orientation of the first 5'-most breakpoint alignment prior to breakpoint reordering
+19,UJXN_JSRC_QUALS,string,comma-delimited list of base quality strings corresponding to UJXN_JSRC_SEQS
+20,UJXN_JSRC_CIGARS,string,comma-delimited list of CIGAR strings for the alignments flanking the junction as CIGAR_1::CIGAR_2
+21,UJXN_JSRC_ORIENTATIONS,string,comma-delimited list of read orientations that sequenced the junction indicating whether junction is flipped relative to the alignments
+22,UJXN_HAS_ALT_ALIGNMENT,integer,boolean 0|1 value indicating whether this singleton junction had an alternative alignment nearly as good or better; always 0 when UJXN_N_OBSERVED > 1
+23,UJXN_SV_SIZE,integer,size of the SV in bp measured as the distance between two breakpoints on the same chrom (0 for translocations)
+24,UJXN_IS_INTERGENOME,integer,boolean 0|1 value indicating whether a translocation junction occurred between chromosomes from two different species
+25,UJXN_TARGET_1,string,target region name matching OJXN_REF_POS1_1; * if not in a target region or not applicable
+26,UJXN_TARGET_DIST_1,integer,signed distance from OJXN_REF_POS1_1 to the center of UJXN_TARGET_1
+27,UJXN_TARGET_2,string,target region name matching OJXN_REF_POS1_2; * if not in a target region or not applicable
+28,UJXN_TARGET_DIST_2,integer,signed distance from OJXN_REF_POS1_2 to the center of UJXN_TARGET_2
+29,UJXN_GENES_1,string,comma-delimited list of genes that intersect OJXN_REF_POS1_1 with leading and trailing commas; a single comma if no genes
+30,UJXN_GENE_DIST_1,string,corresponding signed distances from OJXN_REF_POS1_1 to the center of UJXN_GENES_1
+31,UJXN_GENES_2,string,comma-delimited list of genes that intersect OJXN_REF_POS1_2 with leading and trailing commas; a single comma if no genes
+32,UJXN_GENE_DIST_2,string,corresponding signed distances from OJXN_REF_POS1_2 to the center of UJXN_GENES_2
+33,UJXN_IS_EXCLUDED_1,integer,boolean 0|1 value indicating whether breakpoint 1 lies within a genome excluded region
+34,UJXN_IS_EXCLUDED_2,integer,boolean 0|1 value indicating whether breakpoint 2 lies within a genome excluded region
+35,UJXN_BKPT_COVERAGE_1,integer,total number of reads that crossed OJXN_REF_POS1_1; includes all reads not just SV reads
+36,UJXN_BKPT_COVERAGE_2,integer,total number of reads that crossed OJXN_REF_POS1_2; includes all reads not just SV reads

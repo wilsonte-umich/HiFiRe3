@@ -1,0 +1,16 @@
+---
+options:
+    sequencing-platform: 
+        order: 1
+        short: P
+        type: string
+        required: true
+        default: null
+        description: "platform used to sequence long reads (PacBio|ONT)" 
+    min-selected-size: 
+        order: 2
+        short: I
+        type: integer
+        required: true
+        default: null
+        description: "the smallest insert in bp selected BEFORE adapter ligation; max size must be twice --min-insert-size"

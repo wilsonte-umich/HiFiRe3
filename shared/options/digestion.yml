@@ -1,0 +1,10 @@
+---
+# options that define the REs used to digest the reference genome
+options:
+    min-priority-level:
+        order: 1
+        short: Y
+        type: integer
+        required: false
+        default: 4
+        description: "exclude REs with usability/priority level < -Y" 

@@ -1,0 +1,25 @@
+---
+options:
+    genome1: 
+        order: 1
+        short: 1
+        type: string
+        required: false
+        default: hs1
+        description: "the first/primary reference genome to concatenate"
+    genome2: 
+        order: 2
+        short: 2
+        type: string
+        required: false
+        default: dm6
+        description: "the second/secondary reference genome to concatenate"
+    genomes-dir:
+        order: 3
+        short: G
+        type: string
+        required: false
+        default: ${MDI_DIR}/resources/genomes
+        directory:
+            must-exist: TRUE
+        description: "directory to be filled with sub-directories, one per reference genome"

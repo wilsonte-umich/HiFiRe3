@@ -1,0 +1,50 @@
+---
+pipeline:
+    name: basecall
+    description: "Perform basecalling on input raw sequencing data"
+    version: v0.0.1
+actions:
+    _global:
+        environment: hf3Main
+        condaFamilies:
+            - base
+            - main
+    PacBio:
+        order: 1
+        optionFamilies:
+            - library-properties
+            - restriction-enzyme # used to assist adapter trimming
+        resources:
+            required:
+                total-ram: 64G
+            recommended: 
+                n-cpu: 8
+                ram-per-cpu: 8G
+        job-manager:
+            recommended:
+                time-limit: 48:00:00
+        description: "use PacBio tools to generate strand-aware HiFi reads from raw PacBio data"
+    ONT:
+        order: 2
+        optionFamilies:
+            - pod5-file
+            - dorado
+            - library-properties
+            - restriction-enzyme # used to assist adapter trimming
+        resources:
+            required:
+                total-ram: 64G
+            recommended: 
+                n-cpu: 8
+                n-gpu: 2
+                ram-per-cpu: 8G
+        job-manager:
+            recommended:
+                partition: gpu
+                time-limit: 48:00:00
+        description: "use Dorado to basecall reads in ONT POD5 file(s), with RE-specific adapter trimming"
+# container:
+#     supported: false    # set to true if you maintain a container registry for this pipeline [false]
+#     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]
+#     owner:     wilsontelab # REQUIRED: the name of the owner, e.g., user or organization, at 'registry'
+#     installer: apt-get  # the installer program used by the container OS, typically apt-get or yum [apt-get]

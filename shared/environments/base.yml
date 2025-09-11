@@ -1,0 +1,8 @@
+---
+# current program versions as of September 2025
+channels:
+    - conda-forge
+    - bioconda
+    - defaults
+dependencies:
+    - pigz=2.8 # parallel handling of gzip files

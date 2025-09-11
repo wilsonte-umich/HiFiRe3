@@ -1,0 +1,12 @@
+---
+# options that set the path to the input POD5 event files for basecalling
+options:
+    pod5-dir: 
+        order: 1
+        short: i
+        type: string
+        required: true
+        default: null
+        directory:
+            must-exist: true
+        description: "directory or tar archive with one or more *.pod5 files from a single ONT run"

@@ -1,0 +1,30 @@
+---
+options:
+    genome: 
+        order: 1
+        short: g
+        type: string
+        required: true
+        default: null
+        description: "name of the reference genome to use (e.g., hg38)"
+    genome-dir:
+        order: 2
+        short: G
+        type: string
+        required: false
+        default: null
+        description: "directory with indexed <--genome>.fa or genome.fa file [.../mdi/resources/genomes/<--genome>]"
+    use-all-chroms: 
+        order: 3
+        short: null
+        type: boolean
+        required: false
+        default: false
+        description: "use all chromosomes as they are found in genome fasta file without filtering"
+    is-composite-genome:
+        order: 4
+        short: null
+        type: boolean
+        required: false
+        default: false
+        description: "<--genome> is a composite of >1 reference (e.g., hs1_dm6 with cross-species spike-in)"

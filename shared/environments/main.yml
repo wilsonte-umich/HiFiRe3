@@ -1,0 +1,15 @@
+---
+# programs used across many pipelines and actions
+# built once for convenience
+# versions current as of September 2025
+dependencies:
+
+  # general genome handling
+    - samtools=1.22
+    - minimap2=2.30
+    - bedtools=2.31
+
+  # R and its packages
+    - r-base=4.5
+    - r-essentials=4.4
+    - r-r.utils=2.13

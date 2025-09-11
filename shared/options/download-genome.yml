@@ -1,0 +1,18 @@
+---
+options:
+    genome: 
+        order: 1
+        short: g
+        type: string
+        required: false
+        default: hs1
+        description: "the reference genome to download (hs1|CHM13|hg38|GRCh38|mm39|GRCm39)"
+    genomes-dir:
+        order: 2
+        short: G
+        type: string
+        required: false
+        default: ${MDI_DIR}/resources/genomes
+        directory:
+            must-exist: TRUE
+        description: "directory to be filled with sub-directories, one per reference genome"

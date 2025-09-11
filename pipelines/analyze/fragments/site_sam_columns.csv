@@ -1,0 +1,30 @@
+columnIndex1,columnName,dataType,description
+1,S_QNAME,string,same as SAM QNAME = sequencing event identifier
+2,S_FLAG,integer,same as SAM FLAG = bit-encoded alignment metatdata
+3,S_RNAME,string,same as SAM RNAME = reference name i.e. chromosome
+4,S_POS1,integer,same as SAM POS1 = leftmost alignment position in RNAME
+5,S_MAPQ,integer,same as SAM MAPQ = mapping quality assigned by minimap2
+6,S_CIGAR,string,same as SAM CIGAR = alignment CIGAR string
+7,DE_TAG,double,minimap2 de:f: tag = fractional gap-compressed per-base sequence divergence
+8,CS_TAG,string,minimap2 cz:Z: tag = short-format but complete reference alignment encoding i.e. difference string
+9,XF_TAG,integer,agFree custom xf:i: tag = bit encoding of EVENT_HAS_VARIANT; EVENT_HAS_SV; etc
+10,XH_TAG,integer,agFree custom xh:i: tag = bit encoding of matching haplotypes as determined by alignment
+11,N_REF_BASES,integer,number of reference bases spanned by the alignment (excludes CIGAR I operations)
+12,N_READ_BASES,integer,number of read bases comprising the alignment (excludes CIGAR D operations)
+13,BLOCK_N,integer,reference vs. read traversal block; numbered sequentially across each read prior to quality truncation
+14,SITE_INDEX1_1,signed integer,1-indexed site on RNAME for 5'-most alignment end pos1 in read order; signed by the direction from pos1 to SITE_POS1_1
+15,SITE_POS1_1,integer,1-indexed RE site coordinate on RNAME for SITE_INDEX1_1
+16,SITE_HAPS_1,integer,bit-encoded haplotypes that have a site matching SITE_INDEX1_1
+17,SITE_DIST_1,integer,signed distance in bp from strand-adjusted (but NOT clip-adjusted) pos1 to SITE_POS1_1
+18,SITE_INDEX1_2,signed integer,… same as above for 3'-most alignment end pos1 in read order
+19,SITE_POS1_2,integer,…
+20,SITE_HAPS_2,integer,…
+21,SITE_DIST_2,integer,…
+22,SEQ_SITE_INDEX1_2,integer,unsigned SITE_INDEX1_2 for the actual or projected sequence 3' end
+23,SEQ_SITE_POS1_2,integer,1-indexed RE site coordinate on RNAME for SEQ_SITE_INDEX1_2
+24,SEQ_SITE_HAPS_2,integer,bit-encoded haplotypes that have a site matching SEQ_SITE_INDEX1_2
+25,IS_END_TO_END,integer boolean,boolean 0|1 flag; true if the sequence 3' end reached a RE site to complete a fragment
+26,READ_HAS_JXN,integer boolean,boolean 0|1 flag; true if the read retains an SV junction AFTER chimera splitting WITHOUT haplotype overide
+27,TARGET_CLASS,integer,bitwise encoding of whether the alignment and read overlapped a target region
+28,S_SEQ,string,same as SAM SEQ = read base sequence (may be '*')
+29,S_QUAL,string,same as SAM_QUAL = read base quailities (may be '*')
