@@ -8,13 +8,24 @@ which achieve
 single-nucleotide variants (SNVs) and structural variants (SVs)
 by controlling input fragment sizes and coverage through a
 **Re**striction enzyme-mediated **Re**duced **Re**presentation
-approach (hence, HiFiRe3, pronounces "high fire 3").
+approach (hence, HiFiRe3, pronounced "high fire 3").
+
+**IMPORTANT**: all code tools in this repository assume you
+performed proper _pre-ligation_ insert size selection
+during library prepartion before long-read sequencing,
+targeting insert sizes from N to 2N bp, typically 4kb to 8kb
+for PacBio. 
 
 The steps to using HiFiRe3 are to:
 - install the codebase
 - build the conda enviroment
-- download a reference genome
-- PENDING
+- download a reference genome using `genome download`
+- optionally digest the genome in silico to find an optimal blunt restriction enzyme using `genome digest`
+- basecall reads using `basecall PacBio` or `basecall ONT`, as appropriate
+- align and analyze basecalled reads using 
+    - `analyze align`
+    - `analyze fragments`
+    - `analyze SVs` (both platforms) and/or `analyze SNVs` (PacBio only)
 
 ## Single-suite installation (recommended)
 
@@ -119,7 +130,6 @@ HiFiRe3 requires a reference genome and support files. The fastest
 and best way to obtain these is using the built-in `genome download` pipeline action.
 Download only takes a few minutes and does not need to be repeated.
 
-
 ```sh
 hf3 genome download --help
 hf3 genome download --genome hs1 --output-dir $PWD/_download_hs1 --data-name hs1
@@ -131,31 +141,23 @@ job file template.
 
 ## Input read data
 
-TODO: update this
-
-HiFiRe3 pipelines accept either PacBio CCS/HiFi or ONT read data in either FASTQ 
-or unaligned BAM file formats. Read data files must be found in folder `--read-file-dir`.
-If needed, set option `--read-file-prefix` to select only specific files in `--read-file-dir`.
-
-Because tGenLR automatically tracks transgene 5mC methylation at CpG dinucleotides and 
-6mA adenylation as used in Fiber-seq, it is recommended to use unaligned bam files with 
-MM and ML tags as input.
+HiFiRe3 pipelines accept PENDING.
 
 ## Execute a Stage 1 pipeline from the command line
 
 ### Job files
 
-tGenLR pipelines can be called entirely using the CLI introduced above. However, you 
+HiFiRe3 pipelines can be called entirely using the CLI introduced above. However, you 
 are strongly encouraged to create YAML-format job configuration files that define the
 parameters for your job and coordinate execution steps.
 
 See [the templates folder](https://github.com/wilsontelab/HiFiRe3/tree/main/templates)
-for job file templates for all tGenLR pipelines
+for job file templates for all HiFiRe3 pipelines
 and actions, and <https://midataint.github.io/mdi/docs/job_config_files.html>
 for extended help on using job files. Job file templates can also be generated with 
-command `hf3 transgene template`.
+command `hf3 <pipeline> template`, e.g., `hf3 basecall template`.
 
-The tGenLR CLI and job files can run pipeline actions either 
+The HiFiRe3 CLI and job files can run pipeline actions either 
 inline in the calling shell or by submitting jobs to your server job scheduler,
 which is recommended for most use cases. Thus, our most common usage pattern is:
 
