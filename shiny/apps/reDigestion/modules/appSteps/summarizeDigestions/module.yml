@@ -1,0 +1,48 @@
+#----------------------------------------------------------------------
+# ui
+#----------------------------------------------------------------------
+shortLabel:       "Summary Plots" # shown on dashboard menu 
+shortDescription: "Make blunt RE fragment size distribution plots." # shown on Overview page
+longLabel:        "Plot fragment size distributions" # shown at top of appStep page 
+
+#----------------------------------------------------------------------
+# server
+#----------------------------------------------------------------------
+types: # names of the type(s) of this module ...
+    - summarizeDigestions
+sourceTypes: upload # ... and of the module(s) on which it depends
+
+#----------------------------------------------------------------------
+# dependencies
+#----------------------------------------------------------------------
+packages: # required R packages
+    R: null
+    Bioconductor: null
+
+## optional data classes and UI modules this module will use
+## e.g., might expect to find shared/optional/classes/<classType>/<className>/<className>_*.R
+#classes:
+#    classType:
+#        - className            
+#modules: null
+
+#----------------------------------------------------------------------
+# module-level settings
+#----------------------------------------------------------------------
+settings:
+    RE_Settings:
+        Min_Priority:
+            type: numericInput
+            value: 3
+        Max_Priority:
+            type: numericInput
+            value: 5
+        Sweet_Spot_Min_kb:
+            type: numericInput
+            value: 4
+            min: 1
+            max: 10
+            step: 1
+        Bins_Per_Plot:
+            type: numericInput
+            value: 200

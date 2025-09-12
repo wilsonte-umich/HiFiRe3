@@ -1,0 +1,107 @@
+# all default values are ~unfiltered, i.e, all SVs
+#   alnOffset       = "character", # not integer since may be * (missing)
+Junction_Filters:
+    # Min_SV_Size:
+    #     type:   numericInput
+    #     value:  0
+    #     min:    0
+    #     max:    100000
+    #     step:   10000
+    # Max_SV_Size:
+    #     type:   numericInput
+    #     value:  0
+    #     min:    0
+    #     max:    1000000000
+    #     step:   10000
+    # Min_N_Observed:
+    #     type:   numericInput
+    #     value:  0
+    #     min:    0
+    #     max:    10000
+    #     step:   1
+    # Max_N_Observed:
+    #     type:   numericInput
+    #     value:  0
+    #     min:    0
+    #     max:    10000
+    #     step:   1  
+    Min_Breakpoint_Coverage:
+        type:   numericInput
+        value:  0
+        min:    0
+        max:    10000
+        step:   1
+    Min_Map_Quality: # MAPQ
+        type:   numericInput
+        value:  0
+        min:    0
+        max:    60
+        step:   5
+    Max_Frac_Base_Differences: # DE tag
+        type:   numericInput
+        value:  1
+        min:    0
+        max:    1
+        step:   0.025
+    Min_Site_Distance:
+        type:   numericInput
+        value:  0
+        min:    0
+        max:    10000
+        step:   100
+    # Is_Expected_SV:
+    #     type: checkboxGroupInput
+    #     choices:
+    #         - expected
+    #         - unexpected
+    #     value:
+    #         - expected
+    #         - unexpected
+    #     inline: TRUE
+    One_End_In_Genome:
+        type: textInput
+        value: "any"
+    Is_On_Target:
+        type: checkboxGroupInput
+        choices:
+            - on_target
+            - off_target
+        value:
+            - on_target
+            - off_target
+        inline: TRUE
+    Allow_Excluded_Regions:
+        type: checkboxInput
+        value: FALSE
+    Allow_Alternative_Alignments:
+        type: checkboxInput
+        value: FALSE
+    # SV_Type:
+    #     type: checkboxGroupInput
+    #     choices:
+    #         - deletion
+    #         - duplication
+    #         - inversion
+    #         - translocation
+    #     value:
+    #         - deletion
+    #         - duplication
+    #         - inversion
+    #         - translocation
+    #     inline: TRUE
+    # Mixed_Genome:
+    #     type: checkboxGroupInput
+    #     choices:
+    #         - intragenome
+    #         - intergenome
+    #     value:
+    #         - intragenome
+    #         - intergenome
+    #     inline: TRUE
+    # Include_Clips_In_Total:
+    #     type:   checkboxInput
+    #     value:  false
+    # SPACER_1:
+    #     type: spacer   
+    # SPACER_2:
+    #     type: spacer   

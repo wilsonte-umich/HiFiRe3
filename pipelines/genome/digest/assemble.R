@@ -112,7 +112,8 @@ for(percent in c(1,2.5,5,10,50,90,95,97.5,99)){
         N50(lengths_[[reKey_]], fraction)
     })
 }
-for(minFragSize in 1:10){
+for(minFragSize_kb in 1:10){
+    minFragSize <- minFragSize_kb * 1000
     maxFragSize <- minFragSize * 2
     siteSummary[[paste("molarFrac", minFragSize, maxFragSize, sep = "_")]] <- sapply(res$reKey, function(reKey_){
         distributions[[reKey_]][length >= minFragSize & length < maxFragSize, sum(molar_fraction)]
