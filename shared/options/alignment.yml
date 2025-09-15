@@ -7,7 +7,7 @@ options:
         type: string
         required: false
         default: 500;3300
-        description: "bandwidth for chaining and base alignment, same as minimap2 -r"
+        description: "bandwidth for chaining and base alignment, same as minimap2 -r with a semicolon"
     force-alignment:
         order: 2
         short: F

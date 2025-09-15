@@ -13,4 +13,4 @@ options:
         type: integer
         required: true
         default: null
-        description: "the smallest insert in bp selected BEFORE adapter ligation; max size must be twice --min-insert-size"
+        description: "the smallest insert in bp selected BEFORE adapter ligation; max size must be twice --min-selected-size"

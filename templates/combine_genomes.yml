@@ -1,0 +1,32 @@
+---
+variables:
+    GENOME1: hs1
+    GENOME2: dm6
+shared:
+    output:
+        output-dir: ${PWD}/_combine_${GENOME1}_${GENOME2}
+---
+# download and digest two reference genome assemblies
+pipeline: HiFiRe3/prepare:latest
+genome:
+    prepare-genome:
+        genome:     
+            - ${GENOME1}
+            - ${GENOME2}
+    output:
+        data-name:
+            - ${GENOME1}
+            - ${GENOME2}
+execute:
+    - genome
+---
+# concatenate two reference genomes for use with mixed-species samples
+pipeline: HiFiRe3/combine:latest
+genomes:
+    combine-genomes:
+        genome1: ${GENOME1}
+        genome2: ${GENOME2}
+    output:
+        data-name:  ${GENOME1}_${GENOME2}
+execute:
+    - genomes

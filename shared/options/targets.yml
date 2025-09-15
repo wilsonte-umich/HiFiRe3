@@ -1,0 +1,17 @@
+---
+# options that set the path to the input read files for alignment
+options:
+    targets-bed: 
+        order: 1
+        short: y
+        type: string
+        required: false
+        default: NA
+        description: "path to a BED file definining genomic regions targeted during sequencing"
+    region-padding: 
+        order: 2
+        short: Y
+        type: integer
+        required: false
+        default: 0
+        description: "bp of adjacency padding applied to target regions in --targets-bed-file"

@@ -14,29 +14,27 @@ use constant {
     S_POS1              => 3, # 1-based
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
+    CH_TAG              => 6,
+    TL_TAG              => 7,
+    DE_TAG              => 8,
+    HV_TAG              => 9,
     N_REF_BASES         => 10,
     N_READ_BASES        => 11,
     BLOCK_N             => 12,
     SITE_INDEX1_1       => 13,
     SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_DIST_1         => 15,
+    SITE_INDEX1_2       => 16,
+    SITE_POS1_2         => 17,
+    SITE_DIST_2         => 18,
+    SEQ_SITE_INDEX1_2   => 19,
+    SEQ_SITE_POS1_2     => 20,
+    IS_END_TO_END       => 21,
+    READ_HAS_JXN        => 22,
+    TARGET_CLASS        => 23,
+    S_SEQ               => 24,
+    S_QUAL              => 25,
+    CS_TAG              => 26,
     #-------------
     _IS_PAIRED      => 1,  # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -74,35 +72,7 @@ use constant {
     TYPE_DUPLICATION    => 2,
     TYPE_INVERSION      => 3,
     TYPE_TRANSLOCATION  => 4,
-    #-------------
-    UNKNOWN_HAPLOTYPE   => 0,
-    HAPLOTYPE1          => 1,
-    HAPLOTYPE2          => 2,
-    REFERENCE_BIT       => 1,
-    HAPLOTYPE1_BIT      => 2,
-    HAPLOTYPE2_BIT      => 4,
-    #-------------
-    channel             => 0, # incoming qName extensions
-    trim5               => 1,
-    trim3               => 2,
-    isMerged            => 3, # true=2 for legacy reasons
-    nRead1              => 4,
-    nRead2              => 5,
-    splitGapReadN       => 6,
-    readN               => 7,
-    N_QNAME_EXTENSIONS  => 8,
 };
-
-# support conversion of haplotype bit-encoding to the final best haplotype
-our $genotypeBits = HAPLOTYPE1_BIT + HAPLOTYPE2_BIT;
-our @matchingHaps = (UNKNOWN_HAPLOTYPE);                             # 0
-$matchingHaps[REFERENCE_BIT]                  = UNKNOWN_HAPLOTYPE;  # 1
-$matchingHaps[HAPLOTYPE1_BIT]                 = HAPLOTYPE1;         # 2
-$matchingHaps[HAPLOTYPE1_BIT + REFERENCE_BIT] = HAPLOTYPE1;         # 3
-$matchingHaps[HAPLOTYPE2_BIT]                 = HAPLOTYPE2;         # 4
-$matchingHaps[HAPLOTYPE2_BIT + REFERENCE_BIT] = HAPLOTYPE2;         # 5
-$matchingHaps[$genotypeBits]                  = UNKNOWN_HAPLOTYPE;  # 6
-$matchingHaps[$genotypeBits  + REFERENCE_BIT] = UNKNOWN_HAPLOTYPE;  # 7
 
 # open/close the required chromosome-level output files
 our ($jxnSrcH, $uniqJxnH, $firstAlnH, $distalAlnH, $alnSizeH, $readPathH);
@@ -126,7 +96,7 @@ sub closeFileHandles {
 sub getJunction {
     my ($aln1, $aln2) = @_; # alignments to read 5' and 3' of a junction, respectively
 
-    # cannot describe junction when SEQ was dropped by `align genotype`, i.e., haplotype-adjusted READ_HAS_SV is FALSE
+    # cannot describe junction when SEQ was dropped upstream
     $$aln1[S_SEQ] eq NULL_ENTRY and return NULL_JUNCTION;
 
     # otherwise, determine the offset/overlap between the two alignments
@@ -304,13 +274,7 @@ sub getOuterPos3 {
         getEnd(@$aln[S_POS1, S_CIGAR]) :
         $$aln[S_POS1]
 }
-sub getONTChannel {
-    my ($aln) = @_;
-    my @qName = split(":", $$aln[S_QNAME]);
-    my @extensions = splice(@qName, -N_QNAME_EXTENSIONS);
-    $extensions[channel]
-}
-sub getOuterEndpoints {
+sub getOuterEndpoints_ONT {
     my ($chromIndex1_5, $outerPos1_5, $chromIndex1_3, $outerPos1_3, $channel) = @_;
     my $oe1 = join("\t", $chromIndex1_5, $outerPos1_5);
     my $oe2 = join("\t", $chromIndex1_3, $outerPos1_3);
@@ -318,7 +282,7 @@ sub getOuterEndpoints {
         (join("\t", $oe1, $oe2, $channel), 0) : # report whether we reordered endpoints
         (join("\t", $oe2, $oe1, $channel), 1);
 }
-sub getOuterEndpoints_lig_free {
+sub getOuterEndpoints {
     my ($chromIndex1_5, $chromIndex1_3) = @_;
     $chromIndex1_5 <= $chromIndex1_3 ? # yields the same key ordering for both strands
         (join("\t", $chromIndex1_5, $chromIndex1_3), 0) : # report whether we reordered endpoints

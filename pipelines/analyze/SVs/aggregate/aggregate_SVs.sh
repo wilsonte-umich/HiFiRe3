@@ -2,8 +2,7 @@
 #   merge event metadata from junction_sources into junctions
 #   perform fuzzy matching of junction nodes to each other to aggregate inexact junction matches
 #   purge ONT duplexes when junctions appeared on different strands in the same channel
-#   purge tagFree PCR duplicates when junctions appeared on sheared (not RE-cleaved) molecules with the same outer endpoints
-#   TODO: analyze junctions for content flags,e.g. repetitive elements?
+#   TODO: analyze junctions for content flags, e.g. repetitive elements?
 #   create a second reverse-sorted junction file for indexed retrieval of both junction nodes for independent local plotting
 # input:
 #   $SV_UNIQUE_JUNCTIONS_FILE
@@ -21,8 +20,6 @@ TABIX="tabix --threads $N_CPU"
 PURGE_DUPLICATES="cut -f 1-21"
 if [ "$SEQUENCING_PLATFORM" == "ONT" ]; then
     PURGE_DUPLICATES="perl ${ACTION_DIR}/aggregate/purge_ONT_duplexes.pl"
-elif [ "$DEDUPLICATE_READS" != "" ]; then # tagFreeSR
-    PURGE_DUPLICATES="perl ${ACTION_DIR}/aggregate/purge_PCR_duplicates.pl"
 fi
 
 # merge event metadata from junction_sources into junctions
@@ -36,8 +33,7 @@ $SORT_COMMAND -k1,1n -k3,3n -k2,2n |
 perl ${ACTION_DIR}/aggregate/group_nodes.pl |
 
 # purge ONT duplexes when junctions appeared on different strands in the same channel
-# or PCR duplicates when junctions appeared on molecules with the same outer endpoints
-# these actions modify junction counts in place in streamed junction rows
+# this action modifies junction counts in place in streamed junction rows
 $PURGE_DUPLICATES |
 
 # re-align junctions to each other to try to resolve some artifact singletons
@@ -54,9 +50,9 @@ bedtools intersect -loj -a <(
     zcat $SV_ALIGNMENTS_FILE | 
     awk 'BEGIN{OFS="\t"}{ 
         if ($2 <= $3) {
-            print $1, $2 - 1, $3, $12;
+            print $1, $2 - 1, $3, $11;
         } else {
-            print $1, $3 - 1, $2, $12;
+            print $1, $3 - 1, $2, $11;
         }
     }'
 ) -b stdin |

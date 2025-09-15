@@ -10,9 +10,9 @@ use warnings;
 #       junction inserted bases have a low quality span, e.g., as results from an ONT follow-on event
 #   when a junction is rejected as chimeric, discard all alignments more 3'/distal to that junction (and thus the junction itself)
 # input:
-#   name-sorted SITE_SAM on STDIN, with read-level QNAME
+#   name-sorted SITE_SAM on STDIN
 # output: 
-#   name-sorted SITE_SAM on STDOUT, with read-level QNAME
+#   name-sorted SITE_SAM on STDOUT
 #   where this script may remove 3'/distal read alignments but does not modify those that remain
 
 # initialize reporting
@@ -57,31 +57,29 @@ use constant {
     S_POS1              => 3, # 1-based
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
+    CH_TAG              => 6,
+    TL_TAG              => 7,
+    DE_TAG              => 8,
+    HV_TAG              => 9,
     N_REF_BASES         => 10,
     N_READ_BASES        => 11,
     BLOCK_N             => 12,
     SITE_INDEX1_1       => 13,
     SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_DIST_1         => 15,
+    SITE_INDEX1_2       => 16,
+    SITE_POS1_2         => 17,
+    SITE_DIST_2         => 18,
+    SEQ_SITE_INDEX1_2   => 19,
+    SEQ_SITE_POS1_2     => 20,
+    IS_END_TO_END       => 21,
+    READ_HAS_JXN        => 22,
+    TARGET_CLASS        => 23,
+    S_SEQ               => 24,
+    S_QUAL              => 25,
+    CS_TAG              => 26,
     #-------------
-    SPLIT_TO_S_QUAL  => 29,
+    SPLIT_TO_S_QUAL     => 27,
     #-------------
     _IS_PAIRED      => 1,  # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -180,7 +178,7 @@ foreach my $score(0..100){
 
 # check whether a sequence is consistent with an ONT duplex read as a single foldback inversion
 # it is most sensitive and acceptable to reject any inversion junction with reverse-complement overlap between its flanking alignments
-# UPDATE: do this for all libraries now, tagmentation is also prone to foldback inversions
+# UPDATE: do this for all libraries now
 #   ----->
 #         | inversion junction
 #   <-----

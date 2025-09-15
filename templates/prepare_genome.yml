@@ -1,0 +1,14 @@
+---
+# download and digest a reference genome assembly
+pipeline: HiFiRe3/prepare:latest
+variables:
+    GENOME: hs1
+shared:
+    output:
+        output-dir: ${PWD}/_prepare_${GENOME}
+        data-name:  ${GENOME}
+genome:
+    prepare-genome:
+        genome:     ${GENOME}
+execute:
+    - genome

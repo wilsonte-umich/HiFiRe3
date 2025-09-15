@@ -2,14 +2,14 @@ use strict;
 use warnings;
 
 # action:
-#   describe the match/SNV/indel combinations of the 5'-most alignment of all reads
+#   describe the match/SNV/indel combinations of single-alignment end-to-end RE fragments
 #   use an efficient fragment index to count and sort unique combinations
 #   work is parallelized by chromosome for speed gains and sorting efficiency
 #   this script is only applicable to sequencing platforms where HAS_BASE_ACCURACY=TRUE
 #   match/SNV/indel combinations in an alignment are described by:
 #       readOffset5 = number of bases to place the alignment onto the read relative to its 5' end
 #                     thus, the number of bases clipped from the read 5' end upstream of the first vaTag : operation
-#       vaTag = reformatted cs:Z: tag for the 5'-most alignment of a read, in reference strand orientation
+#       vaTag = reformatted cs:Z: tag, in reference strand orientation
 #           see va_tag_utils.pl for a detailed description of the va tag
 #           all vaTag coordinate and base _values_ are relative to the top genome strand, but _ordered_ relative to the alignment strand
 #       qsTag = tag that carries boolean passed-quality operations in parallel to vaTag, where qsTag value are:
@@ -90,34 +90,32 @@ use constant {
     S_POS1              => 3, # 1-based
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
+    CH_TAG              => 6,
+    TL_TAG              => 7,
+    DE_TAG              => 8,
+    HV_TAG              => 9,
     N_REF_BASES         => 10,
     N_READ_BASES        => 11,
     BLOCK_N             => 12,
     SITE_INDEX1_1       => 13,
     SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_DIST_1         => 15,
+    SITE_INDEX1_2       => 16,
+    SITE_POS1_2         => 17,
+    SITE_DIST_2         => 18,
+    SEQ_SITE_INDEX1_2   => 19,
+    SEQ_SITE_POS1_2     => 20,
+    IS_END_TO_END       => 21,
+    READ_HAS_JXN        => 22,
+    TARGET_CLASS        => 23,
+    S_SEQ               => 24,
+    S_QUAL              => 25,
+    CS_TAG              => 26,
     #-------------
-    S_VA_TAG            => 29,
-    S_LEFT_CLIP         => 30,
-    S_RIGHT_CLIP        => 31,
-    S_END_POS1          => 32,
+    S_VA_TAG            => 27,
+    S_LEFT_CLIP         => 28,
+    S_RIGHT_CLIP        => 29,
+    S_END_POS1          => 30,
     #-------------
     channel             => 0, # incoming qName extensions
     trim5               => 1,

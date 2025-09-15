@@ -13,8 +13,8 @@ export ANALYSIS_PREFIX=${TASK_DIR}/${ANALYSIS_IDENTIFIER}
 export SITE_SAM_DIR=${TASK_DIR}/site_sam
 mkdir -p ${SITE_SAM_DIR}
 export SITE_SAM_PREFIX=${SITE_SAM_DIR}/${ANALYSIS_IDENTIFIER}
-export INSERT_SIZES_FILE=${ANALYSIS_PREFIX}.insert_sizes.txt.gz
 export ANALYSIS_CHROMS_FILE=${ANALYSIS_PREFIX}.chroms.txt
+export FILTERED_INSERT_SIZES_FILE=${DATA_PREFIX}.insert_sizes.filtered_and_projected.txt
 
 # SV analysis output
 export SV_READ_PATHS_FILE=${ANALYSIS_PREFIX}.read_paths.txt.bgz # one line per read with a map of all junctions

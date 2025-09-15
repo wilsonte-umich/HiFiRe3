@@ -14,29 +14,19 @@
 if [ "$DORADO_OPTIONS" == "null" ]; then DORADO_OPTIONS=""; fi
 if [[ "$FORCE_BASECALLING" != "" && "$FORCE_BASECALLING" != "0" ]]; then FORCE_BASECALLING="true"; fi
 
-# modified base model
-MODIFIED_BASE_MODEL="null"
-MODIFICATION_OPTIONS=""
-if [ "$MOD_MODEL_DIR" != "" ]; then 
-    MODIFIED_BASE_MODEL=`basename ${MOD_MODEL_DIR}`
-    if [ "$MODIFIED_BASE" == "" ]; then
-        echo "MODIFIED_BASE is required if MOD_MODEL_DIR is set"
-        exit 1
-    fi
-    MODIFICATION_OPTIONS="--modified-bases ${MODIFIED_BASE} --modified-bases-models ${MOD_MODEL_DIR}"
+# add modified base models
+if [[ "$MODIFIED_BASE_MODELS" != "" && "$MODIFIED_BASE_MODELS" != "NA" && "$MODIFIED_BASE_MODELS" != "null" ]]; then 
+    ONT_MODEL="${ONT_MODEL},${MODIFIED_BASE_MODELS}"
 fi
 
 # begin log report
 echo "calling bases"
-echo "  Dorado version:   "${DORADO_EXECUTABLE}
-echo "  model:            "`basename ${ONT_MODEL_DIR}`
-echo "  modification:     "${MODIFIED_BASE_MODEL} 
+echo "  Dorado version:   "${DORADO_VERSION}
+echo "  model(s):         "${ONT_MODEL}
 echo "  with options:     "${DORADO_OPTIONS}
 echo "  pod5 buffer:      "${POD5_BUFFER_DIR}
 echo "  buffer size:      "${POD5_BUFFER_SIZE}
 echo "  input(s):         "${EXPANDED_INPUT_DIR}
-echo "  library type:     "${LIBRARY_TYPE}
-echo "  trim to RE sites: "${CHECK_ENDPOINT_RE_MATCH}
 echo "  output folder:    "${UBAM_DIR}
 
 # prepare the cache and output directories
@@ -79,7 +69,7 @@ do_batch_copy () {
         fi
     fi
 }
-RUN_DORADO="$DORADO_EXECUTABLE basecaller --no-trim $DORADO_OPTIONS $MODIFICATION_OPTIONS $ONT_MODEL_DIR" # we will control trimming downstream
+RUN_DORADO="$DORADO_EXECUTABLE basecaller --no-trim $DORADO_OPTIONS $ONT_MODEL" # we will control trimming downstream
 run_batch_process () {
     PROCESS_DIR=$POD5_BUFFER_DIR/${BATCH_PREFIX}_$PROCESS_I
     BATCH_OUTPUT_FILE3=$UBAM_DIR/${BATCH_PREFIX}_$PROCESS_I.unaligned.bam

@@ -2,7 +2,7 @@
 
 # set derivative environment variables and file paths
 source ${MODULES_DIR}/REs/set_re_vars.sh
-source $MODULES_DIR/agFree/set_library_vars.sh
+source $MODULES_DIR/library/set_library_vars.sh
 
 # create temp directories
 if [ "$POD5_BUFFER" = "shm" ]; then 

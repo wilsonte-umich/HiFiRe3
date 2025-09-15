@@ -1,7 +1,7 @@
 ---
 pipeline:
     name: analyze
-    description: "Parse read alignments to match them to RE fragments and find true mosaic variants"
+    description: "Align reads, match inserts to RE fragments, and find true mosaic variants"
     version: v0.0.1
 actions:
     _global:
@@ -13,11 +13,13 @@ actions:
             - library-properties
             - genome
             - restriction-enzyme
-    align:
+    fragments:
         order: 1
         optionFamilies:
             - read-file
             - alignment
+            - localization
+            - targets
         resources:
             required:
                 total-ram: 64G
@@ -27,24 +29,9 @@ actions:
         job-manager:
             recommended:
                 time-limit: 24:00:00
-        description: "align read sequences to a haploid reference genome"
-    fragments:
-        order: 2
-        optionFamilies:
-        #     - name-bam-file # TODO: to implement will likely need additional support for parsing to custom tags, etc.
-            - targets
-        resources:
-            required:
-                total-ram: 16G
-            recommended: 
-                n-cpu: 4 # TODO: reduce even further? most of the action is a single stream that runs multiple perl and other processes
-                ram-per-cpu: 4G
-        job-manager:
-            recommended:
-                time-limit: 12:00:00
-        description: "match aligned read sequences to RE sites, apply quality filters, scan for chimeras"
+        description: "align reads to genome, match to RE sites, apply quality filters, scan for chimeras"
     SVs:
-        order: 3
+        order: 2
         optionFamilies:
             - targets
         #     - target-restriction
@@ -59,11 +46,10 @@ actions:
                 time-limit: 12:00:00
         description: "parse prepared fragments to describe and count unique non-SV and SV paths"
     SNVs:
-        order: 4
+        order: 3
         optionFamilies:
             # - target-restriction
             - pileup
-            - genotype
         resources:
             required:
                 total-ram: 24G
@@ -126,7 +112,7 @@ package:
             #     type: txt.gz
             #     file: $SV_READ_PATHS_FILE
     SNVs:
-        uploadType: agFreeAnalyzeSNVs
+        uploadType: hf3AnalyzeSNVs
         files:
             snvSummaryBgz:
                 type: txt.bgz

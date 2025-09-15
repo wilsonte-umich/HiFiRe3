@@ -139,7 +139,7 @@ while (my $jxn = <STDIN>){
 
 # print summary information
 printCount(commify($nInputJxns),    'nInputJxns',    'input junctions');
-printCount(commify($nExpectedJxns), 'nExpectedJxns', 'junctions found in at least one read where all SVs resolved in a haplotype alignment');
+# printCount(commify($nExpectedJxns), 'nExpectedJxns', 'junctions found in at least one read where all SVs resolved in a haplotype alignment');
 print STDERR join("\t", qw(jxnCoverage nInExpectedPaths nInUnexpectedPaths)), "\n";
 foreach my $jxnCoverage(sort { $a <=> $b} keys %jxnCoverage){
     print STDERR join("\t", 

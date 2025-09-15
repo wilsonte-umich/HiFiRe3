@@ -39,12 +39,11 @@ use constant {
     ALN_REF_POS1_3          => 3,
     ALN_STRAND_INDEX1_0     => 4,
     ALN_JXN_TYPE            => 5,
-    ALN_HAPLOTYPES          => 6,
-    ALN_PATH_N              => 7,
-    ALN_N_JUNCTIONS         => 8,
-    ALN_ALN_N               => 9,
-    ALN_PATH_READ_HAS_SV    => 10,
-    ALN_N_OBSERVED          => 11,
+    ALN_PATH_N              => 6,
+    ALN_N_JUNCTIONS         => 7,
+    ALN_ALN_N               => 8,
+    ALN_PATH_READ_HAS_SV    => 9,
+    ALN_N_OBSERVED          => 10,
     #-------------
     OJXN_CHROM_INDEX1_1     => 0, # input columns
     OJXN_REF_POS1_1         => 1,
@@ -82,9 +81,6 @@ use constant {
     UJXN_IS_EXCLUDED_2      => 33,
     UJXN_BKPT_COVERAGE_1    => 34,
     UJXN_BKPT_COVERAGE_2    => 35,
-    #-------------
-    EXPECTED   => 0, # junction sequencing orientations
-    UNEXPECTED => 1,
     #-------------
     TYPE_PROPER         => 0, # junction/edge types
     TYPE_DELETION       => 1,
@@ -163,18 +159,17 @@ while (my $jxn = <$jxnH>){
         my $isLocalSv     = ($jxn[OJXN_JXN_TYPE] != TYPE_TRANSLOCATION and $jxn[UJXN_SV_SIZE] < 1e6) ? TRUE_STR : FALSE_STR;
         my $isInterGenome = $jxn[UJXN_IS_INTERGENOME] ? TRUE_STR : FALSE_STR;
         my $isValidated   = $jxn[UJXN_N_OBSERVED] == 1 ? FALSE_STR : TRUE_STR; # if not 1, then 3 or more per above
-        my $isExpected    = $jxn[UJXN_READ_HAS_SV] ? FALSE_STR : TRUE_STR; # may be false inappropriately for multi-junction reads
 
         # assemble breakpoint category keys and count
         my $key1 = join("\t", 
             $genome1, $isGap1, $onTarget1, $inGene1, $inTargetGene1, 
             $jxn[UJXN_TARGET_1] eq NULL_STR ? NA_STR : $jxn[UJXN_TARGET_1],
-            $jxnType, $isLocalSv, $isInterGenome, $isValidated, $isExpected
+            $jxnType, $isLocalSv, $isInterGenome, $isValidated
         );
         my $key2 = join("\t", 
             $genome2, $isGap2, $onTarget2, $inGene2, $inTargetGene2, 
             $jxn[UJXN_TARGET_2] eq NULL_STR ? NA_STR : $jxn[UJXN_TARGET_2],
-            $jxnType, $isLocalSv, $isInterGenome, $isValidated, $isExpected
+            $jxnType, $isLocalSv, $isInterGenome, $isValidated
         );
         $nBkpts{$key1}++;
         $nBkpts{$key2}++;
@@ -189,7 +184,7 @@ close $jxnH;
 print join("\t", qw(
     genome isGap onTarget inGene inTargetGene 
     targetGene 
-    jxnType isLocalSv isInterGenome isValidated isExpected
+    jxnType isLocalSv isInterGenome isValidated
     nBkpts fracBkpts_genome fracBkpts_all
 )), "\n";
 foreach my $key (sort { $b cmp $a } keys %nBkpts){

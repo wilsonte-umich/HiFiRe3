@@ -20,18 +20,11 @@ BGZIP="bgzip --threads $N_CPU --force --output"
 TABIX="tabix --threads $N_CPU --sequence 1"
 
 # index and parse unique fragment alignments and junctions
-if [[ "$CHECK_ENDPOINT_RE_MATCH" != "" && "$ENZYME_NAME" != "NA" ]]; then
-    echo "indexing alignments by $ENZYME_NAME outer RE sites, i.e., ligFree"
-    perl ${ACTION_DIR}/index/index_fragments.pl
-    checkPipe
-    SUMMATION_SCRIPT=${ACTION_DIR}/index/sum_not_deduplicated.sh
-    if [ "$SEQUENCING_PLATFORM" == "ONT" ]; then
-        SUMMATION_SCRIPT=${ACTION_DIR}/index/sum_deduplicated.sh
-    fi
-else 
-    echo "indexing alignments by binned outer endpoints, i.e., tagFree or other" # may still perform junction site matching
-    perl ${ACTION_DIR}/index/non_RE/index_fragments.pl  # the non-RE index works by chromosome, not site
-    checkPipe
+echo "indexing alignments by $ENZYME_NAME outer RE sites"
+perl ${ACTION_DIR}/index/index_fragments.pl
+checkPipe
+SUMMATION_SCRIPT=${ACTION_DIR}/index/sum_not_deduplicated.sh
+if [ "$SEQUENCING_PLATFORM" == "ONT" ]; then
     SUMMATION_SCRIPT=${ACTION_DIR}/index/sum_deduplicated.sh
 fi
 
@@ -58,7 +51,7 @@ perl ${ACTION_DIR}/index/summarize_library.pl
 #   unique path identifiers allow downstream intersection to other alignments or junctions in the same paths
 #   for SVs, unique paths do NOT account for SNPs/indels in the alignments, only their reference spans and orientations
 #   counts indicate how many times each unique set of alignments+junctions, i.e., each unique path, was observed
-#   counts are NOT deduplicated, so ONT/tagFree count may be inflated here (unlike base summation above or deduplicated junctions)
+#   counts are NOT deduplicated, so ONT count may be inflated here (unlike base summation above or deduplicated junctions)
 #   metadata fields support downstream filters and plot devices
 #   bgzip+tabix allows rapid retrieval for plotting in genome browser
 echo "sorting distal alignments into first alignments"
@@ -86,7 +79,6 @@ checkPipe
 #       merging event metadata from junction_sources into junctions
 #       fuzzy matching of junction nodes to further aggregate inexact junction matches
 #       ONT duplex purging when junctions appeared twice on different strands in the same channel
-#       PCR duplicate purging when junctions appeared on sheared (not RE-cleaved) molecules with the same outer endpoints
 #       creation of a second reverse-sorted junction file for indexed retrieval of both junction nodes for independent local plotting
 echo "sorting unique junctions"
 zcat $SAMPLE_PATHS_PREFIX_WRK.unique_junctions.*.txt.gz | 

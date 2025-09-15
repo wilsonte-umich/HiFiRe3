@@ -15,10 +15,10 @@ map { require "$perlUtilDir/sequence/$_.pl" } qw(general faidx);
 require "$ENV{ACTION_DIR}/index/parsing_functions.pl";
 
 # environment variables
-fillEnvVar(\our $N_CPU,                 'N_CPU');
-fillEnvVar(\our $SITE_SAM_PREFIX,       'SITE_SAM_PREFIX');
-fillEnvVar(\our $SITE_COLLECTION_SITES, 'SITE_COLLECTION_SITES');
-fillEnvVar(\our $GENOME_FASTA_SHM,      'GENOME_FASTA_SHM');
+fillEnvVar(\our $N_CPU,                'N_CPU');
+fillEnvVar(\our $SITE_SAM_PREFIX,      'SITE_SAM_PREFIX');
+fillEnvVar(\our $FILTERING_SITES_FILE, 'FILTERING_SITES_FILE');
+fillEnvVar(\our $GENOME_FASTA_SHM,     'GENOME_FASTA_SHM');
 
 # shared functions to support SV and SNV/indel indexing
 use vars qw($error %chromIndex @canonicalChroms);
@@ -36,31 +36,29 @@ use constant {
     S_POS1              => 3, # 1-based
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
+    CH_TAG              => 6,
+    TL_TAG              => 7,
+    DE_TAG              => 8,
+    HV_TAG              => 9,
     N_REF_BASES         => 10,
     N_READ_BASES        => 11,
     BLOCK_N             => 12,
     SITE_INDEX1_1       => 13,
     SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_DIST_1         => 15,
+    SITE_INDEX1_2       => 16,
+    SITE_POS1_2         => 17,
+    SITE_DIST_2         => 18,
+    SEQ_SITE_INDEX1_2   => 19,
+    SEQ_SITE_POS1_2     => 20,
+    IS_END_TO_END       => 21,
+    READ_HAS_JXN        => 22,
+    TARGET_CLASS        => 23,
+    S_SEQ               => 24,
+    S_QUAL              => 25,
+    CS_TAG              => 26,
     #-------------
-    SPLIT_TO_S_QUAL     => 29,
+    SPLIT_TO_S_QUAL     => 27,
     #-------------
     _IS_PAIRED      => 1,  # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -88,10 +86,10 @@ loadFaidx($GENOME_FASTA_SHM);
 # initialize the conversion from site indices to positions
 # once the index is used, it is more informative to track site reference coordinates
 print STDERR "loading site positions\n";
-open my $sitesH, "-|", "zcat $SITE_COLLECTION_SITES" or die "could not open sites file: $SITE_COLLECTION_SITES: $!\n";
+open my $sitesH, "-|", "zcat $FILTERING_SITES_FILE" or die "could not open sites file: $FILTERING_SITES_FILE: $!\n";
 my $discardHeader = <$sitesH>;
 my ($siteIndex1_, $prevChrom) = (0);
-while (my $site = <$sitesH>){ # chrom   sitePos1        haplotypes      inSilico        nObserved
+while (my $site = <$sitesH>){ # chrom   sitePos1   inSilico   nObserved
     my ($chrom, $sitePos1) = split("\t", $site);
     $prevChrom and $prevChrom ne $chrom and $siteIndex1_ = 0;
     $siteIndex1_++;

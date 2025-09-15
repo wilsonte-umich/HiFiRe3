@@ -10,7 +10,7 @@ use warnings;
 #       - the pseudo-reference contig of other junctions matching at one breakpoint, to ask if the singleton matches another validated junction
 #   in all cases, the query junction sequence is aligned to (pseudo-)reference sequences (not to other reads)
 #   for consistency, all target sequences are:
-#       - ~the same reference length, mathching the length of the query junction sequence
+#       - ~the same reference length, matching the length of the query junction sequence
 #       - padded similarly to allow account for the impact of indels in achieving complete alignments
 #   which means that each query singleton junction re-alignment must be handled individually
 #   criteria for accepting an alternative alignment, thus masking the singleton junction:

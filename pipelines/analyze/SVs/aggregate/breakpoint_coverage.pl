@@ -19,7 +19,7 @@ map { require "$perlUtilDir/$_.pl" } qw(workflow numeric);
 resetCountFile();
 
 # environment variables
-fillEnvVar(\our $DEDUPLICATE_READS, 'DEDUPLICATE_READS');
+# fillEnvVar(\our $DEDUPLICATE_READS, 'DEDUPLICATE_READS');
 
 # constants
 use constant {
@@ -85,11 +85,11 @@ while (my $intsct = <STDIN>){
         $jxns[$intsct[I_JXN_JXN_I0]] = \@jxn;
     }
     my $j = $intsct[I_JXN_BKPT_I0] + UJXN_BKPT_COVERAGE_1;
-    if ($DEDUPLICATE_READS){
-        $jxns[$intsct[I_JXN_JXN_I0]][$j]++; # only partially deduplicated
-    } else {
+    # if ($DEDUPLICATE_READS){
+    #     $jxns[$intsct[I_JXN_JXN_I0]][$j]++; # only partially deduplicated
+    # } else {
         $jxns[$intsct[I_JXN_JXN_I0]][$j] += $intsct[I_ALN_N_OBSERVED];
-    }
+    # }
 }
 
 # output unique junctions with all final metadata columns

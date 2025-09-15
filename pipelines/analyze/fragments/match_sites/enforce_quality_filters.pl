@@ -13,7 +13,6 @@ use warnings;
 #               see script output for the range of average base qualities observed over SV flanking alignments
 #   when an alignment fails, remove it and all alignments further 3' on the read
 #       this action suppresses untrusted SV junctions that would otherwise include the failed alignment
-#   renumber new read2 orphans as read1
 # input:
 #   name-sorted SITE_SAM on STDIN, ordered from read 5' to 3' end
 # output: 
@@ -47,31 +46,29 @@ use constant {
     S_POS1              => 3, # 1-based
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
+    CH_TAG              => 6,
+    TL_TAG              => 7,
+    DE_TAG              => 8,
+    HV_TAG              => 9,
     N_REF_BASES         => 10,
     N_READ_BASES        => 11,
     BLOCK_N             => 12,
     SITE_INDEX1_1       => 13,
     SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_DIST_1         => 15,
+    SITE_INDEX1_2       => 16,
+    SITE_POS1_2         => 17,
+    SITE_DIST_2         => 18,
+    SEQ_SITE_INDEX1_2   => 19,
+    SEQ_SITE_POS1_2     => 20,
+    IS_END_TO_END       => 21,
+    READ_HAS_JXN        => 22,
+    TARGET_CLASS        => 23,
+    S_SEQ               => 24,
+    S_QUAL              => 25,
+    CS_TAG              => 26,
     #-------------
-    SPLIT_TO_S_QUAL     => 29,
+    SPLIT_TO_S_QUAL     => 27,
     #-------------
     _IS_PAIRED      => 1, # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -85,10 +82,6 @@ use constant {
     _FAILED_QC      => 512,
     _DUPLICATE      => 1024,
     _SUPPLEMENTAL   => 2048,
-    # -------------
-    EVENT   => 0,
-    READ1   => 1,
-    READ2   => 2,
     # -------------
     REJECT_MAPQ             => "mapq", # these are just hash keys, not report strings
     REJECT_DIVERGENCE       => "divergence",
@@ -107,8 +100,7 @@ while(my $aln = <STDIN>){
         processQName();
         @alns = ();
     }
-    my $readN = ($aln[S_FLAG] & _IS_PAIRED and $aln[S_FLAG] & _SECOND_IN_PAIR) ? READ2 : READ1;
-    push @{$alns[$readN]}, \@aln;
+    push @alns, \@aln;
     $prevQName = $aln[S_QNAME];
 }
 processQName(); 
@@ -140,71 +132,55 @@ sub processQName {
 
     # check alignment-level quality metrics
     # reject everything distal to a rejected alignment, inclusive
-    my @outAlns = (undef, [], []);
-    foreach my $readN(READ1, READ2){
-        $alns[$readN] or next;
-        $nReadsIn++;
-        my $readHasSv = @{$alns[$readN]} > 1;
-        $readHasSv and $nSvReadsIn++;
-        foreach my $i(0..$#{$alns[$readN]}){
-            my $aln = $alns[$readN][$i];
+    my @outAlns;
+    my $readHasSv = @alns > 1;
+    $readHasSv and $nSvReadsIn++;
+    foreach my $i(0..$#alns){
+        my $aln = $alns[$i];
 
-            # rejection criteria are enforced sequentially in order of efficiency
-            # i.e., frequent, easy rejections are checked first
+        # rejection criteria are enforced sequentially in order of efficiency
+        # i.e., frequent, easy rejections are checked first
 
-            # criteria enforced on all alignments, even single, non-SV alignments
-            if($$aln[S_MAPQ] < $MIN_MAPQ){
-                $nAlnsRejected{REJECT_MAPQ}++;
+        # criteria enforced on all alignments, even single, non-SV alignments
+        if($$aln[S_MAPQ] < $MIN_MAPQ){
+            $nAlnsRejected{REJECT_MAPQ}++;
+            $nAlnsRejected[$i]++;
+            last;
+        }
+        if($$aln[DE_TAG] > $MAX_DIVERGENCE){
+            $nAlnsRejected{REJECT_DIVERGENCE}++;
+            $nAlnsRejected[$i]++;
+            last;
+        }
+
+        # criteria only enforced when reads have SV junctions, i.e., multiple alignments
+        if($readHasSv){
+            if(getEnd(@$aln[S_POS1, S_CIGAR]) - $$aln[S_POS1] < $MIN_FLANK_LEN){
+                $nAlnsRejected{REJECT_FLANK_LEN}++;
                 $nAlnsRejected[$i]++;
                 last;
             }
-            if($$aln[DE_TAG] > $MAX_DIVERGENCE){
-                $nAlnsRejected{REJECT_DIVERGENCE}++;
-                $nAlnsRejected[$i]++;
-                last;
-            }
-
-            # criteria only enforced when reads have SV junctions, i.e., multiple alignments
-            if($readHasSv){
-                if(getEnd(@$aln[S_POS1, S_CIGAR]) - $$aln[S_POS1] < $MIN_FLANK_LEN){
-                    $nAlnsRejected{REJECT_FLANK_LEN}++;
+            if(
+                !$HAS_BASE_ACCURACY and # thus, this slow check only performed on ONT or other low accuracy platform
+                $$aln[S_QUAL] ne "*"
+            ){
+                my $avgBaseQual = getAvgQual($$aln[S_QUAL]);
+                $avgBaseQual[int($avgBaseQual / AVG_BASE_QUAL_BIN_SIZE + 0.5)]++;
+                if($avgBaseQual < $MIN_AVG_BASE_QUAL){
+                    $nAlnsRejected{REJECT_AVG_BASE_QUAL}++;
                     $nAlnsRejected[$i]++;
                     last;
                 }
-                if(
-                    !$HAS_BASE_ACCURACY and # thus, this slow check only performed on ONT or other low accuracy platform
-                    $$aln[S_QUAL] ne "*"
-                ){
-                    my $avgBaseQual = getAvgQual($$aln[S_QUAL]);
-                    $avgBaseQual[int($avgBaseQual / AVG_BASE_QUAL_BIN_SIZE + 0.5)]++;
-                    if($avgBaseQual < $MIN_AVG_BASE_QUAL){
-                        $nAlnsRejected{REJECT_AVG_BASE_QUAL}++;
-                        $nAlnsRejected[$i]++;
-                        last;
-                    }
-                }
             }
-            push @{$outAlns[$readN]}, $aln;
         }
-    }
-
-    # renumber read2 if sequence has become a new read2 orphan
-    if(@{$outAlns[READ2]} and !@{$outAlns[READ1]}){
-        $outAlns[READ1] = $outAlns[READ2];
-        $outAlns[READ2] = [];
-        foreach my $aln(@{$outAlns[READ1]}){
-            $$aln[S_FLAG] ^= _FIRST_IN_PAIR;  # when read1 was lost, reassign orphaned read2 as sole read1
-            $$aln[S_FLAG] ^= _SECOND_IN_PAIR; # thus, orphans always lose read2 from a pair
-        }
+        push @outAlns, $aln;
     }
 
     # print the final kept alignments, if any
-    foreach my $readN(READ1, READ2){
-        @{$outAlns[$readN]} and $nReadsOut++;
-        @{$outAlns[$readN]} > 1 and $nSvReadsOut++;
-        foreach my $aln(@{$outAlns[$readN]}){
-            print join("\t", @$aln), "\n";
-        }
+    @outAlns and $nReadsOut++;
+    @outAlns > 1 and $nSvReadsOut++;
+    foreach my $aln(@outAlns){
+        print join("\t", @$aln), "\n";
     }
 }
 
