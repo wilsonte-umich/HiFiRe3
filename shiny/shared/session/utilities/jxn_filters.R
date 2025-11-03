@@ -8,11 +8,16 @@ af_JxnFilterDefaults <- list(
     Min_Map_Quality = 0,
     Max_Frac_Base_Differences = 1,
     Min_Site_Distance = 0,
-    # Is_Expected_SV = c("expected","unexpected"),
+    Is_Expected_SV = c("expected","unexpected"),
     One_End_In_Genome = "any",
-    Is_On_Target = c("on_target","off_target"),
+    # Is_On_Target = c("on_target","off_target"),
+    # Enforce_End5_On_Target = TRUE,
+    Enforce_1N_Stem = TRUE,
+    Enforce_1N_to_2N_Size = FALSE,
     Allow_Excluded_Regions = FALSE,
-    Allow_Alternative_Alignments = FALSE
+    Allow_Alternative_Alignments = FALSE,
+    Alignment_Fail_Types = c("any_unfailed"),
+    Junction_Fail_Types = c("any_unfailed")
     # SV_Type = c("deletion","duplication","inversion","translocation"),
     # Mixed_Genome = c("intragenome","intergenome")
 )
@@ -48,12 +53,39 @@ af_applyJunctionFilters <- function(jxns, settings){
     ]
 
     # if(length(filters$Is_Expected_SV) == 1) 
-    #     jxns <- jxns[readHasSv == (filters$Is_Expected_SV == "unexpected")]
-    if(length(filters$Is_On_Target) == 1){
-        jxnIsOnTarget <- jxns[, target1 != "*" | target2 != "*"]
-        if (any(jxnIsOnTarget)) jxns <- jxns[
-            jxnIsOnTarget == (filters$Is_On_Target == "on_target")
-        ]
+    #     jxns <- jxns[isExpected == (filters$Is_Expected_SV == "unexpected")]
+    # if(length(filters$Is_On_Target) == 1){
+    #     jxnIsOnTarget <- jxns[, target1 != "*" | target2 != "*"]
+    #     if (any(jxnIsOnTarget)) jxns <- jxns[
+    #         jxnIsOnTarget == (filters$Is_On_Target == "on_target")
+    #     ]
+    # }
+    # if(filters$Enforce_End5_On_Target) jxns <- jxns[
+    #     grepl("1", end5OnTargets)
+    # ]
+    if(filters$Enforce_1N_Stem) jxns <- jxns[
+        grepl("1", passedStems)
+    ]
+    if(filters$Enforce_1N_to_2N_Size) jxns <- jxns[
+        grepl("1", isAllowedSizes) 
+    ]
+    if(filters$Alignment_Fail_Types != "all_junctions"){
+        jxns <- switch(
+            filters$Alignment_Fail_Types,
+            all_unfailed = jxns[!grepl("[1-9]", alnFailFlag)],
+            any_unfailed = jxns[ grepl("0",     alnFailFlag)],
+            all_failed   = jxns[!grepl("0",     alnFailFlag)],
+            any_failed   = jxns[ grepl("[1-9]", alnFailFlag)]
+        )
+    }
+    if(filters$Junction_Fail_Types != "all_junctions"){
+        jxns <- switch(
+            filters$Junction_Fail_Types,
+            all_unfailed = jxns[!grepl("[1-9]", jxnFailFlag)],
+            any_unfailed = jxns[ grepl("0",     jxnFailFlag)],
+            all_failed   = jxns[!grepl("0",     jxnFailFlag)],
+            any_failed   = jxns[ grepl("[1-9]", jxnFailFlag)]
+        )
     }
     oneEndInGenome <- trimws(filters$One_End_In_Genome)
     if(oneEndInGenome != "any" && oneEndInGenome != ""){

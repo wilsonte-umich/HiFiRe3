@@ -11,11 +11,13 @@ cp $GENOME_FASTA.fai $TMP_DIR_WRK_SHM
 export GENOME_FASTA_SHM=$TMP_DIR_WRK_SHM/$(basename $GENOME_FASTA) 
 
 # index RE fragments for unique SV paths
+# all reads are examined and counted, but only on-target reads are retained for SV calling
 runWorkflowStep 1 index_fragments index/index_fragments.sh
 
 # merge event metadata from junction_sources into junctions
 # perform fuzzy matching of junction nodes to each other to aggregate inexact junction matches
 # purge ONT duplexes when junctions appeared on different strands in the same channel
+# record number of supporting reads per junction and whether any/all were inside/outside the allowed insert size range
 # create a second reverse-sorted junction file for indexed retrieval of both junction nodes for independent local plotting
 runWorkflowStep 2 aggregate_SVs aggregate/aggregate_SVs.sh
 

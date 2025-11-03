@@ -36,18 +36,6 @@ export SITE_CHROM_DATA_FILE=${INDEXED_SITES_PREFIX}.index.txt        # tabular i
 export CLOSEST_SITE_BINARY_FILE=${INDEXED_SITES_PREFIX}.closest_site # one value per genome position = signed closest site index
 export SITE_DATA_BINARY_FILE=${INDEXED_SITES_PREFIX}.site_data       # one value per RE filtering site = sitePos1 on chrom
 
-# # index/lookup files matching the previous set, with paths as specified in sample-specific jobs by option --re-sites-dir
-# if [ "$RE_SITES_DIR" != "" ]; then
-#     export SITE_COLLECTION_NAME=`basename ${RE_SITES_DIR}`
-# fi
-# # export SITE_COLLECTION_PREFIX=${RE_SITES_DIR}/${SITE_COLLECTION_NAME}.*.filtering_sites
-# export SITE_COLLECTION_PREFIX=${RE_SITES_DIR}/*.filtering_sites
-# export SITE_COLLECTION_SITES=`echo ${SITE_COLLECTION_PREFIX}.txt.gz 2>/dev/null`
-# export SITE_COLLECTION_BGZ=`echo ${SITE_COLLECTION_PREFIX}.txt.bgz 2>/dev/null`
-# export SITE_CHROM_DATA=`echo ${SITE_COLLECTION_PREFIX}.index.txt`
-# export CLOSEST_SITE_LOOKUP=`echo ${SITE_COLLECTION_PREFIX}.closest_site`
-# export SITE_DATA_LOOKUP=`echo ${SITE_COLLECTION_PREFIX}.site_data`
-
 # SV extract file paths
 export EXTRACT_PREFIX=${DATA_GENOME_PREFIX}.extract
 export PROPER_FRAGMENTS_PREFIX=${EXTRACT_PREFIX}.proper_fragments

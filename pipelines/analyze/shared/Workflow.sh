@@ -6,7 +6,6 @@ source $MODULES_DIR/align/set_alignment_vars.sh
 source $MODULES_DIR/REs/set_re_vars.sh
 source $MODULES_DIR/library/set_library_vars.sh
 # source $MODULES_DIR/zoo/set_zoo_vars.sh
-source $MODULES_DIR/align/set_read_file_vars.sh
 source $MODULES_DIR/analyze/set_analysis_vars.sh
 
 # set temporary directories

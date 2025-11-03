@@ -36,7 +36,7 @@ we recommend a single-suite installation (see the
 for multi-suite installation), which is accomplished by:
 - cloning this tool suite repository
 - running _install.sh_ to create a suite-specific MDI installation
-- calling _alias.pl_ to create a `hf3` alias to the suite's _run_ utility
+- calling _alias.pl_ to create a `hf3` alias to the suite's command line interface (CLI)
 
 ### Install this tool suite
 
@@ -49,7 +49,7 @@ cd HiFiRe3
 To start, answer 'y' (yes) to install the Stage 1 Pipelines, then after a
 minute, answer 'n' (no) to skip installation of the Stage 2 Apps (for now).
 
-### Create an alias to the suite's _run_ utility (optional)
+### Create an alias to the suite's command line interface (optional)
 
 ```bash
 # you can use a different alias if you'd like, e.g., replace hf3 with HiFiRe3
@@ -62,21 +62,21 @@ Reload a new shell to activate the alias for use.
 
 If you prefer not to use an alias, 
 you can add the installation directory to your PATH variable,
-or `cd` into the directory prior to calling `./run`.
+or `cd` into the directory prior to calling `./hf3`.
 
 ### Test the command line interface (CLI)
 
-For help, call the _run_ utility with no arguments, which describes the format for pipeline calls. 
+For help, call the CLI with no arguments, which describes the format for pipeline calls. 
 
 ```bash
 # use the alias, if you created it as described above
 hf3 
 hf3 --help
 
-# or call the run utility directly without an alias
+# or call the CLI directly without an alias
 cd HiFiRe3
-./run
-./run --help
+./hf3
+./hf3 --help
 ```
 
 ## Recommended HiFiRe3 workspace organization
@@ -152,7 +152,7 @@ hf3 myJob.yml ls               # show the contents of a job's output diretory
 
 ### Workflow sequence
 
-HiFiRe3 has a few _pipelines_ and associated _actions_ with descriptive names, 
+HiFiRe3 has a _pipelines_ and associated _actions_ with descriptive names, 
 listed here in execution order:
 - `prepare genome` (where `prepare` is the _pipeline_ and `genome` is the _action_)
 - `basecall PacBio|ONT`
@@ -213,7 +213,7 @@ suffixed with the respective source genome, e.g., `chr1_hs1` and `chr4_dm6`.
 ## Input read data, basecalling
 
 HiFiRe3 pipelines accept long-read input files from either the 
-PacBio or Oxford Nanopore (ONT) sequencing platforms. As stated above, all tools assume you have performed a valid HiFiRe3 library preparation,
+PacBio or Oxford Nanopore (ONT) sequencing platforms. As stated above, all tools assume you performed a valid HiFiRe3 library preparation,
 including strict N to 2N size selection _prior to_ ligating adapters to A-tailed
 blunt RE ends. 
 
@@ -317,11 +317,11 @@ recurring RE sites.
 
 Clonal SV fragments will be among the set of located fragments if they
 are within the selected size range. Only these reads are used for SNV discovery, where
-the parental and SNV/indel-containing read will be ~the same size.
+parental and SNV/indel-containing reads will be ~the same size.
 
 In contrast, rare mosaic SV-containing fragments may not
 end at located RE sites depending on the relative sizes of clonal and SV fragments, i.e., 
-an SV fragment may be between N and 2N bp, and thus be sequenced, while the fragment(s) it bridges are not.
+an SV fragment may be between N and 2N bp, and thus be sequenced, while the parental fragment(s) it bridges are not.
 For this reason, both _in silico_ and located RE sites are used in subsequent steps when
 matching read outer ends to RE sites. Any fragment ending at expected RE sites of either type
 are used for SV discovery, which, unlike clonal fragments, can be located ~anywhere in the genome.

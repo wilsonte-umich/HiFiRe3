@@ -1,0 +1,74 @@
+---
+#----------------------------------------------------------------------
+# app name is shown at the top of the dashboard menu
+# description is used when needing to query the user for the desired target app
+# semantic version is of form v0.0.0: https://semver.org/
+# external modules will come from latest suite versions unless listed in suiteVersions
+#----------------------------------------------------------------------
+name: Analyze_SVs
+description: "Visualize the inputs and outputs of the `analyze SVs` pipeline action"
+# version: v0.0.0 # OPTIONAL
+# suiteVersions:
+#     suiteName: v0.0.0
+
+#----------------------------------------------------------------------
+# project data file type(s) associated with this app
+#   - the keys in uploadTypes are matched to key uploadType in incoming package.yml
+#   - required files lead to rejection of a project file if missing
+#----------------------------------------------------------------------
+uploadTypes:
+    hf3AnalyzeSVs: 
+        contentFileTypes: # anything not listed will not be available to the app
+            chromsFile:
+                required: true
+            filteringSitesBgz:
+                required: false
+            filteringSitesTbi:
+                required: false
+            genesBed:
+                required: true
+            targetsBed:
+                required: false
+            exclusionsBed:
+                required: true
+            svJunctions1Bgz:
+                required: true
+            svJunctions1Tbi:
+                required: true
+            svJunctions2Bgz:
+                required: true
+            svJunctions2Tbi:
+                required: true
+            genomeTally:
+                required: true
+            junctionTally:
+                required: true
+            svAlignmentsBgz:
+                required: false
+            svAlignmentsTbi:
+                required: false
+            # svReadPaths:
+            #     required: false
+
+#----------------------------------------------------------------------
+# labels and definitions for all sequential analysis steps shown in sidebar
+#----------------------------------------------------------------------
+# module = the appSteps module used for a sequential step
+#    the keyed name of a step becomes its namespace in the 'app' object
+# shortLabel = as shown on dashboard menu (required if not provided as module default)
+# shortDescription = as shown on the Overview page (required if not provided as module default)
+# options = passed to both <module>UI and <module>Server functions
+#    longLabel = the title for the appStep tabbed page
+#    alwaysVisible = declares that step is NOT sequential and thus always available
+#    other options are module specific; see module definitions
+#----------------------------------------------------------------------
+appSteps:
+    upload: # nearly always the 1st step of every app
+        module: sourceFileUpload
+    exploreJunctions:
+        module: exploreJunctions
+    browser:
+        module: genomex-mdi-tools//trackBrowser
+        # options:
+        #     tracks:
+        #         - RE_sites

@@ -28,4 +28,9 @@ if [ ! -f "${MINIMAP2_INDEX_WRK}" ]; then
     minimap2 -x ${ALIGNMENT_MODE_WRK} -t 3 -d ${MINIMAP2_INDEX_WRK} ${GENOME_FASTA_WRK}
     checkPipe
     rm ${MINIMAP2_INDEX_LOCK}
+    echo "minimap2 index done"
+    if [ "$CREATE_MM2_INDEX_MESSAGE" != "" ]; then
+        echo
+        echo $CREATE_MM2_INDEX_MESSAGE
+    fi
 fi

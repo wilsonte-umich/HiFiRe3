@@ -3,7 +3,7 @@
 # expects:
 #     source $MODULES_DIR/genome/set_genome_vars.sh
 #     source $MODULES_DIR/align/set_alignment_vars.sh
-#     source $MODULES_DIR/source/set_read_file_vars.sh
+#     source $MODULES_DIR/align/set_read_file_vars.sh
 #     source $MODULES_DIR/library/set_library_vars.sh
 # optional for all read types:
 #     $FORCE_ALIGNMENT  [default: don't overwrite ALIGNER_OUTPUT_FILE]
@@ -42,7 +42,8 @@ echo "  aln mode: $ALIGNMENT_MODE"
 echo "  reference genome: $GENOME_FASTA"
 echo "  read files:"
 echo "$READ_FILES" | perl -ne 'print "    ".join("\n    ", split(" ", $_)),"\n"'
-echo "  output: $NAME_BAM_FILE"
+echo "  output:"
+echo "    $NAME_BAM_FILE"
 echo
 
 #------------------------------------------------------------------
@@ -50,6 +51,7 @@ echo
 #------------------------------------------------------------------
 export GENOME_FASTA_WRK=${GENOME_FASTA}
 export ALIGNMENT_MODE_WRK=${ALIGNMENT_MODE}
+export CREATE_MM2_INDEX_MESSAGE="continuing with alignment"
 source ${MODULES_DIR}/align/create_mm2_index.sh # sets variable ${MINIMAP2_INDEX_WRK}
 
 #------------------------------------------------------------------

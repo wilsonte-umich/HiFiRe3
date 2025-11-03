@@ -13,4 +13,11 @@ options:
         type: integer
         required: true
         default: null
-        description: "the smallest insert in bp selected BEFORE adapter ligation; max size must be twice --min-selected-size"
+        description: "smallest insert in bp selected BEFORE adapter ligation; max selected size must be twice --min-selected-size"
+    selected-size-cv: 
+        order: 3
+        short: V
+        type: double
+        required: false
+        default: 0.15
+        description: "estimated coefficient of variation for --min-selected-size used to calculate min-allowed-size and max-allowed-size"

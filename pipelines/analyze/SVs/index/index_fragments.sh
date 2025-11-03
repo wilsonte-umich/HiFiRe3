@@ -35,7 +35,7 @@ $SORT -k1,1 -k3,3n |
 $BGZIP $SV_READ_PATHS_FILE
 checkPipe
 echo "indexing read paths" # indexed by QNAME and channel as a convenient way of indexed read retrieval
-$TABIX --begin 3 --end 3 --zero-based $SV_READ_PATHS_FILE
+$TABIX --sequence 1 --begin 3 --end 3 --zero-based $SV_READ_PATHS_FILE
 checkPipe
 
 # summarize the library read and base counts, with deduplication as needed
@@ -83,7 +83,7 @@ checkPipe
 echo "sorting unique junctions"
 zcat $SAMPLE_PATHS_PREFIX_WRK.unique_junctions.*.txt.gz | 
 $SORT -k1,1n -k2,2n -k3,3n -k4,4n -k5,5n -k6,6n -k7,7n -k8,8nr |
-bedtools groupby -g 1,2,3,4,5,6,7 -c 8,9,10,11,12,13 -o sum,first,first,distinct,max,min |
+bedtools groupby -g 1,2,3,4,5,6,7 -c 8,9,10,11,12 -o sum,first,first,distinct,max |
 $PIGZ > $SV_UNIQUE_JUNCTIONS_FILE
 checkPipe
 
@@ -99,8 +99,8 @@ echo "sorting and grouping junction sources"
 zcat $SAMPLE_PATHS_PREFIX_WRK.junction_sources.*.txt.gz | 
 $SORT -k1,1n -k2,2n -k3,3n -k4,4n -k5,5n -k6,6n -k7,7n -k8,8 -k9,9 |
 bedtools groupby -g 1,2,3,4,5,6,7,8,9 \
-                 -c 10,11,12,13,14,15,16,17,18,19 \
-                 -o collapse,collapse,collapse,distinct,max,min,max,collapse,collapse,collapse | 
+                 -c 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 \
+                 -o collapse,collapse,collapse,collapse,collapse,distinct,collapse,collapse,max,min,max,min,min,collapse,collapse,collapse | 
 $PIGZ > $SV_JUNCTION_SOURCES_FILE
 checkPipe
 

@@ -69,10 +69,10 @@ package:
                 file: $ANALYSIS_CHROMS_FILE
             filteringSitesBgz:
                 type: txt.bgz
-                file: $SITE_COLLECTION_BGZ
+                file: $FILTERING_SITES_BGZ
             filteringSitesTbi:
                 type: txt.bgz.tbi
-                file: $SITE_COLLECTION_BGZ.tbi
+                file: $FILTERING_SITES_BGZ.tbi
             genesBed:
                 type: bed
                 file: $GENES_BED

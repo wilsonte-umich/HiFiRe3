@@ -47,33 +47,41 @@ use constant {
     UJXN_JXN_BASES          => 9,
     UJXN_PATHS              => 10,
     UJXN_N_PATH_JUNCTIONS   => 11,
-    UJXN_READ_HAS_SV        => 12,
-    UJXN_JSRC_MAPQ          => 13, 
-    UJXN_JSRC_DE_TAG        => 14,
-    UJXN_JSRC_SITE_DIST     => 15,
-    UJXN_JSRC_QNAMES        => 16, 
-    UJXN_JSRC_SEQS          => 17,
-    UJXN_JSRC_QUALS         => 18,
-    UJXN_JSRC_CIGARS        => 19,
-    UJXN_JSRC_ORIENTATIONS  => 20,
-    UJXN_HAS_ALT_ALIGNMENT  => 21,
-    UJXN_SV_SIZE            => 22, # added by this script
-    UJXN_IS_INTERGENOME     => 23,
-    UJXN_TARGET_1           => 24,
-    UJXN_TARGET_DIST_1      => 25,
-    UJXN_TARGET_2           => 26,
-    UJXN_TARGET_DIST_2      => 27,
-    UJXN_GENES_1            => 28,
-    UJXN_GENE_DIST_1        => 29,
-    UJXN_GENES_2            => 30,
-    UJXN_GENE_DIST_2        => 31,
-    UJXN_IS_EXCLUDED_1      => 32,
-    UJXN_IS_EXCLUDED_2      => 33,
-    UJXN_BKPT_COVERAGE_1    => 34, # added downstream, not present yet
-    UJXN_BKPT_COVERAGE_2    => 35,
+    UJXN_JSRC_MAPQ          => 12,
+    UJXN_JSRC_DE_TAG        => 13,
+    UJXN_JSRC_SITE_DIST     => 14,
+    UJXN_JSRC_ALN_FAILURE_FLAG => 15,
+    UJXN_JSRC_JXN_FAILURE_FLAG => 16,
+    UJXN_JSRC_QNAMES           => 17,
+    UJXN_JSRC_INSERT_SIZES     => 18,
+    UJXN_JSRC_IS_ALLOWED_SIZES => 19,
+    UJXN_JSRC_MIN_STEM_LENGTHS => 20,
+    UJXN_JSRC_PASSED_STEMS     => 21,
+    UJXN_JSRC_SEQS            => 22,
+    UJXN_JSRC_QUALS           => 23,
+    UJXN_JSRC_CIGARS          => 24,
+    UJXN_JSRC_ORIENTATIONS    => 25,
+    UJXN_IS_EXPECTED          => 26,
+    UJXN_HAS_ALT_ALIGNMENT    => 27,
+    UJXN_SV_SIZE              => 28, # added by this script
+    UJXN_IS_INTERGENOME       => 29,
+    UJXN_TARGET_1             => 30,
+    UJXN_TARGET_DIST_1        => 31,
+    UJXN_TARGET_2             => 32,
+    UJXN_TARGET_DIST_2        => 33,
+    UJXN_GENES_1              => 34,
+    UJXN_GENE_DIST_1          => 35,
+    UJXN_GENES_2              => 36,
+    UJXN_GENE_DIST_2          => 37,
+    UJXN_IS_EXCLUDED_1        => 38,
+    UJXN_IS_EXCLUDED_2        => 39,
+    UJXN_BKPT_COVERAGE_1      => 40, # added downstream, not present yet
+    UJXN_BKPT_COVERAGE_2      => 41,
+    CMP_N_SAMPLES             => 42,
+    CMP_SAMPLES               => 43,
     #-------------
-    EXPECTED   => 0, # junction sequencing orientations
-    UNEXPECTED => 1,
+    EXPECTED   => 1, # junction sequencing orientations
+    UNEXPECTED => 0,
     #-------------
     TYPE_PROPER         => 0, # junction/edge types
     TYPE_DELETION       => 1,
@@ -103,8 +111,8 @@ while (my $jxn = <STDIN>){
     chomp $jxn;
     my @jxn = split("\t", $jxn);
     $nInputJxns++;
-    $jxn[UJXN_READ_HAS_SV] or $nExpectedJxns++;
-    $jxnCoverage{$jxn[UJXN_N_OBSERVED]}[$jxn[UJXN_READ_HAS_SV]]++;
+    $jxn[UJXN_IS_EXPECTED] and $nExpectedJxns++;
+    $jxnCoverage{$jxn[UJXN_N_OBSERVED]}[$jxn[UJXN_IS_EXPECTED]]++;
 
     $jxn[UJXN_SV_SIZE] = 
         $jxn[OJXN_JXN_TYPE] == TYPE_TRANSLOCATION ? 
@@ -151,7 +159,7 @@ foreach my $jxnCoverage(sort { $a <=> $b} keys %jxnCoverage){
 
 sub isInterGenome {
     my ($chromIndex1_1, $chromIndex1_2) = @_;
-    my ($chrom1) = ($revChromIndex{$chromIndex1_1} =~ m/.+_(.+)/); # e.g., chr1_(hs1)
-    my ($chrom2) = ($revChromIndex{$chromIndex1_2} =~ m/.+_(.+)/);
-    return $chrom1 ne $chrom2;
+    my ($genome1) = ($revChromIndex{$chromIndex1_1} =~ m/.+_(.+)/); # e.g., chr1_(hs1)
+    my ($genome2) = ($revChromIndex{$chromIndex1_2} =~ m/.+_(.+)/);
+    return $genome1 ne $genome2;
 }

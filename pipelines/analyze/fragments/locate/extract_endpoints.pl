@@ -103,7 +103,7 @@ use constant {
 print STDERR "extracting sequence endpoints\n";
 my ($prevQName, @alns, @counts) = (0);
 $| = 1;
-open my $inH, "-|", "samtools view $NAME_BAM_FILE | cut -f 1-6" or die "$action error: could not open $NAME_BAM_FILE: $!\n";
+open my $inH, "-|", "samtools view $NAME_BAM_FILE" or die "$action error: could not open $NAME_BAM_FILE: $!\n";
 while(my $aln = <$inH>){
     $nAlns++;
     my @aln = split("\t", $aln, SPLIT_TO_TAGS);

@@ -1,8 +1,7 @@
 # action:
 #     compare observed sequence endpoints to each other and to the 
 #       in silico digested genome to identify presumptive RE sites
-#       in a specific genotype, i.e., a cell line, individual, etc.
-#       for later use during SV error correction
+#       for later use during error correction
 # steps:
 #     compare observed and in silico sitePos1 values to each other in parallel by chromosome
 #       use ACCEPT_ENDPOINT_DISTANCE to allow sitePos1 values to match if differing by a few bp
@@ -117,7 +116,7 @@ plotSitePosEvidence <- function(plotName, sitePosCounts, log){
 sitePosCols  <- c("chrom","sitePos1")
 
 message("gathering cut site positions from in silico digestion")
-# enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,agFree_compatible,initial_priority,comments
+# enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,HiFiRe3_compatible,initial_priority,comments
 res <- fread(env$BLUNT_RE_TABLE)
 res[, reKey := paste(gsub("\\s", "", enzyme), toupper(cut_site), sep = "_")]
 reKey <- res[enzyme == env$ENZYME_NAME, reKey]

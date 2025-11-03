@@ -29,7 +29,7 @@ actions:
         order: 2
         optionFamilies:
             - restriction-enzyme # used to assist adapter trimming
-            - pod5-file
+            - pod5
             - dorado
         resources:
             required:

@@ -172,7 +172,6 @@ af_bgzColumns <- list(
     filteringSitesBgz = c(
         chromIndex1     = "integer",
         sitePos1        = "integer",
-        haplotypes      = "integer",
         inSilico        = "integer",
         nObserved       = "integer"
     ),
@@ -183,11 +182,9 @@ af_bgzColumns <- list(
         refPos1_3       = "integer",
         strandIndex0_5  = "integer",
         jxnType         = "character", # middle floating alignments have two comma-delimited types
-        haplotypes      = "integer",
         pathN           = "integer",
         nJunctions      = "integer",
         alnN            = "integer",
-        readHasSv       = "integer",
         nObserved       = "integer"
     ),
     svJunctions1Bgz = c(
@@ -203,15 +200,21 @@ af_bgzColumns <- list(
         jxnBases        = "character",
         paths           = "character",
         nPathJxns       = "integer",
-        readHasSv       = "integer",
         mapQ            = "integer",
         deTag           = "double",
         siteDist        = "integer",
+        alnFailFlag     = "character",
+        jxnFailFlag     = "character",
         qNames          = "character", # comma-delimited lists, one per observed read
+        insertSizes     = "character", 
+        isAllowedSizes  = "character", 
+        stemLengths     = "character",
+        passedStems     = "character",
         seqs            = "character",
         quals           = "character",
         cigars          = "character", # one per flanking alignment as CIGAR_1::CIGAR_2
         orientations    = "character",
+        isExpected     = "integer",
         hasAltAlignment = "integer",
         svSize          = "integer",
         isIntergenome   = "integer",
@@ -226,7 +229,9 @@ af_bgzColumns <- list(
         isExcluded_1    = "integer",
         isExcluded_2    = "integer",
         bkptCoverage_1  = "integer",
-        bkptCoverage_2  = "integer"
+        bkptCoverage_2  = "integer",
+        nSamples        = "integer",
+        samples         = "character"  # ,sample1,sample2,...
     ),
     svReadPaths = c(
         qName       = "character",
@@ -240,6 +245,8 @@ af_bgzColumns <- list(
         deTags      = "character",
         blockNs     = "character",
         nRefBases   = "character",
+        alnFailFlags= "character",
+        jxnFailFlags= "character",
         qryStart0s  = "character",
         qryEnd1s    = "character",
         cigars      = "character",
@@ -256,17 +263,17 @@ af_bgzColumns$svJunctions2Bgz_multi <- af_bgzColumns$svJunctions1Bgz_multi # for
 af_bgzColumns_display <- list(
     svJunctions1Bgz = c(
         sample          = "sample",
-        chromIndex1_1   = "chrom_1",
-        refPos1_1       = "bkptPos_1",
-        strandIndex0_1  = "strand_1",
-        chromIndex1_2   = "chrom_2",
-        refPos1_2       = "bkptPos_2",
-        strandIndex0_2  = "strand_2",
+        chromIndex1_1   = "chrom1",
+        refPos1_1       = "bkptPos1",
+        strandIndex0_1  = "strand1",
+        chromIndex1_2   = "chrom2",
+        refPos1_2       = "bkptPos2",
+        strandIndex0_2  = "strand2",
         svSize          = "svSize",
         jxnType         = "jxnType",
         isIntergenome   = "interGen",
         nObserved       = "nObs",
-        readHasSv       = "expected",
+        isExpected      = "expected",
         mapQ            = "mapQ",
         deTag           = "deTag",
         siteDist        = "siteDist",
@@ -275,17 +282,19 @@ af_bgzColumns_display <- list(
         target1         = "target1",
         # targetDist1     = "integer",
         target2         = "target2",
-        isExcluded_1    = "excl1",
-        isExcluded_2    = "excl2",
-        hasAltAlignment = "hasAlt",
+        # isExcluded_1    = "excl1",
+        # isExcluded_2    = "excl2",
+        # hasAltAlignment = "hasAlt",
         # targetDist2     = "integer",
         # genes1          = "character",
         # geneDist1       = "character", # comma-delimited list of distances
         # genes2          = "character",
         # geneDist2       = "character",
-        bkptCoverage_1  = "bkptCov_1",
-        bkptCoverage_2  = "bkptCov_2",
+        bkptCoverage_1  = "bkptCov1",
+        bkptCoverage_2  = "bkptCov2",
         # orientations    = "character",
+        insertSizes     = "insSizes", 
+        stemLengths     = "stemLens",
         NULL
         # paths           = "character",
         # nPathJxns       = "integer",
@@ -303,7 +312,8 @@ af_getChromIndex <- function(sourceId, chrom){
     if(is.null(af_chromIndex[[sourceId]])) {
         af_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
     }
-    af_chromIndex[[sourceId]][af_chromIndex[[sourceId]][[1]] == chrom][[2]]
+    ci <- af_chromIndex[[sourceId]]
+    ci[ci[[1]] == chrom | startsWith(ci[[1]], paste0(chrom, "_"))][[2]]
 }
 af_getChromNames <- Vectorize(function(sourceId, chromIndex){
     if(is.null(af_chromIndex[[sourceId]])) {
@@ -322,7 +332,7 @@ af_getChromSize <- function(sourceId, chromIndex){
 af_excludedRegions <- list()
 af_getExcludedRegions <- function(sourceId){
     if(is.null(af_excludedRegions[[sourceId]])) {
-        af_excludedRegions[[sourceId]] <<- fread(getSourceFilePath(sourceId, "exclusionsBed"))[, 1:3]
+        af_excludedRegions[[sourceId]] <<- fread(getSourceFilePath(sourceId, "exclusionsBed"), fill = TRUE)[, 1:3]
         setnames(af_excludedRegions[[sourceId]], c("chrom", "start0", "end1"))
     }
     af_excludedRegions[[sourceId]]
@@ -333,13 +343,13 @@ af_getTrackData_bgz <- function(sourceId, fileType, coord){
     coord$chromosome <- af_getChromIndex(sourceId, coord$chromosome)
     bgzFile <- getSourceFilePath(sourceId, fileType)
     if(!isTruthy(bgzFile) || !file.exists(bgzFile)) return(data.table()) # no data of this type
-    getCachedTabix(bgzFile) %>%
+    getCachedTabix(bgzFile) %>% 
     getTabixRangeData(
         coord, 
         col.names  =  names(af_bgzColumns[[fileType]]), 
         colClasses = unname(af_bgzColumns[[fileType]]), 
         skipChromCheck = TRUE
-    )
+    ) 
     # coord$chromosome <- af_getChromIndex(sourceId, coord$chromosome)
     # getSourceFilePath(sourceId, fileType) %>%
     # getCachedTabix() %>%
@@ -372,7 +382,7 @@ af_getAlignments <- function(sourceId, coord){
     )]
     x
 }
-# get and parse unique junction nodes in region
+# get and parse unique junction nodes in region ...
 af_getJunctions <- function(sourceId, coord){
     # svJunctions1Bgz and svJunctions2Bgz are the same row data, just sorted differently
     # having both files allows for recover of all unique SVs with either junction within coord
@@ -382,6 +392,13 @@ af_getJunctions <- function(sourceId, coord){
         af_getTrackData_bgz(sourceId, "svJunctions1Bgz", coord),
         af_getTrackData_bgz(sourceId, "svJunctions2Bgz", coord) # same file as svJunctions1Bgz, just sorted differently
     ) %>% unique()
+}
+# ... additionally filtered the same way as is active the in exploreJunctions step
+af_getFilteredJunctions <- function(sourceId, coord){
+    af_applyJunctionFilters(
+        af_getJunctions(sourceId, coord), 
+        app$exploreJunctions$settingsObject
+    )
 }
 
 # loading entire junction and tally tables, cached in sessionCache
@@ -407,7 +424,7 @@ af_getJunctions_all_source <- function(sourceId){
                 alnOffset = sapply(alnOffset, function(x) if(x == "*") NA_integer_ else as.integer(x)),
                 sample = sub(".analyze.SVs", "", getSourceFilePackageName(sourceId)),
                 isValidated = nObserved >= 3,
-                isExpected  = readHasSv == 0
+                isExpected  = isExpected == 1
             )][, ":="(
                 isArtifact = nObserved == 1 & !isExpected & (
                     jxnType == af_junctions$typeToIndex$translocation |

@@ -19,24 +19,24 @@ map { require "$perlUtilDir/$_.pl" } qw(workflow numeric);
 resetCountFile();
 
 # environment variables
-# fillEnvVar(\our $DEDUPLICATE_READS, 'DEDUPLICATE_READS');
+fillEnvVar(\our $DEDUPLICATE_READS, 'DEDUPLICATE_READS');
 
 # constants
 use constant {
-    I_ALN_CHROM_INDEX1        => 0,
+    I_ALN_CHROM_INDEX1        => 0, # from SV_ALIGNMENTS_FILE via bedtools intersect in aggregate_SVs.sh
     I_ALN_START0              => 1,
     I_ALN_END1                => 2,
     I_ALN_N_OBSERVED          => 3,
-    I_JXN_CHROM_INDEX1        => 4,
+    I_JXN_CHROM_INDEX1        => 4, # junction metadata prepended to junction by junction_coverage.pl
     I_JXN_BKPT_START0         => 5,
     I_JXN_BKPT_END1           => 6,
     I_JXN_JXN_I0              => 7,
     I_JXN_BKPT_I0             => 8,
-    I_JXN_JXN                 => 9,
+    I_JXN_JXN                 => 9, # unsplit full junction, columns below
     #-------------
     I_SPLIT_TO_JXN_JXN        =>10, # leaves JXN concatenated at first split
     #-------------
-    OJXN_CHROM_INDEX1_1     => 0, # input columns
+    OJXN_CHROM_INDEX1_1     => 0, # full junction reported by junction_coverage.pl
     OJXN_REF_POS1_1         => 1,
     OJXN_STRAND_INDEX0_1    => 2,
     OJXN_CHROM_INDEX1_2     => 3,
@@ -48,30 +48,38 @@ use constant {
     UJXN_JXN_BASES          => 9,
     UJXN_PATHS              => 10,
     UJXN_N_PATH_JUNCTIONS   => 11,
-    UJXN_READ_HAS_SV        => 12,
-    UJXN_JSRC_MAPQ          => 13, 
-    UJXN_JSRC_DE_TAG        => 14,
-    UJXN_JSRC_SITE_DIST     => 15,
-    UJXN_JSRC_QNAMES        => 16, 
-    UJXN_JSRC_SEQS          => 17,
-    UJXN_JSRC_QUALS         => 18,
-    UJXN_JSRC_CIGARS        => 19,
-    UJXN_JSRC_ORIENTATIONS  => 20,
-    UJXN_HAS_ALT_ALIGNMENT  => 21,
-    UJXN_SV_SIZE            => 22,
-    UJXN_IS_INTERGENOME     => 23,
-    UJXN_TARGET_1           => 24,
-    UJXN_TARGET_DIST_1      => 25,
-    UJXN_TARGET_2           => 26,
-    UJXN_TARGET_DIST_2      => 27,
-    UJXN_GENES_1            => 28,
-    UJXN_GENE_DIST_1        => 29,
-    UJXN_GENES_2            => 30,
-    UJXN_GENE_DIST_2        => 31,
-    UJXN_IS_EXCLUDED_1      => 32,
-    UJXN_IS_EXCLUDED_2      => 33,
-    UJXN_BKPT_COVERAGE_1    => 34, # added by this script
-    UJXN_BKPT_COVERAGE_2    => 35,
+    UJXN_JSRC_MAPQ          => 12,
+    UJXN_JSRC_DE_TAG        => 13,
+    UJXN_JSRC_SITE_DIST     => 14,
+    UJXN_JSRC_ALN_FAILURE_FLAG => 15,
+    UJXN_JSRC_JXN_FAILURE_FLAG => 16,
+    UJXN_JSRC_QNAMES           => 17,
+    UJXN_JSRC_INSERT_SIZES     => 18,
+    UJXN_JSRC_IS_ALLOWED_SIZES => 19,
+    UJXN_JSRC_MIN_STEM_LENGTHS => 20,
+    UJXN_JSRC_PASSED_STEMS     => 21,
+    UJXN_JSRC_SEQS            => 22,
+    UJXN_JSRC_QUALS           => 23,
+    UJXN_JSRC_CIGARS          => 24,
+    UJXN_JSRC_ORIENTATIONS    => 25,
+    UJXN_IS_EXPECTED          => 26,
+    UJXN_HAS_ALT_ALIGNMENT    => 27,
+    UJXN_SV_SIZE              => 28,
+    UJXN_IS_INTERGENOME       => 29,
+    UJXN_TARGET_1             => 30,
+    UJXN_TARGET_DIST_1        => 31,
+    UJXN_TARGET_2             => 32,
+    UJXN_TARGET_DIST_2        => 33,
+    UJXN_GENES_1              => 34,
+    UJXN_GENE_DIST_1          => 35,
+    UJXN_GENES_2              => 36,
+    UJXN_GENE_DIST_2          => 37,
+    UJXN_IS_EXCLUDED_1        => 38,
+    UJXN_IS_EXCLUDED_2        => 39,
+    UJXN_BKPT_COVERAGE_1      => 40, # added by this script
+    UJXN_BKPT_COVERAGE_2      => 41,
+    CMP_N_SAMPLES             => 42, # initialized to null values by this script
+    CMP_SAMPLES               => 43,
 };
 
 # process breakpoints one at a time
@@ -85,22 +93,15 @@ while (my $intsct = <STDIN>){
         $jxns[$intsct[I_JXN_JXN_I0]] = \@jxn;
     }
     my $j = $intsct[I_JXN_BKPT_I0] + UJXN_BKPT_COVERAGE_1;
-    # if ($DEDUPLICATE_READS){
-    #     $jxns[$intsct[I_JXN_JXN_I0]][$j]++; # only partially deduplicated
-    # } else {
+    if ($DEDUPLICATE_READS){
+        $jxns[$intsct[I_JXN_JXN_I0]][$j]++; # only partially deduplicated
+    } else {
         $jxns[$intsct[I_JXN_JXN_I0]][$j] += $intsct[I_ALN_N_OBSERVED];
-    # }
+    }
 }
 
 # output unique junctions with all final metadata columns
 for my $jxn(@jxns){
     $jxn or next;
-    print join("\t", @$jxn), "\n";
+    print join("\t", @$jxn, 0, ","), "\n";
 }
-
-# [wilsonte@gl-login2 tagFreeLR_pilot_WL002_082724]$ zcat site_sam/tagFreeLR_pilot_WL002_082724.GM12878_unspecified_EcoRV.chr1.site_sam.gz | grep 95a80e45-7504-4a3d-9aac-2c9fdde63e26:1028:0:0:0:0:0:0:1 | cut -f 1-5
-# 95a80e45-7504-4a3d-9aac-2c9fdde63e26:1028:0:0:0:0:0:0:1 16      chr1    143701  60
-# 95a80e45-7504-4a3d-9aac-2c9fdde63e26:1028:0:0:0:0:0:0:1 2048    chr13   104551419       60
-
-# [wilsonte@gl-login2 tagFreeLR_pilot_WL002_082724]$ zcat tagFreeLR_pilot_WL002_082724.GM12878_unspecified_EcoRV.alignments.txt.bgz | grep -P "\t143701\t"
-# 1       176825  143701  0       1       4       0       166     1       1       1       1

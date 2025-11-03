@@ -8,17 +8,20 @@
 #     else 
 #         $READ_FILE_PREFIX*.bam
 # usage:
-#     source $MODULES_DIR/source/set_read_file_vars.sh
+#     source $MODULES_DIR/align/set_read_file_vars.sh
 
 # set the sequence read input files
+if [ "$READ_FILE_DIR" == "null" ]; then
+    export READ_FILE_DIR=${TASK_DIR}/ubam
+fi
 if [ "$READ_FILE_PREFIX" == "null" ]; then
     export READ_FILE_PREFIX=""
 fi
 
 # find all matching read files within READ_FILE_DIR (default TASK_DIR)
-export READ_FILES=`ls -1 $READ_FILE_PREFIX*.bam 2>/dev/null`
+export READ_FILES=`ls -1 $READ_FILE_DIR/$READ_FILE_PREFIX*.bam 2>/dev/null`
 if [ "$READ_FILES" = "" ]; then
-    echo "no valid input read files found in $PWD"
+    echo "no valid input read files found in $READ_FILE_DIR"
     echo "check your values for options --read-file-dir and --read-file-prefix"
     exit 1
 fi

@@ -5,7 +5,6 @@ use warnings;
 #   report some useful summary information to answer questions like:
 #       what is the rate of SV junction artifacts per base?
 # input:
-#   $SV_ALIGNMENTS_FILE
 #   $SV_FINAL_JUNCTIONS_FILE_1
 # output:
 #   various counts in a log report
@@ -26,25 +25,12 @@ map { require "$perlUtilDir/genome/$_.pl" } qw(chroms);
 resetCountFile();
 
 # environment variables
-fillEnvVar(\our $SV_ALIGNMENTS_FILE,        'SV_ALIGNMENTS_FILE');
 fillEnvVar(\our $SV_FINAL_JUNCTIONS_FILE_1, 'SV_FINAL_JUNCTIONS_FILE_1');
 fillEnvVar(\our $GENOME,                    'GENOME');
 fillEnvVar(\our $IS_COMPOSITE_GENOME,       'IS_COMPOSITE_GENOME');
 
 # constants
 use constant {
-    ALN_CHROM_INDEX1_1      => 0,
-    ALN_REF_POS1_5          => 1,
-    ALN_REF_POS1_2          => 2,
-    ALN_REF_POS1_3          => 3,
-    ALN_STRAND_INDEX1_0     => 4,
-    ALN_JXN_TYPE            => 5,
-    ALN_PATH_N              => 6,
-    ALN_N_JUNCTIONS         => 7,
-    ALN_ALN_N               => 8,
-    ALN_PATH_READ_HAS_SV    => 9,
-    ALN_N_OBSERVED          => 10,
-    #-------------
     OJXN_CHROM_INDEX1_1     => 0, # input columns
     OJXN_REF_POS1_1         => 1,
     OJXN_STRAND_INDEX0_1    => 2,
@@ -57,30 +43,38 @@ use constant {
     UJXN_JXN_BASES          => 9,
     UJXN_PATHS              => 10,
     UJXN_N_PATH_JUNCTIONS   => 11,
-    UJXN_READ_HAS_SV        => 12,
-    UJXN_JSRC_MAPQ          => 13, 
-    UJXN_JSRC_DE_TAG        => 14,
-    UJXN_JSRC_SITE_DIST     => 15,
-    UJXN_JSRC_QNAMES        => 16, 
-    UJXN_JSRC_SEQS          => 17,
-    UJXN_JSRC_QUALS         => 18,
-    UJXN_JSRC_CIGARS        => 19,
-    UJXN_JSRC_ORIENTATIONS  => 20,
-    UJXN_HAS_ALT_ALIGNMENT  => 21,
-    UJXN_SV_SIZE            => 22,
-    UJXN_IS_INTERGENOME     => 23,
-    UJXN_TARGET_1           => 24,
-    UJXN_TARGET_DIST_1      => 25,
-    UJXN_TARGET_2           => 26,
-    UJXN_TARGET_DIST_2      => 27,
-    UJXN_GENES_1            => 28,
-    UJXN_GENE_DIST_1        => 29,
-    UJXN_GENES_2            => 30,
-    UJXN_GENE_DIST_2        => 31,
-    UJXN_IS_EXCLUDED_1      => 32,
-    UJXN_IS_EXCLUDED_2      => 33,
-    UJXN_BKPT_COVERAGE_1    => 34,
-    UJXN_BKPT_COVERAGE_2    => 35,
+    UJXN_JSRC_MAPQ          => 12,
+    UJXN_JSRC_DE_TAG        => 13,
+    UJXN_JSRC_SITE_DIST     => 14,
+    UJXN_JSRC_ALN_FAILURE_FLAG => 15,
+    UJXN_JSRC_JXN_FAILURE_FLAG => 16,
+    UJXN_JSRC_QNAMES           => 17,
+    UJXN_JSRC_INSERT_SIZES     => 18,
+    UJXN_JSRC_IS_ALLOWED_SIZES => 19,
+    UJXN_JSRC_MIN_STEM_LENGTHS => 20,
+    UJXN_JSRC_PASSED_STEMS     => 21,
+    UJXN_JSRC_SEQS            => 22,
+    UJXN_JSRC_QUALS           => 23,
+    UJXN_JSRC_CIGARS          => 24,
+    UJXN_JSRC_ORIENTATIONS    => 25,
+    UJXN_IS_EXPECTED          => 26,
+    UJXN_HAS_ALT_ALIGNMENT    => 27,
+    UJXN_SV_SIZE              => 28,
+    UJXN_IS_INTERGENOME       => 29,
+    UJXN_TARGET_1             => 30,
+    UJXN_TARGET_DIST_1        => 31,
+    UJXN_TARGET_2             => 32,
+    UJXN_TARGET_DIST_2        => 33,
+    UJXN_GENES_1              => 34,
+    UJXN_GENE_DIST_1          => 35,
+    UJXN_GENES_2              => 36,
+    UJXN_GENE_DIST_2          => 37,
+    UJXN_IS_EXCLUDED_1        => 38,
+    UJXN_IS_EXCLUDED_2        => 39,
+    UJXN_BKPT_COVERAGE_1      => 40, # added by this script
+    UJXN_BKPT_COVERAGE_2      => 41,
+    CMP_N_SAMPLES             => 42, # initialized to null values by this script
+    CMP_SAMPLES               => 43,
     #-------------
     TYPE_PROPER         => 0, # junction/edge types
     TYPE_DELETION       => 1,
@@ -155,21 +149,33 @@ while (my $jxn = <$jxnH>){
         ) : FALSE_STR;
 
         # count breakpoints by junction type and validation status
-        my $jxnType       = $jxnTypeNames[$jxn[OJXN_JXN_TYPE]];
-        my $isLocalSv     = ($jxn[OJXN_JXN_TYPE] != TYPE_TRANSLOCATION and $jxn[UJXN_SV_SIZE] < 1e6) ? TRUE_STR : FALSE_STR;
-        my $isInterGenome = $jxn[UJXN_IS_INTERGENOME] ? TRUE_STR : FALSE_STR;
-        my $isValidated   = $jxn[UJXN_N_OBSERVED] == 1 ? FALSE_STR : TRUE_STR; # if not 1, then 3 or more per above
+        my $jxnType        = $jxnTypeNames[$jxn[OJXN_JXN_TYPE]];
+        my $isLocalSv      = ($jxn[OJXN_JXN_TYPE] != TYPE_TRANSLOCATION and $jxn[UJXN_SV_SIZE] < 1e6) ? TRUE_STR : FALSE_STR;
+        my $isInterGenome  = $jxn[UJXN_IS_INTERGENOME] ? TRUE_STR : FALSE_STR;
+        my $isValidated    = $jxn[UJXN_N_OBSERVED] == 1 ? FALSE_STR : TRUE_STR; # if not 1, then 3 or more per above
+        my $hasAllowedSize    = $jxn[UJXN_JSRC_IS_ALLOWED_SIZES] =~ m/1/ ? TRUE_STR : FALSE_STR;
+        my $hasDisallowedSize = $jxn[UJXN_JSRC_IS_ALLOWED_SIZES] =~ m/0/ ? TRUE_STR : FALSE_STR;
+        my $hasPassedStem     = $jxn[UJXN_JSRC_PASSED_STEMS] =~ m/1/ ? TRUE_STR : FALSE_STR;
+        my $hasUnpassedStem   = $jxn[UJXN_JSRC_PASSED_STEMS] =~ m/0/ ? TRUE_STR : FALSE_STR;
+        my $hasPassedAlns     = $jxn[UJXN_JSRC_ALN_FAILURE_FLAG] =~ m/0/ ? TRUE_STR : FALSE_STR;
+        my $hasUnpassedAlns   = $jxn[UJXN_JSRC_ALN_FAILURE_FLAG] =~ m/[1-9]/ ? TRUE_STR : FALSE_STR;
+        my $hasPassedJxn      = $jxn[UJXN_JSRC_JXN_FAILURE_FLAG] =~ m/0/ ? TRUE_STR : FALSE_STR;
+        my $hasUnpassedJxn    = $jxn[UJXN_JSRC_JXN_FAILURE_FLAG] =~ m/[1-9]/ ? TRUE_STR : FALSE_STR;
 
         # assemble breakpoint category keys and count
         my $key1 = join("\t", 
-            $genome1, $isGap1, $onTarget1, $inGene1, $inTargetGene1, 
+            $genome1, $isGap1, $onTarget1, $inGene1, $inTargetGene1,
             $jxn[UJXN_TARGET_1] eq NULL_STR ? NA_STR : $jxn[UJXN_TARGET_1],
-            $jxnType, $isLocalSv, $isInterGenome, $isValidated
+            $jxnType, $isLocalSv, $isInterGenome, $isValidated, 
+            $hasAllowedSize, $hasDisallowedSize, $hasPassedStem, $hasUnpassedStem,
+            $hasPassedAlns, $hasUnpassedAlns, $hasPassedJxn, $hasUnpassedJxn
         );
         my $key2 = join("\t", 
-            $genome2, $isGap2, $onTarget2, $inGene2, $inTargetGene2, 
+            $genome2, $isGap2, $onTarget2, $inGene2, $inTargetGene2,
             $jxn[UJXN_TARGET_2] eq NULL_STR ? NA_STR : $jxn[UJXN_TARGET_2],
-            $jxnType, $isLocalSv, $isInterGenome, $isValidated
+            $jxnType, $isLocalSv, $isInterGenome, $isValidated, 
+            $hasAllowedSize, $hasDisallowedSize, $hasPassedStem, $hasUnpassedStem,
+            $hasPassedAlns, $hasUnpassedAlns, $hasPassedJxn, $hasUnpassedJxn
         );
         $nBkpts{$key1}++;
         $nBkpts{$key2}++;
@@ -182,9 +188,11 @@ close $jxnH;
 
 # print tally to STDOUT
 print join("\t", qw(
-    genome isGap onTarget inGene inTargetGene 
+    genome isGap onTarget inGene inTargetGene
     targetGene 
-    jxnType isLocalSv isInterGenome isValidated
+    jxnType isLocalSv isInterGenome isValidated 
+    hasAllowedSize hasDisallowedSize hasPassedStem hasUnpassedStem
+    hasPassedAlns hasUnpassedAlns hasPassedJxn hasUnpassedJxn
     nBkpts fracBkpts_genome fracBkpts_all
 )), "\n";
 foreach my $key (sort { $b cmp $a } keys %nBkpts){

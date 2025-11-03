@@ -16,13 +16,13 @@ if [[ "$FORCE_BASECALLING" != "" && "$FORCE_BASECALLING" != "0" ]]; then FORCE_B
 
 # add modified base models
 if [[ "$MODIFIED_BASE_MODELS" != "" && "$MODIFIED_BASE_MODELS" != "NA" && "$MODIFIED_BASE_MODELS" != "null" ]]; then 
-    ONT_MODEL="${ONT_MODEL},${MODIFIED_BASE_MODELS}"
+    ONT_MODEL_COMPLEX="${ONT_MODEL_COMPLEX},${MODIFIED_BASE_MODELS}"
 fi
 
 # begin log report
 echo "calling bases"
 echo "  Dorado version:   "${DORADO_VERSION}
-echo "  model(s):         "${ONT_MODEL}
+echo "  model(s):         "${ONT_MODEL_COMPLEX}
 echo "  with options:     "${DORADO_OPTIONS}
 echo "  pod5 buffer:      "${POD5_BUFFER_DIR}
 echo "  buffer size:      "${POD5_BUFFER_SIZE}
@@ -69,7 +69,7 @@ do_batch_copy () {
         fi
     fi
 }
-RUN_DORADO="$DORADO_EXECUTABLE basecaller --no-trim $DORADO_OPTIONS $ONT_MODEL" # we will control trimming downstream
+RUN_DORADO="$DORADO_EXECUTABLE basecaller --no-trim $DORADO_OPTIONS --models-directory ${DORADO_MODELS_DIR} $ONT_MODEL_COMPLEX" # we will control trimming downstream
 run_batch_process () {
     PROCESS_DIR=$POD5_BUFFER_DIR/${BATCH_PREFIX}_$PROCESS_I
     BATCH_OUTPUT_FILE3=$UBAM_DIR/${BATCH_PREFIX}_$PROCESS_I.unaligned.bam

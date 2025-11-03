@@ -30,8 +30,8 @@ cat <(
 perl ${BED_UTIL_SPLIT} |
 sort -k1,1 -k2,2n -k3,3n --parallel=$N_CPU --buffer-size=4G |
 grep -v -P "\w+_\w+_\w+" | 
-perl ${ACTION_DIR}/tally/tally_genome.pl |
-tee ${GENOME_TALLY_FILE}
+perl ${ACTION_DIR}/tally/tally_genome.pl > ${GENOME_TALLY_FILE}
+# tee ${GENOME_TALLY_FILE}
 checkPipe
 
 echo "done"

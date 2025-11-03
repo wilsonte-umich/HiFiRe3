@@ -2,8 +2,8 @@
 options:
     min-rflp-evidence: 
         order: 1
-        short: F
+        short: L
         type: integer
         required: false
-        default: 4
+        default: 3
         description: "accept genome positions matching this many read ends as RFLP sites"

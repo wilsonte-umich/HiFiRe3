@@ -3,6 +3,7 @@ use warnings;
 
 # action:
 #   describe the SV paths of all reads
+#       for now, even those out of allowable size range
 #   use a streamlined, reduced-representation fragment index to count unique paths
 #   work is parallelized by chromosome for speed gains and sorting efficiency
 #   this script is applicable to all sequencing platforms
@@ -75,54 +76,76 @@ use warnings;
 our $script = "index_fragments";
 our $error  = "$script error";
 
-# working variables
-use vars qw(
-    %chromIndex @sites
-    $jxnSrcH $uniqJxnH $firstAlnH $distalAlnH $alnSizeH $readPathH
-    $chrom $chromIndex1 $paddedChromIndex1
-    @alns @index
-    $siteIndex1 $strandIndex0 $varKey
-);
-
 # load dependencies
 my $perlUtilDir = "$ENV{MODULES_DIR}/utilities/perl";
-map { require "$perlUtilDir/$_.pl" } qw(workflow);
+map { require "$perlUtilDir/$_.pl" } qw(workflow numeric);
+map { require "$perlUtilDir/genome/$_.pl" } qw(chroms targets);
+map { require "$perlUtilDir/sequence/$_.pl" } qw(general faidx);
+resetCountFile();
 
 # environment variables
-fillEnvVar(\our $MAX_JXN_BASES,           'MAX_JXN_BASES');
-fillEnvVar(\our $SAMPLE_PATHS_PREFIX_WRK, 'SAMPLE_PATHS_PREFIX_WRK');
-fillEnvVar(\my $SEQUENCING_PLATFORM,      'SEQUENCING_PLATFORM');
+# genome
+fillEnvVar(\my $GENOME_FASTA_SHM,        'GENOME_FASTA_SHM');
+# platform and library properties
+fillEnvVar(\my $SEQUENCING_PLATFORM,     'SEQUENCING_PLATFORM');
+# RE site matching
+fillEnvVar(\my $FILTERING_SITES_FILE,    'FILTERING_SITES_FILE');
+# tolerances and thresholds
+fillEnvVar(\my $MAX_JXN_BASES,           'MAX_JXN_BASES');
+# target regions
+fillEnvVar(\our $TARGETS_BED,            'TARGETS_BED');
+fillEnvVar(\our $REGION_PADDING,         'REGION_PADDING');
+# input files
+fillEnvVar(\my $SITE_SAM_PREFIX,         'SITE_SAM_PREFIX');
+# output files
+fillEnvVar(\my $SAMPLE_PATHS_PREFIX_WRK, 'SAMPLE_PATHS_PREFIX_WRK');
+fillEnvVar(\my $N_CPU,                   'N_CPU');
+
+# set derived variables
 my $isONT = ($SEQUENCING_PLATFORM eq "ONT");
+my $isTargeted = ($TARGETS_BED and $TARGETS_BED ne "null" and $TARGETS_BED ne "NA");
+our $TARGET_SCALAR = 10;
 
 # constants
 use constant {
     S_QNAME             => 0, # SITE_SAM fields
     S_FLAG              => 1,
     S_RNAME             => 2,
-    S_POS1              => 3, # 1-based
+    S_POS1              => 3,
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    CH_TAG              => 6,
-    TL_TAG              => 7,
-    DE_TAG              => 8,
-    HV_TAG              => 9,
-    N_REF_BASES         => 10,
-    N_READ_BASES        => 11,
-    BLOCK_N             => 12,
-    SITE_INDEX1_1       => 13,
-    SITE_POS1_1         => 14,
-    SITE_DIST_1         => 15,
-    SITE_INDEX1_2       => 16,
-    SITE_POS1_2         => 17,
-    SITE_DIST_2         => 18,
-    SEQ_SITE_INDEX1_2   => 19,
-    SEQ_SITE_POS1_2     => 20,
-    IS_END_TO_END       => 21,
-    READ_HAS_JXN        => 22,
-    TARGET_CLASS        => 23,
-    S_SEQ               => 24,
-    S_QUAL              => 25,
-    CS_TAG              => 26,
+    SITE_INDEX1_1       => 6,
+    SITE_POS1_1         => 7,
+    SITE_DIST_1         => 8,
+    SITE_INDEX1_2       => 9,
+    SITE_POS1_2         => 10,
+    SITE_DIST_2         => 11,
+    SEQ_SITE_INDEX1_2   => 12,
+    SEQ_SITE_POS1_2     => 13,
+    IS_END_TO_END       => 14,
+    CH_TAG              => 15,
+    TL_TAG              => 16,
+    INSERT_SIZE         => 17,
+    IS_ALLOWED_SIZE     => 18,
+    DE_TAG              => 19,
+    HV_TAG              => 20,
+    N_REF_BASES         => 21,
+    N_READ_BASES        => 22,
+    STEM5_LENGTH        => 23,
+    STEM3_LENGTH        => 24,
+    PASSED_STEM5        => 25,
+    PASSED_STEM3        => 26,
+    BLOCK_N             => 27,
+    ALN_FAILURE_FLAG    => 28,
+    JXN_FAILURE_FLAG    => 29,
+    TARGET_CLASS        => 30,
+    END5_ON_TARGET      => 31,
+    READ_HAS_JXN        => 32,
+    S_SEQ               => 33,
+    S_QUAL              => 34,
+    CS_TAG              => 35,
+    #-------------
+    SPLIT_TO_S_QUAL     => 36,
     #-------------
     _IS_PAIRED      => 1,  # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -156,7 +179,6 @@ use constant {
     PATH_DISTAL_NODES     => 1,
     PATH_JUNCTIONS        => 2,
     PATH_SITE3            => 3,
-    PATH_READ_HAS_SV      => 4,
     #-------------
     SITE3_CHROM_INDEX1  => 0,
     SITE3_SITE_INDEX1   => 1,
@@ -182,7 +204,158 @@ use constant {
     OJXN_ALN_OFFSET         => 7,
     OJXN_JXN_BASES          => 8,
     OJXN_ORIENTATION        => 9,
+    #-------------
+    ALN_TARGET_CLASS_BITS => 7, # bitmask to extract an alignment's own target class from TARGET_CLASS
+    # "--" => 0, # the possible values of one alignment's target class, requires three bits to store
+    # "TT" => 1,
+    # "TA" => 2,
+    # "T-" => 3,
+    # "AA" => 4,
+    # "A-" => 5
+    #-------------
+    NODE1 => 0,
+    NODE2 => 1,
+    #-------------
+    JXN_ALN_OFFSET   => 0,
+    JXN_JXN_BASES    => 1,
+    JXN_JXN_TYPE     => 2, # added after indexing
 };
+
+# working variables
+our (
+    $chrom, $chromIndex1, $paddedChromIndex1, @sites,
+    $prevRead, @alns, @index,
+    $siteIndex1, $strandIndex0, $varKey, $faH
+);
+
+# initialize the target regions, if any
+use vars qw($nRegions);
+loadTargetRegions();
+
+# initialize the genome
+print STDERR "collecting chrom index\n";
+use vars qw(%chromIndex);
+setCanonicalChroms();
+my @nuclearChroms = getNuclearChroms();
+# my %nuclearChroms = map { $_ => 1 } @nuclearChroms;
+our @targetChroms = $nRegions ? getTargetChroms() : @nuclearChroms;
+loadFaidx($GENOME_FASTA_SHM);
+
+# initialize the conversion from site indices to positions
+# once the index is used, it is more informative to track site reference coordinates
+print STDERR "loading site positions\n";
+open my $sitesH, "-|", "zcat $FILTERING_SITES_FILE" or die "could not open sites file: $FILTERING_SITES_FILE: $!\n";
+my $discardHeader = <$sitesH>;
+my ($siteIndex1_, $prevChrom) = (0);
+while (my $site = <$sitesH>){ # chrom   sitePos1   inSilico   nObserved
+    my ($chrom, $sitePos1) = split("\t", $site);
+    $prevChrom and $prevChrom ne $chrom and $siteIndex1_ = 0;
+    $siteIndex1_++;
+    $sites[$chromIndex{$chrom}][$siteIndex1_] = $sitePos1;
+    $prevChrom = $chrom;
+}
+close $sitesH;
+
+# parallelize by chromosome for speed
+# user responsible for setting N_CPU to prevent memory overruns
+print STDERR "indexing alignments by chromosome\n";
+$| = 1;
+launchChildThreads(\&processChroms);
+use vars qw(@readH @writeH);
+my $writeH = $writeH[1];
+# foreach my $chrom("chr21", "chr22"){
+# foreach my $chrom("chr1"){
+foreach my $chrom(@targetChroms){
+    my $chromIndex1 = $chromIndex{$chrom} or next;
+    $writeH = $writeH[$chromIndex1 % $N_CPU + 1];
+    print $writeH join("\t", $chrom, $chromIndex1), "\n";
+}
+finishChildThreads();
+
+# parse input SAM
+sub processChroms {
+    my ($childN) = @_;
+    my $readH = $readH[$childN];
+
+    # open this thread's handle to genome FASTA for pseudo reference contig assembly
+    open $faH, "<", $GENOME_FASTA_SHM or die "could not open $GENOME_FASTA_SHM: $!\n";
+
+    # process data by chrom
+    while(my $line = <$readH>){
+        chomp $line;
+
+        # open the chromosome-specific site_sam file created by `analyze fragments`
+        ($chrom, $chromIndex1) = split("\t", $line);
+        my $chromFile = "$SITE_SAM_PREFIX.$chrom.site_sam.gz";
+
+        #############################
+        # open my $chromH, "-|", "zcat $chromFile | head -n 1000000" or die "$error: could not open: $chromFile: $!\n";
+        open my $chromH, "-|", "zcat $chromFile" or die "$error: could not open: $chromFile: $!\n";
+
+        # open caller-specific, chromosome-level output file handles
+        # do now in case caller wants to print during indexing
+        # use zero-padded chrom indices to allow simple lexical sort of file names
+        $paddedChromIndex1 = sprintf("%02d", $chromIndex1);
+        openFileHandles();
+        
+        # index reads one at a time, counting unique encountered variant patterns per RE fragment
+        # indexing action is defined by the calling script
+        print STDERR "  $chrom\tassembling index\n";
+        ($prevRead, @alns, @index) = ();
+        while(my $aln = <$chromH>){
+            chomp $aln;
+            my @aln = split("\t", $aln, SPLIT_TO_S_QUAL);
+            if($prevRead and $prevRead ne $aln[S_QNAME]){
+                my $key = indexRead();
+                $key and $index[ abs($alns[0][SITE_INDEX1_1]) ][ ($alns[0][S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND ]{ $key }++;
+                @alns = (); # don't reset @index of course
+            }
+            push @alns, \@aln;
+            $prevRead = $aln[S_QNAME];
+        }
+        if(@alns){ # catch for siteless chromosomes
+            my $key = indexRead();
+            $key and $index[ abs($alns[0][SITE_INDEX1_1]) ][ ($alns[0][S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND ]{ $key }++;
+        }
+        close $chromH;
+
+        # unpack unique encountered variants
+        # print to output formats as performed by the calling script
+        print STDERR "  $chrom\tsorting and printing\n";
+        my $i = 1;
+        foreach $siteIndex1(1..$#index){
+            $index[$siteIndex1] or next;
+            foreach $strandIndex0(BOTTOM_STRAND, TOP_STRAND){
+                my $vars = $index[$siteIndex1][$strandIndex0] or next;
+                foreach $varKey(sort { $$vars{$b} <=> $$vars{$a} } keys %$vars){ # most frequent variant pattern sorts first
+                    printIndexedVariant($i, $$vars{$varKey});
+                    $i++;
+                }
+            }
+        }
+        closeFileHandles();
+    }
+    close $faH;
+}
+
+# open/close the required chromosome-level output files
+our ($jxnSrcH, $uniqJxnH, $firstAlnH, $distalAlnH, $alnSizeH, $readPathH);
+sub openFileHandles {
+    open $jxnSrcH,    "|-", "gzip -c > $SAMPLE_PATHS_PREFIX_WRK.junction_sources.$paddedChromIndex1.txt.gz"  or die "could not open jxnSrcH: $!\n";
+    open $uniqJxnH,   "|-", "gzip -c > $SAMPLE_PATHS_PREFIX_WRK.unique_junctions.$paddedChromIndex1.txt.gz"  or die "could not open uniqJxnH: $!\n";
+    open $firstAlnH,  "|-", "gzip -c > $SAMPLE_PATHS_PREFIX_WRK.first_alignments.$paddedChromIndex1.txt.gz"  or die "could not open firstAlnH: $!\n";
+    open $distalAlnH, "|-", "gzip -c > $SAMPLE_PATHS_PREFIX_WRK.distal_alignments.$paddedChromIndex1.txt.gz" or die "could not open distalAlnH: $!\n";
+    open $alnSizeH,   "|-", "gzip -c > $SAMPLE_PATHS_PREFIX_WRK.alignment_sizes.$paddedChromIndex1.txt.gz"   or die "could not open alnSizeH: $!\n";
+    open $readPathH,  "|-", "gzip -c > $SAMPLE_PATHS_PREFIX_WRK.read_paths.$paddedChromIndex1.txt.gz"        or die "could not open readPathH: $!\n";
+}
+sub closeFileHandles {
+    close $jxnSrcH;
+    close $uniqJxnH;
+    close $firstAlnH;
+    close $distalAlnH;
+    close $alnSizeH;
+    close $readPathH;
+}
 
 # create a hash key for a read and count it in the index
 sub indexRead {
@@ -206,6 +379,7 @@ sub indexRead {
     foreach my $alnI0(0..$#alns){
         print $alnSizeH join("\t", 
             $outerEndpoints, # chromIndex1_1,chromIndex1_2 OR chromIndex1_1,siteIndex1_1,chromIndex1_2,siteIndex1_2,channel
+            # $end5OnTarget, # all indexed reads are now on-target for targeted libraries
             $isReordered ? ($#alns - $alnI0) : $alnI0, # (reordered) alnI0
             $alns[$alnI0][N_REF_BASES], 
             $alns[$alnI0][N_READ_BASES]
@@ -247,12 +421,19 @@ sub indexRead {
                 # these values are the same for all read alignments (even those not flanking the junction)
                 $alns[0][S_QNAME],
                 $alns[0][CH_TAG],
+                $alns[0][INSERT_SIZE],
+                $alns[0][IS_ALLOWED_SIZE],
                 $outerEndpoints, # ordered outer endpoints for duplicate purging
+                # $end5OnTarget, # all indexed reads are now on-target for targeted libraries
 
                 # these values aggregate the two flanking alignments to a single statistic
+                min(    $alns[$aln1I][STEM5_LENGTH],     $alns[$aln1I + 1][IS_END_TO_END] ? $alns[$aln1I + 1][STEM3_LENGTH] : 1e9),
+                max(    $alns[$aln1I][PASSED_STEM5],     $alns[$aln1I + 1][IS_END_TO_END] ? $alns[$aln1I + 1][PASSED_STEM3] : 0),
                 min(    $alns[$aln1I][S_MAPQ],           $alns[$aln1I + 1][S_MAPQ]),
                 max(    $alns[$aln1I][DE_TAG],           $alns[$aln1I + 1][DE_TAG]),
                 min(abs($alns[$aln1I][SITE_DIST_2]), abs($alns[$aln1I + 1][SITE_DIST_1])), # unsigned shortest distance to a site
+                max(    $alns[$aln1I][ALN_FAILURE_FLAG], $alns[$aln1I + 1][ALN_FAILURE_FLAG]),
+                $alns[$aln1I][JXN_FAILURE_FLAG], # read might have one failed and one passed junction
 
                 # these values are shared by the flanking alignments
                 # we do not duplicate SEQ and QUAL as it is the same for the alignments
@@ -272,7 +453,7 @@ sub indexRead {
 
         # print the path of each read as a concatenated reference sequence across all read junctions
         # used for read-level visualization
-        my $qLen = length($alns[0][S_SEQ]);
+        my $qLen = $alns[0][INSERT_SIZE];
         my $readSeq  = ($alns[0][S_FLAG] & _REVERSE) ?   getRc($alns[0][S_SEQ])  : $alns[0][S_SEQ];
         my $readQual = ($alns[0][S_FLAG] & _REVERSE) ? reverse($alns[0][S_QUAL]) : $alns[0][S_QUAL];
         my $pseudoRefSeq = getPseudoRefSeq(\@alns);
@@ -292,7 +473,7 @@ sub indexRead {
                     $j == S_FLAG and $x = ($x & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
                     $x
                 } 0..$#alns);
-            } (S_RNAME, S_POS1, S_FLAG, S_MAPQ, DE_TAG, BLOCK_N, N_REF_BASES) ),
+            } (S_RNAME, S_POS1, S_FLAG, S_MAPQ, DE_TAG, BLOCK_N, N_REF_BASES, ALN_FAILURE_FLAG, JXN_FAILURE_FLAG) ),
 
             # queryStart0_aln and queryEnd1_aln for each alignment in the path
             # establishes (potential) junction breakpoint in read coordinates
@@ -323,8 +504,7 @@ sub indexRead {
             $chromIndex{$alns[$#alns][S_RNAME]},
             $alns[$#alns][SEQ_SITE_INDEX1_2],
             ($alns[$#alns][S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND 
-        ),
-        ($alns[0][HV_TAG] & READ_HAS_SV) ? TRUE : FALSE
+        )
     );
 }
 
@@ -351,8 +531,7 @@ sub printIndexedVariant {
                 $count,
                 @jxn[OJXN_ALN_OFFSET..OJXN_JXN_BASES],
                 $pathN, 
-                scalar(@junctions),     # the number of junctions in the path that carried this junction
-                $path[PATH_READ_HAS_SV] # TRUE if _any_ junction in this path was unknown to reference
+                scalar(@junctions)     # the number of junctions in the path that carried this junction
             ), "\n";
         }
 
@@ -370,7 +549,6 @@ sub printIndexedVariant {
                     $pathN, 
                     scalar(@junctions),
                     (($i + 1) / 2) + 1,
-                    $path[PATH_READ_HAS_SV],
                     $count
                 ), "\n";
             }
@@ -389,7 +567,6 @@ sub printIndexedVariant {
             $pathN, 
             scalar(@junctions),
             ($#distalNodes / 2) + 1,
-            $path[PATH_READ_HAS_SV],
             $count
         ), "\n";
     }
@@ -407,15 +584,205 @@ sub printIndexedVariant {
         $pathN, 
         scalar(@junctionTypes),
         1,
-        $path[PATH_READ_HAS_SV],
         $count
     ), "\n";
 }
 
-# report quality metrics
-sub reportFinalMetadata_all_thread_chroms {
-    # do nothing yet
+# functions to describe paths
+sub getJunction {
+    my ($aln1, $aln2) = @_; # alignments to read 5' and 3' of a junction, respectively
+
+    # cannot describe junction when SEQ was dropped upstream
+    $$aln1[S_SEQ] eq NULL_ENTRY and return NULL_JUNCTION;
+
+    # otherwise, determine the offset/overlap between the two alignments
+    # alignmentOffset is positive for insertions, negative for microhomologies, 0 for blunt
+    my $clip1 = 
+        ($$aln1[S_FLAG] & _REVERSE) ? 
+            getLeftClip( $$aln1[S_CIGAR]) :
+            getRightClip($$aln1[S_CIGAR]);
+    my $clip2 = 
+        ($$aln2[S_FLAG] & _REVERSE) ? 
+            getRightClip($$aln2[S_CIGAR]) :
+            getLeftClip( $$aln2[S_CIGAR]);
+    my $alignmentOffset = ($clip1 + $clip2) - $$aln1[INSERT_SIZE]; 
+
+    # then determine the read bases corresponding to the insertion or microhomology
+    # note that inserted bases must be provided by the read, not reference alignments
+    # JXN_BASES leave in the orientation of the original read, thus,
+    # will have two distinct rc'ed values when then same junction was sequenced in opposite orientations
+    my $jxnBases = NULL_ENTRY; # *, a blunt joint
+    # if(abs($alignmentOffset) > $MAX_JXN_BASES){
+    #     $jxnBases = NULL_JXN_BASES; # large number of bases from platforms with low base accuracy are rarely useful and ~always have errors
+    # } els
+    if($alignmentOffset > 0){
+        $jxnBases = ($$aln1[S_FLAG] & _REVERSE) ? 
+            getRc( substr(substr($$aln1[S_SEQ], 0, $clip1), -$alignmentOffset) ) :
+                   substr(substr($$aln1[S_SEQ], -$clip1), 0, $alignmentOffset);
+    } elsif($alignmentOffset < 0) {
+        $jxnBases = ($$aln1[S_FLAG] & _REVERSE) ? 
+            getRc( substr(substr($$aln1[S_SEQ], 0, ($clip1 - $alignmentOffset)),   $alignmentOffset) ):
+                   substr(substr($$aln1[S_SEQ], -($clip1 - $alignmentOffset)), 0, -$alignmentOffset);
+    }
+    join(",", $alignmentOffset, $jxnBases);
 }
 
-# do the work
-require "$ENV{PIPELINE_SHARED_DIR}/index_fragments.pl";
+# enforce strict ordering of junction nodes for downstream junction aggregation
+sub orientJunction {
+    my ($node1, $node2, $junction, $junctionTypes, $isSplit) = @_;
+    my @nodes = 
+        $isSplit ? 
+        (
+            $node1,
+            $node2
+        ) : 
+        (
+            [ split(",", $node1) ],
+            [ split(",", $node2) ]
+        );
+    my @junction = split(",", $junction);
+    my $junctionType = getJunctionType(@nodes); # nodes before re-ordering
+    $junctionTypes and push @$junctionTypes, $junctionType;
+
+    # enforce strict ordering of junction pairs
+    # translocations always sort low chromI to high chromI, i.e., by refPos1 along the composite genome
+    # nearly all same-chrom junctions sort low refPos1 to high refPos1
+    # only very rare inversions with identical refPos1 sort by strand, largely negligible
+    # as a consequence, the canonical ordering of junctions is:
+    #   deletions     sort to +/+, i.e., 1--->~~~2---> as canonical, <---2~~~<---1 gets flipped to it
+    #                                        *   *                       *   *
+    #   duplications  sort to -/-, i.e., <---1~~~<---2 as canonical, 2--->~~~1---> gets flipped to it
+    #                                    *           *               *           *
+    #   FF inversions sort to +/-, i.e., 1--->~~~<---2 as canonical, <---2~~~1---> gets flipped to it
+    #                                        *       *                   *       *
+    #   RR inversions sort to -/+, i.e., <---1~~~2---> as canonical, 2--->~~~<---1 gets flipped to it
+    #                                    *       *                   *       *
+    # the above patterns apply the same to translocations, where ~~|~~ simply crosses (a) chromosome boundary(ies)
+    #     i.e., translocations follow either a del, dup, inv-FF or inv-RR pattern recognizable by oriented strand0 values
+    # FF inversions can be viewed as "left anchored",  where read1 matches the reference genome orientation on the left side
+    # RR inversions can be viewed as "right anchored", where read2 matches the reference genome orientation on the right side
+    my @nodeI = sort { 
+        $nodes[$a][NODE_CHROM_INDEX1]  <=> $nodes[$b][NODE_CHROM_INDEX1] or 
+        $nodes[$a][NODE_REF_POS1]      <=> $nodes[$b][NODE_REF_POS1] or
+        $nodes[$a][NODE_STRAND_INDEX0] <=> $nodes[$b][NODE_STRAND_INDEX0]
+    } NODE1, NODE2;
+
+    # when junction is re-oriented relative to source read ...
+    if($nodeI[NODE1] == NODE2){ 
+        # ... flip node strands
+        $nodes[NODE1][NODE_STRAND_INDEX0] = (1 - $nodes[NODE1][NODE_STRAND_INDEX0]);
+        $nodes[NODE2][NODE_STRAND_INDEX0] = (1 - $nodes[NODE2][NODE_STRAND_INDEX0]);
+        # ... reverse complement junction bases
+        # continuing above, now expect junctions sequenced in different orientations to have the same JXN_BASES in canonical read orientation
+        rc(\$junction[JXN_JXN_BASES]);
+        # note that S_SEQ/JXN_SEQ, i.e., the sequences of different reads matching the junction, are not rc'ed here
+        # thus reads of multiply sequenced junctions may be in two different orientations as revealed by wasInverted
+    }
+
+    # return the ordered junction
+    (
+        @{$nodes[$nodeI[NODE1]]}, # ordered node1 = chrom pos strand
+        @{$nodes[$nodeI[NODE2]]}, # ordered node2 = chrom pos strand
+        $junctionType, 
+        @junction,    # alnOffset jxnBases
+        $nodeI[NODE1] # strandIndex0, i.e., wasInverted
+    )
+}
+sub getJunctionType {
+    my ($node1, $node2) = @_; # nodes before re-ordering
+    $$node1[NODE_CHROM_INDEX1]  != $$node2[NODE_CHROM_INDEX1]  and return TYPE_TRANSLOCATION;
+    $$node1[NODE_STRAND_INDEX0] != $$node2[NODE_STRAND_INDEX0] and return TYPE_INVERSION;
+    if($$node1[NODE_STRAND_INDEX0] == TOP_STRAND){
+        $$node1[NODE_REF_POS1]  <  $$node2[NODE_REF_POS1]      and return TYPE_DELETION;
+    } else {
+        $$node2[NODE_REF_POS1]  <  $$node1[NODE_REF_POS1]      and return TYPE_DELETION;
+    }
+    return TYPE_DUPLICATION;
+}
+
+# functions to describe paths
+sub getRefPos1_5 {
+    my ($aln) = @_;
+    ($$aln[S_FLAG] & _REVERSE) ? 
+        getEnd(@$aln[S_POS1, S_CIGAR]) :
+        $$aln[S_POS1];
+}
+sub getNode1 {
+    my ($aln) = @_;
+    my $strandIndex0 = ($$aln[S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
+    join(",", 
+        $chromIndex{$$aln[S_RNAME]},
+        $strandIndex0 == TOP_STRAND ? 
+            $$aln[S_POS1] :
+            getEnd(@$aln[S_POS1, S_CIGAR]),
+        $strandIndex0
+    )
+}
+sub getNode2 {
+    my ($aln) = @_;
+    my $strandIndex0 = ($$aln[S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
+    join(",", 
+        $chromIndex{$$aln[S_RNAME]},
+        $strandIndex0 == TOP_STRAND ? 
+            getEnd(@$aln[S_POS1, S_CIGAR]):
+            $$aln[S_POS1],
+        $strandIndex0
+    )
+}
+
+# parse pseudo-reference sequence contig for one SV read across all alignments
+sub getPseudoRefSeq {
+    my ($alns) = @_;
+    my $maxAlnsI = $#{$alns};
+    join("", map { 
+        my $i = $_;
+        my $seq = getRefSeq2(
+            $$alns[$i][S_RNAME], 
+            $$alns[$i][S_POS1], 
+            getEnd($$alns[$i][S_POS1], $$alns[$i][S_CIGAR]), 
+            $$alns[$i][S_FLAG] & _REVERSE
+        );
+        if($i < $maxAlnsI){
+            # must get junction anew, since we require analysis of even junctions filtered by BLOCK_N above
+            my ($alignmentOffset, $jxnBases) = split(",", getJunction($$alns[$i], $$alns[$i + 1]));
+            if($alignmentOffset < 0){ # microhomology bases contributed by aln2 for each junction, trimmed from aln1
+                $seq = substr($seq, 0, length($seq) + $alignmentOffset);
+            } elsif($alignmentOffset > 0) {
+                $seq .= $jxnBases; # these and only these junction insertion bases in pseudo reference contig come from the read itself
+            }
+        }
+        $seq
+    } 0..$maxAlnsI);
+}
+
+# outer endpoint positions and ONT channels for duplicate purging
+sub getOuterPos5 {
+    my ($aln) = @_;
+    my $strandIndex0 = ($$aln[S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
+    $strandIndex0 == TOP_STRAND ? 
+        $$aln[S_POS1] :
+        getEnd(@$aln[S_POS1, S_CIGAR])
+}
+sub getOuterPos3 {
+    my ($aln) = @_;
+    my $strandIndex0 = ($$aln[S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
+    $strandIndex0 == TOP_STRAND ? 
+        getEnd(@$aln[S_POS1, S_CIGAR]) :
+        $$aln[S_POS1]
+}
+sub getOuterEndpoints_ONT {
+    my ($chromIndex1_5, $outerPos1_5, $chromIndex1_3, $outerPos1_3, $channel) = @_;
+    my $oe1 = join("\t", $chromIndex1_5, $outerPos1_5);
+    my $oe2 = join("\t", $chromIndex1_3, $outerPos1_3);
+    ($oe1 cmp $oe2) <= 0 ? # yields the same key ordering for both strands
+        (join("\t", $oe1, $oe2, $channel), 0) : # report whether we reordered endpoints
+        (join("\t", $oe2, $oe1, $channel), 1);
+}
+sub getOuterEndpoints {
+    my ($chromIndex1_5, $chromIndex1_3) = @_;
+    $chromIndex1_5 <= $chromIndex1_3 ? # yields the same key ordering for both strands
+        (join("\t", $chromIndex1_5, $chromIndex1_3), 0) : # report whether we reordered endpoints
+        (join("\t", $chromIndex1_3, $chromIndex1_5), 1);
+}
+
+1;

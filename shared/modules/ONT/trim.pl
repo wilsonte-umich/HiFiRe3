@@ -25,7 +25,7 @@ map { require "$perlUtilDir/$_.pl" } qw(workflow numeric);
 map { require "$perlUtilDir/sequence/$_.pl" } qw(general smith_waterman);
 
 # environment variables
-fillEnvVar(\our $BLUNT_RE_TABLE,   'BLUNT_RE_TABLE'); # ligFree only supports blunt REs; 5' REs in tagFree aren't used for endpoint trimming
+fillEnvVar(\our $BLUNT_RE_TABLE,   'BLUNT_RE_TABLE'); # HiFiRe3 only supports blunt REs
 fillEnvVar(\our $ENZYME_NAME,      'ENZYME_NAME');
 fillEnvVar(\our $ADAPTER_SEQUENCE, 'ADAPTER_SEQUENCE');
 

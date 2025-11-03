@@ -1,27 +1,27 @@
 ---
-# versions current as of August 2024
+# versions current as of August 2025
 options:
     dorado-version: 
         order: 1
         short: A
         type: string
         required: false
-        default: 0.7.3-linux-x64
-        description: "Dorado version to be downloaded and used, e.g., 0.7.3-linux-x64"
-    ont-model: 
+        default: 1.1.1-linux-x64
+        description: "Dorado version to be downloaded and used, e.g., 1.1.1-linux-x64"
+    ont-model-complex: 
         order: 2
         short: M
         type: string
         required: false
-        default: dna_r10.4.1_e8.2_400bps_sup@v5.0.0
-        description: "ONT basecalling model, based on flow cell, base rate, accuracy, and version"
+        default: sup
+        description: "ONT main basecalling model complex = (fast|hac|sup)[@(version|latest)]"
     modified-base-models:
         order: 3
         short: b
         type: string
         required: false
-        default: null
-        description: "optional comma-separated list of modified base models to add, similar to --ont-model"
+        default: null # e.g., 5mCG_5hmCG
+        description: "optional comma-separated list of modified base models = modification[@(version|latest)]]"
     pod5-buffer: 
         order: 4
         short: 5

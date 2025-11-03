@@ -12,35 +12,44 @@ use constant {
     S_QNAME             => 0, # SITE_SAM fields
     S_FLAG              => 1,
     S_RNAME             => 2,
-    S_POS1              => 3, # 1-based
+    S_POS1              => 3,
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    CH_TAG              => 6,
-    TL_TAG              => 7,
-    DE_TAG              => 8,
-    HV_TAG              => 9,
-    N_REF_BASES         => 10,
-    N_READ_BASES        => 11,
-    BLOCK_N             => 12,
-    SITE_INDEX1_1       => 13,
-    SITE_POS1_1         => 14,
-    SITE_DIST_1         => 15,
-    SITE_INDEX1_2       => 16,
-    SITE_POS1_2         => 17,
-    SITE_DIST_2         => 18,
-    SEQ_SITE_INDEX1_2   => 19,
-    SEQ_SITE_POS1_2     => 20,
-    IS_END_TO_END       => 21,
-    READ_HAS_JXN        => 22,
-    TARGET_CLASS        => 23,
-    S_SEQ               => 24,
-    S_QUAL              => 25,
-    CS_TAG              => 26,
+    SITE_INDEX1_1       => 6,
+    SITE_POS1_1         => 7,
+    SITE_DIST_1         => 8,
+    SITE_INDEX1_2       => 9,
+    SITE_POS1_2         => 10,
+    SITE_DIST_2         => 11,
+    SEQ_SITE_INDEX1_2   => 12,
+    SEQ_SITE_POS1_2     => 13,
+    IS_END_TO_END       => 14,
+    CH_TAG              => 15,
+    TL_TAG              => 16,
+    INSERT_SIZE         => 17,
+    IS_ALLOWED_SIZE     => 18,
+    DE_TAG              => 19,
+    HV_TAG              => 20,
+    N_REF_BASES         => 21,
+    N_READ_BASES        => 22,
+    STEM5_LENGTH        => 23,
+    STEM3_LENGTH        => 24,
+    PASSED_STEM5        => 25,
+    PASSED_STEM3        => 26,
+    BLOCK_N             => 27,
+    ALN_FAILURE_FLAG    => 28,
+    JXN_FAILURE_FLAG    => 29,
+    TARGET_CLASS        => 30,
+    END5_ON_TARGET      => 31,
+    READ_HAS_JXN        => 32,
+    S_SEQ               => 33,
+    S_QUAL              => 34,
+    CS_TAG              => 35,
     #-------------
-    S_VA_TAG            => 27,
-    S_LEFT_CLIP         => 28,
-    S_RIGHT_CLIP        => 29,
-    S_END_POS1          => 30,
+    S_VA_TAG            => 33,
+    S_LEFT_CLIP         => 34,
+    S_RIGHT_CLIP        => 35,
+    S_END_POS1          => 36,
     #-------------
     FALSE  => 0,
     TRUE   => 1,
@@ -54,14 +63,12 @@ use constant {
 };
 
 # open/close the required chromosome-level output files
-our ($snvAlnsH0, $snvAlnsH1);
+our ($snvAlnsH);
 sub openFileHandles {
-    open $snvAlnsH0, "|-", "gzip -c > $SNV_ALNS_PREFIX.$paddedChromIndex1.0.txt.gz" or die "could not open snvAlnsH0: $!\n";
-    open $snvAlnsH1, "|-", "gzip -c > $SNV_ALNS_PREFIX.$paddedChromIndex1.1.txt.gz" or die "could not open snvAlnsH1: $!\n";
+    open $snvAlnsH, "|-", "gzip -c > $SNV_ALNS_PREFIX.$paddedChromIndex1.txt.gz" or die "could not open snvAlnsH: $!\n";
 }
 sub closeFileHandles {
-    close $snvAlnsH0;
-    close $snvAlnsH1;
+    close $snvAlnsH;
 }
 
 # reverse various values for alignments matching the bottom reference strand

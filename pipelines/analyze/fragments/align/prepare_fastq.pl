@@ -3,7 +3,7 @@ use warnings;
 
 # action:
 #     prepare FASTQ for alignment from unaligned BAM files
-#     propagate all tags through unaligned bam through FASTQ to aligned BAM
+#     propagate required tags through unaligned bam through FASTQ to aligned BAM
 #     enforce minimum read length of 250bp
 #     tabulate observed insert size distributions, i.e., read lengths, before any downstream filtering or projection
 # expects:
@@ -23,7 +23,7 @@ map { require "$perlUtilDir/sequence/$_.pl" } qw(general);
 resetCountFile();
 
 # environment variables
-fillEnvVar(\my $READ_FILES,        'READ_FILES');
+fillEnvVar(\my $READ_FILES,'READ_FILES');
 fillEnvVar(\my $UNFILTERED_INSERT_SIZES_FILE, 'UNFILTERED_INSERT_SIZES_FILE');
 $READ_FILES =~ s/[\n|\r]/ /g;
 
@@ -41,7 +41,8 @@ use constant {
 
 # open and pass the file input handles
 foreach my $ubamFile(split(" ", $READ_FILES)){
-    open my $inH, "-|", "samtools view $ubamFile | samtools fastq -T -" #  ch,MM,ML
+    # TODO: include more tags?  MM, ML etc.
+    open my $inH, "-|", "samtools view $ubamFile | samtools fastq -T ch,tl -  2>/dev/null" 
         or throwError("could not open $ubamFile: $!");
     runSingleReads($inH);
     close $inH;
@@ -54,7 +55,7 @@ sub runSingleReads {
     while (my $read = getRead($inH)){
         $nInputEvents++; 
         my $len = length($$read[_SEQ]);
-        $insertSizeCounts{int($len / SIZE_PLOT_BIN_SIZE + 0.5) * SIZE_PLOT_BIN_SIZE}++;
+        $insertSizeCounts{int($len / SIZE_PLOT_BIN_SIZE) * SIZE_PLOT_BIN_SIZE}++;
         if($$read[_PASSED_SIZE_FILTER]){
             $nOutputEvents++;
             my $nameLine = $$read[_TAGS] ? "$$read[_QNAME] $$read[_TAGS]" : $$read[_QNAME];
@@ -87,12 +88,12 @@ sub getRead {
 
 # print summary information
 printCount(commify($nInputEvents),  'nInputEvents',  'input events, i.e., reads');
-printCount(commify($nOutputEvents), 'nOutputEvents', "output events after size filtering >= " . MIN_INSERT_SIZE);
+printCount(commify($nOutputEvents), 'nOutputEvents', "output events after size filtering >= " . MIN_INSERT_SIZE . "bp");
 printCount(commify($baseCounts),    'baseCounts',    'read bases in output events');
 
 # print insert size counts
 open my $outH, '>', "$UNFILTERED_INSERT_SIZES_FILE" or throwError("could not open insert sizes file: $!");
-my @insertSizes = sort {$a <=> $b} keys %insertSizeCounts;
+my @insertSizes = sort { $a <=> $b } keys %insertSizeCounts;
 print $outH join("\n", map { 
     join("\t", 
         "unfiltered",

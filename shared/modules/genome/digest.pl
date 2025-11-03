@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 # action:
-#   collect all haploid reference genome RE sites for selected blunt restriction enzymes
+#   collect all reference genome RE sites for selected blunt restriction enzymes
 #   handle degenerate sites using regular expressions in the RE sites table
 #   handle non-palindromic sites by paired site entries in the RE sites table
 # input: 

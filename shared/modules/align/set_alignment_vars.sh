@@ -16,4 +16,6 @@ export MINIMAP_LOG_FILE=$LOG_FILE_PREFIX.minimap.log
 export NAME_BAM_FILE=$DATA_GENOME_PREFIX.name.bam
 export COORDINATE_BAM_FILE=$DATA_GENOME_PREFIX.coordinate.bam
 export COORDINATE_BAM_INDEX=$COORDINATE_BAM_FILE.bai
-export UNFILTERED_INSERT_SIZES_FILE=${DATA_PREFIX}.insert_sizes.unfiltered.txt
+
+# pre-filtering insert sizes file, i.e., as determined prior to alignment
+export UNFILTERED_INSERT_SIZES_FILE=${DATA_FILE_PREFIX}.insert_sizes.unfiltered.txt

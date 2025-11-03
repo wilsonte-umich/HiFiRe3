@@ -1,5 +1,6 @@
 # actions:
-#   describe the SNV/indel combinations of single-alignment end-to-end RE fragments
+#   describe the SNV/indel combinations of single-alignment, i.e., non-SV, end-to-end RE fragments
+#       in HiFiRe3, these are always PacBio HiFi reads, which are implicitly duplex and thus not stranded
 #   use a streamlined, reduced-representation fragment index to count unique combinations
 #   see index_fragments.pl for details
 # input:

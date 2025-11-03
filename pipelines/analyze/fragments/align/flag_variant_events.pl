@@ -81,8 +81,8 @@ while(my $aln = <STDIN>){
        $aln[TAGS] and $aln[TAGS] =~ m/cs:Z:(\S+)/ and  # i.e., read is mapped
        $1 !~ m/^:\d+$/                                 # alignment is not perfect (ignoring terminal clips)
     ){
-        $aln[HAS_SNV]  = ALN_HAS_SNV;
-        $readHasSNV   |= READ_HAS_SNV;
+        $aln[HAS_SNV] = ALN_HAS_SNV;
+        $readHasSNV   = READ_HAS_SNV;
     } else {
         $aln[HAS_SNV]  = 0;
     }

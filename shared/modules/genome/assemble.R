@@ -57,7 +57,7 @@ frags <- sapply(res$reKey, function(reKey_){
     ][,      
         if(.N > 1) .(  
             start0 = pos1[1:(.N - 1)] - 1L, # known limitation, does not score fragments from cut site to chromosome ends 
-            end1   = pos1[2:.N]               # only significant for small genomes with rare cut sites
+            end1   = pos1[2:.N]             # only significant for small genomes with rare cut sites
         ) else .(
             start0 = integer(), 
             end1   = integer()
@@ -112,7 +112,7 @@ for(percent in c(1,2.5,5,10,50,90,95,97.5,99)){
         N50(lengths_[[reKey_]], fraction)
     })
 }
-for(minFragSize_kb in 1:10){
+for(minFragSize_kb in c(0.145, 1:15)){
     minFragSize <- minFragSize_kb * 1000
     maxFragSize <- minFragSize * 2
     siteSummary[[paste("molarFrac", minFragSize, maxFragSize, sep = "_")]] <- sapply(res$reKey, function(reKey_){

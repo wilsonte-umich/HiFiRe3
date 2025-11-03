@@ -1,12 +1,12 @@
 # action:
 #     set environment variables for performing variant analysis
 # requires:
-#     source $MODULES_DIR/agFree/set_agFree_vars.sh
+#     source $MODULES_DIR/library/set_library_vars.sh
 # usage:
 #     source $MODULES_DIR/analyze/set_analysis_vars.sh
 
 # analysis identifiers
-export ANALYSIS_IDENTIFIER=${DATA_NAME}.${SITE_COLLECTION_NAME}
+export ANALYSIS_IDENTIFIER=${DATA_NAME}.analysis
 export ANALYSIS_PREFIX=${TASK_DIR}/${ANALYSIS_IDENTIFIER}
 
 # fragment analysis output
@@ -14,7 +14,10 @@ export SITE_SAM_DIR=${TASK_DIR}/site_sam
 mkdir -p ${SITE_SAM_DIR}
 export SITE_SAM_PREFIX=${SITE_SAM_DIR}/${ANALYSIS_IDENTIFIER}
 export ANALYSIS_CHROMS_FILE=${ANALYSIS_PREFIX}.chroms.txt
-export FILTERED_INSERT_SIZES_FILE=${DATA_PREFIX}.insert_sizes.filtered_and_projected.txt
+
+# post-filtering insert sizes file, as created by analyze/fragments, with filterd and projected sizes
+export FILTERED_INSERT_SIZES_FILE=${DATA_FILE_PREFIX}.insert_sizes.filtered.txt
+export FILTERED_STEM_LENGTHS_FILE=${DATA_FILE_PREFIX}.stem_lengths.filtered.txt
 
 # SV analysis output
 export SV_READ_PATHS_FILE=${ANALYSIS_PREFIX}.read_paths.txt.bgz # one line per read with a map of all junctions

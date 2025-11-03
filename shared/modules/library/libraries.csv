@@ -22,3 +22,4 @@ SV analysis,MAX_JXN_BASES,10,1000,for junction insertions/microhomologies longer
 ,GROUP_BREAKPOINT_DISTANCE,500,20,pairs of junction breakpoints within this many bp may be aggregated as the same breakpoint
 ,GROUP_STEM_DISTANCE,100,5,pairs of SV adjusted summed stem lengths within this many bp may be aggregated as the same SV
 ,CROSS_REFERENCE_PADDING,1000,1000,extra bases to include on pseudo-reference contigs when performing junction realignment
+,DEDUPLICATE_READS,TRUE,,true for ONT to trigger duplex molecule dedupliction (neither ONT nor PacBio have PCR duplicates)
