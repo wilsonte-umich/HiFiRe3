@@ -7,4 +7,4 @@ options:
         type: integer
         required: false
         default: 4
-        description: "exclude REs with usability/priority level < -Y" 
+        description: "exclude blunt REs with usability/priority level < -Y" 

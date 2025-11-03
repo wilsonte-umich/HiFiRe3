@@ -49,27 +49,55 @@ Junction_Filters:
         min:    0
         max:    10000
         step:   100
-    # Is_Expected_SV:
-    #     type: checkboxGroupInput
-    #     choices:
-    #         - expected
-    #         - unexpected
-    #     value:
-    #         - expected
-    #         - unexpected
-    #     inline: TRUE
+    Is_Expected_SV:
+        type: checkboxGroupInput
+        choices:
+            - expected
+            - unexpected
+        value:
+            - expected
+            - unexpected
+        inline: TRUE
     One_End_In_Genome:
         type: textInput
         value: "any"
-    Is_On_Target:
-        type: checkboxGroupInput
+    # Is_On_Target:
+    #     type: checkboxGroupInput
+    #     choices:
+    #         - on_target
+    #         - off_target
+    #     value:
+    #         - on_target
+    #         - off_target
+    #     inline: TRUE
+    # SPACER_1:
+    #     type: spacer
+    Alignment_Fail_Types:
+        type: selectInput
         choices:
-            - on_target
-            - off_target
+            - all_unfailed
+            - any_unfailed
+            - all_failed
+            - any_failed
+            - all_junctions
         value:
-            - on_target
-            - off_target
-        inline: TRUE
+            - any_unfailed
+    Junction_Fail_Types:
+        type: selectInput
+        choices:
+            - all_unfailed
+            - any_unfailed
+            - all_failed
+            - any_failed
+            - all_junctions
+        value:
+            - any_unfailed
+    Enforce_1N_Stem:
+        type: checkboxInput
+        value: TRUE
+    Enforce_1N_to_2N_Size:
+        type: checkboxInput
+        value: FALSE
     Allow_Excluded_Regions:
         type: checkboxInput
         value: FALSE
@@ -89,19 +117,3 @@ Junction_Filters:
     #         - inversion
     #         - translocation
     #     inline: TRUE
-    # Mixed_Genome:
-    #     type: checkboxGroupInput
-    #     choices:
-    #         - intragenome
-    #         - intergenome
-    #     value:
-    #         - intragenome
-    #         - intergenome
-    #     inline: TRUE
-    # Include_Clips_In_Total:
-    #     type:   checkboxInput
-    #     value:  false
-    # SPACER_1:
-    #     type: spacer   
-    # SPACER_2:
-    #     type: spacer   

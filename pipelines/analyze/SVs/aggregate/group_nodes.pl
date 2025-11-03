@@ -42,17 +42,22 @@ use constant {
     UJXN_JXN_BASES          => 9,
     UJXN_PATHS              => 10,
     UJXN_N_PATH_JUNCTIONS   => 11,
-    UJXN_READ_HAS_SV        => 12,
-    UJXN_JSRC_MAPQ          => 13, 
-    UJXN_JSRC_DE_TAG        => 14,
-    UJXN_JSRC_SITE_DIST     => 15,
-    UJXN_JSRC_QNAMES        => 16, 
-    UJXN_JSRC_SEQS          => 17,
-    UJXN_JSRC_QUALS         => 18,
-    UJXN_JSRC_CIGARS        => 19,
-    UJXN_JSRC_ORIENTATIONS  => 20,
-    UJXN_JSRC_CHANNELS      => 21,
-    UJXN_JSRC_OUTER_ENDPOINTS => 22,
+    UJXN_JSRC_MAPQ          => 12,
+    UJXN_JSRC_DE_TAG        => 13,
+    UJXN_JSRC_SITE_DIST     => 14,
+    UJXN_JSRC_ALN_FAILURE_FLAG => 15,
+    UJXN_JSRC_JXN_FAILURE_FLAG => 16,
+    UJXN_JSRC_QNAMES           => 17,
+    UJXN_JSRC_INSERT_SIZES     => 18,
+    UJXN_JSRC_IS_ALLOWED_SIZES => 19,
+    UJXN_JSRC_MIN_STEM_LENGTHS => 20,
+    UJXN_JSRC_PASSED_STEMS     => 21,
+    UJXN_JSRC_SEQS            => 22,
+    UJXN_JSRC_QUALS           => 23,
+    UJXN_JSRC_CIGARS          => 24,
+    UJXN_JSRC_ORIENTATIONS    => 25,
+    UJXN_JSRC_CHANNELS        => 26, # concatenated lists that are dropped later after used for duplicate purging
+    UJXN_JSRC_OUTER_ENDPOINTS => 27,
     #-----------------
     DISCARD_JUNCTION => -1,
     #-----------------
@@ -163,8 +168,11 @@ sub processJunctions_3 {
         # all fields made comma-safe upstream, e.g., MM and ML tags use : (colon) as a separator, etc.
         foreach my $i(
             UJXN_PATHS, 
-            UJXN_JSRC_QNAMES, UJXN_JSRC_SEQS, UJXN_JSRC_QUALS, UJXN_JSRC_CIGARS,
-            UJXN_JSRC_ORIENTATIONS, UJXN_JSRC_CHANNELS, UJXN_JSRC_OUTER_ENDPOINTS
+            UJXN_JSRC_QNAMES, 
+            UJXN_JSRC_INSERT_SIZES, UJXN_JSRC_IS_ALLOWED_SIZES, UJXN_JSRC_MIN_STEM_LENGTHS, UJXN_JSRC_PASSED_STEMS,
+            UJXN_JSRC_SEQS, UJXN_JSRC_QUALS, UJXN_JSRC_CIGARS,
+            UJXN_JSRC_ORIENTATIONS, UJXN_JSRC_CHANNELS, UJXN_JSRC_OUTER_ENDPOINTS,
+            UJXN_JSRC_ALN_FAILURE_FLAG, UJXN_JSRC_JXN_FAILURE_FLAG # or move to best-worst min below?
         ){
             $jxns_3[0][$i] .= ",$$discardedJxn[$i]";
         }
@@ -174,7 +182,7 @@ sub processJunctions_3 {
         foreach my $i(UJXN_N_PATH_JUNCTIONS, UJXN_JSRC_MAPQ, UJXN_JSRC_SITE_DIST){
             $jxns_3[0][$i] = max($jxns_3[0][$i], $$discardedJxn[$i]);
         }
-        foreach my $i(UJXN_READ_HAS_SV, UJXN_JSRC_DE_TAG){
+        foreach my $i(UJXN_JSRC_DE_TAG){
             $jxns_3[0][$i] = min($jxns_3[0][$i], $$discardedJxn[$i]);
         }
 

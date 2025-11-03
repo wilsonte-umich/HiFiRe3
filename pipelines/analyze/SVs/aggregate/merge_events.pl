@@ -36,30 +36,41 @@ use constant {
     UJXN_JXN_BASES          => 9,
     UJXN_PATHS              => 10,
     UJXN_N_PATH_JUNCTIONS   => 11,
-    UJXN_READ_HAS_SV        => 12,
-    UJXN_JSRC_MAPQ          => 13, # added by this script, a single junction_sources value for the selected, most frequent junction properties
-    UJXN_JSRC_DE_TAG        => 14,
-    UJXN_JSRC_SITE_DIST     => 15,
-    UJXN_JSRC_QNAMES        => 16, # added by this script, concatenated lists across all junction_sources
-    UJXN_JSRC_SEQS          => 17,
-    UJXN_JSRC_QUALS         => 18,
-    UJXN_JSRC_CIGARS        => 19,
-    UJXN_JSRC_ORIENTATIONS  => 20,
-    UJXN_JSRC_CHANNELS      => 21, # concatenated lists that are dropped later after use for duplicate purging
-    UJXN_JSRC_OUTER_ENDPOINTS => 22,
+    UJXN_JSRC_MAPQ          => 12, # added by this script, a single junction_sources value for the selected, most frequent junction properties
+    UJXN_JSRC_DE_TAG        => 13,
+    UJXN_JSRC_SITE_DIST     => 14,
+    UJXN_JSRC_ALN_FAILURE_FLAG => 15,
+    UJXN_JSRC_JXN_FAILURE_FLAG => 16,
+    UJXN_JSRC_QNAMES           => 17, # added by this script, concatenated lists across all junction_sources
+    UJXN_JSRC_INSERT_SIZES     => 18,
+    UJXN_JSRC_IS_ALLOWED_SIZES => 19,
+    UJXN_JSRC_MIN_STEM_LENGTHS => 20,
+    UJXN_JSRC_PASSED_STEMS     => 21,
+    UJXN_JSRC_SEQS            => 22,
+    UJXN_JSRC_QUALS           => 23,
+    UJXN_JSRC_CIGARS          => 24,
+    UJXN_JSRC_ORIENTATIONS    => 25,
+    UJXN_JSRC_CHANNELS        => 26, # concatenated lists that are dropped later after used for duplicate purging
+    UJXN_JSRC_OUTER_ENDPOINTS => 27,
     #-------------
     JSRC_ALN_OFFSET         => 7, # continuation columns in SV_JUNCTION_SOURCES_FILE
     JSRC_JXN_BASES          => 8,
     JSRC_ORIENTATIONS       => 9,
     JSRC_QNAMES             => 10,
     JSRC_CHANNELS           => 11,
-    JSRC_OUTER_ENDPOINTS    => 12,
-    JSRC_MAPQ               => 13,
-    JSRC_DE_TAG             => 14,
-    JSRC_SITE_DIST          => 15,
-    JSRC_SEQS               => 16,
-    JSRC_QUALS              => 17,
-    JSRC_CIGARS             => 18,
+    JSRC_INSERT_SIZES       => 12,
+    JSRC_IS_ALLOWED_SIZES   => 13,
+    JSRC_OUTER_ENDPOINTS    => 14,
+    JSRC_MIN_STEM_LENGTHS   => 15,
+    JSRC_PASSED_STEMS       => 16,
+    JSRC_MAPQ               => 17,
+    JSRC_DE_TAG             => 18,
+    JSRC_SITE_DIST          => 19,
+    JSRC_ALN_FAILURE_FLAG   => 20,
+    JSRC_JXN_FAILURE_FLAG   => 21,
+    JSRC_SEQS               => 22,
+    JSRC_QUALS              => 23,
+    JSRC_CIGARS             => 24,
 };
 
 # open file handles
@@ -79,17 +90,21 @@ while (my $jxn = <$jxnH>){
 
         # values taken from the best, most frequent junction signature
         $prevSrcLine =~ m/^$jxnKeyWIthJxnProp/ and 
-            @jxn[UJXN_JSRC_MAPQ..UJXN_JSRC_SITE_DIST] = @src[JSRC_MAPQ, JSRC_DE_TAG, JSRC_SITE_DIST]; 
+            @jxn[UJXN_JSRC_MAPQ..UJXN_JSRC_JXN_FAILURE_FLAG] = @src[JSRC_MAPQ..JSRC_JXN_FAILURE_FLAG]; 
 
         # properties collected across all junction keys regardles of junction properties for PCR duplciation/ONT duplex purging
         foreach my $pair(
-            [UJXN_JSRC_QNAMES,          JSRC_QNAMES], # all fields made comma-safe upstream
-            [UJXN_JSRC_SEQS,            JSRC_SEQS],
-            [UJXN_JSRC_QUALS,           JSRC_QUALS],
-            [UJXN_JSRC_CIGARS,          JSRC_CIGARS],
-            [UJXN_JSRC_ORIENTATIONS,    JSRC_ORIENTATIONS],
-            [UJXN_JSRC_CHANNELS,        JSRC_CHANNELS],
-            [UJXN_JSRC_OUTER_ENDPOINTS, JSRC_OUTER_ENDPOINTS]
+            [UJXN_JSRC_QNAMES,           JSRC_QNAMES], # all fields made comma-safe upstream
+            [UJXN_JSRC_INSERT_SIZES,     JSRC_INSERT_SIZES],
+            [UJXN_JSRC_IS_ALLOWED_SIZES, JSRC_IS_ALLOWED_SIZES],
+            [UJXN_JSRC_MIN_STEM_LENGTHS, JSRC_MIN_STEM_LENGTHS],
+            [UJXN_JSRC_PASSED_STEMS,     JSRC_PASSED_STEMS],
+            [UJXN_JSRC_SEQS,             JSRC_SEQS],
+            [UJXN_JSRC_QUALS,            JSRC_QUALS],
+            [UJXN_JSRC_CIGARS,           JSRC_CIGARS],
+            [UJXN_JSRC_ORIENTATIONS,     JSRC_ORIENTATIONS],
+            [UJXN_JSRC_CHANNELS,         JSRC_CHANNELS],
+            [UJXN_JSRC_OUTER_ENDPOINTS,  JSRC_OUTER_ENDPOINTS]
         ) {
             my $jxnI = $$pair[0];
             my $srcI = $$pair[1];

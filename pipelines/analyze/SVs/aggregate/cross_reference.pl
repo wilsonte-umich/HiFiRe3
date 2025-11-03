@@ -10,7 +10,7 @@ use warnings;
 #       - the pseudo-reference contig of other junctions matching at one breakpoint, to ask if the singleton matches another validated junction
 #   in all cases, the query junction sequence is aligned to (pseudo-)reference sequences (not to other reads)
 #   for consistency, all target sequences are:
-#       - ~the same reference length, mathching the length of the query junction sequence
+#       - ~the same reference length, matching the length of the query junction sequence
 #       - padded similarly to allow account for the impact of indels in achieving complete alignments
 #   which means that each query singleton junction re-alignment must be handled individually
 #   criteria for accepting an alternative alignment, thus masking the singleton junction:
@@ -37,9 +37,10 @@ fillEnvVar(\our $N_CPU, 'N_CPU');
 fillEnvVar(\our $GENOME_FASTA_SHM,    'GENOME_FASTA_SHM');
 fillEnvVar(\our $TMP_FILE_PREFIX_SHM, 'TMP_FILE_PREFIX_SHM');
 fillEnvVar(\our $ALIGNMENT_MODE,      'ALIGNMENT_MODE');
-fillEnvVar(\our $BANDWIDTH,           'BANDWIDTH');
 fillEnvVar(\our $GROUP_BREAKPOINT_DISTANCE, 'GROUP_BREAKPOINT_DISTANCE');
 fillEnvVar(\our $CROSS_REFERENCE_PADDING,   'CROSS_REFERENCE_PADDING');
+# fillEnvVar(\our $BANDWIDTH,           'BANDWIDTH');
+my $BANDWIDTH = "500,3300"; 
 
 # constants
 use constant {
@@ -55,16 +56,22 @@ use constant {
     UJXN_JXN_BASES          => 9,
     UJXN_PATHS              => 10,
     UJXN_N_PATH_JUNCTIONS   => 11,
-    UJXN_READ_HAS_SV        => 12,
-    UJXN_JSRC_MAPQ          => 13, 
-    UJXN_JSRC_DE_TAG        => 14,
-    UJXN_JSRC_SITE_DIST     => 15,
-    UJXN_JSRC_QNAMES        => 16, 
-    UJXN_JSRC_SEQS          => 17,
-    UJXN_JSRC_QUALS         => 18,
-    UJXN_JSRC_CIGARS        => 19,
-    UJXN_JSRC_ORIENTATIONS  => 20,
-    UJXN_HAS_ALT_ALIGNMENT  => 21, # added by this script
+    UJXN_JSRC_MAPQ          => 12,
+    UJXN_JSRC_DE_TAG        => 13,
+    UJXN_JSRC_SITE_DIST     => 14,
+    UJXN_JSRC_ALN_FAILURE_FLAG => 15,
+    UJXN_JSRC_JXN_FAILURE_FLAG => 16,
+    UJXN_JSRC_QNAMES           => 17,
+    UJXN_JSRC_INSERT_SIZES     => 18,
+    UJXN_JSRC_IS_ALLOWED_SIZES => 19,
+    UJXN_JSRC_MIN_STEM_LENGTHS => 20,
+    UJXN_JSRC_PASSED_STEMS     => 21,
+    UJXN_JSRC_SEQS            => 22,
+    UJXN_JSRC_QUALS           => 23,
+    UJXN_JSRC_CIGARS          => 24,
+    UJXN_JSRC_ORIENTATIONS    => 25,
+    UJXN_IS_EXPECTED          => 26,
+    UJXN_HAS_ALT_ALIGNMENT    => 27, # added by this script
     #-----------------
     BKPT_JXN_ID        => 0,
     BKPT_CHROM_INDEX1  => 1,

@@ -1,0 +1,12 @@
+---
+# options that set the path to the input PacBio strand-specific files for final basecalling
+options:
+    pacbio-dir: 
+        order: 1
+        short: i
+        type: string
+        required: true
+        default: null
+        directory:
+            must-exist: true
+        description: "directory with one or more stranded *.bam files from a single PacBio run"

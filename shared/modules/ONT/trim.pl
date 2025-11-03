@@ -3,18 +3,17 @@ use warnings;
 
 # action:
 #   find ONT adapters on previously untrimmed read ends
-#   for ligFree, search includes RE half-cut-site to enhance search power vs. adapter alone
+#   search includes blunt RE half-cut-site to enhance search power vs. adapter alone
 #   trim just the adapter portion, leaving the half-cut-site genomic bases intact
-#   add tags to QNAME indicating channel and trim status
+#   add tag indicating trim status
 # input:
 #   an unaligned SAM stream, specifically, a Dorado-compatible output stream, on STDIN
 # output:
-#   updated SAM stream on STDOUT
+#   updated SAM stream on STDOUT, with new tags tl:Z: = adapter trim lengths in format `<5' trim>,<3' trim>`
 # notes:
 #   this script processes unaligned ONT reads, i.e., never reverse complemented, so first bases correspond to the 5' adapter
 #   all reads are expected to have 5' adapters, but some may be low quality bases, truncated, or chimeras split by Dorado
 #   3' adapters are always shorter, often truncated, and not always present for incompletely sequenced fragments
-#   most detected adapters are expected to occur at RE sites in ligFree (but not tagFree) libraries
 
 # load dependencies
 our $script = "trim_adapters";
@@ -26,15 +25,12 @@ map { require "$perlUtilDir/$_.pl" } qw(workflow numeric);
 map { require "$perlUtilDir/sequence/$_.pl" } qw(general smith_waterman);
 
 # environment variables
-fillEnvVar(\our $BLUNT_RE_TABLE,         'BLUNT_RE_TABLE'); # ligFree only supports blunt REs; 5' REs in tagFree aren't used for endpoint trimming
-fillEnvVar(\our $ENZYME_NAME,            'ENZYME_NAME');
-fillEnvVar(\our $CHECK_ENDPOINT_RE_MATCH,'CHECK_ENDPOINT_RE_MATCH');
-fillEnvVar(\our $ADAPTER_SEQUENCE,       'ADAPTER_SEQUENCE');
+fillEnvVar(\our $BLUNT_RE_TABLE,   'BLUNT_RE_TABLE'); # HiFiRe3 only supports blunt REs
+fillEnvVar(\our $ENZYME_NAME,      'ENZYME_NAME');
+fillEnvVar(\our $ADAPTER_SEQUENCE, 'ADAPTER_SEQUENCE');
 
 # set operating parameters
 my $MIN_SCORE = 10; # 3 RE bases + 1 A-tail + 6 adapter bases
-my $isCustomEnzyme = (uc($ENZYME_NAME) eq "CUSTOM");
-my $includeREHalfSite = (!$isCustomEnzyme and $CHECK_ENDPOINT_RE_MATCH);
 
 # constants
 use constant {
@@ -61,20 +57,18 @@ use constant {
 
 # initialize the RE
 my ($cutSiteLeftHalf, $cutSiteRightHalf, $cutSiteOffset) = ("", "", 0);
-if($includeREHalfSite){
-    open my $inH, "<", $BLUNT_RE_TABLE or die "could not open: $BLUNT_RE_TABLE: $!\n";
-    my $header = <$inH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,...
-    while (my $line = <$inH>){
-        my ($enzyme, $strand, $cut_site, $regex, $offset) = split(",", $line);
-        $enzyme eq $ENZYME_NAME or next;
-        $cut_site = uc($cut_site);
-        $cutSiteLeftHalf  = substr($cut_site, 0, $offset);
-        $cutSiteRightHalf = substr($cut_site, $offset, $offset);
-        $cutSiteOffset    = $offset;
-    }
-    close $inH;
-    $cutSiteLeftHalf or die "unrecognized enzyme; must be a blunt cutter in shared/modules/REs/blunt_enzymes.csv, or 'custom'\n";
+open my $inH, "<", $BLUNT_RE_TABLE or die "could not open: $BLUNT_RE_TABLE: $!\n";
+my $header = <$inH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,...
+while (my $line = <$inH>){
+    my ($enzyme, $strand, $cut_site, $regex, $offset) = split(",", $line);
+    $enzyme eq $ENZYME_NAME or next;
+    $cut_site = uc($cut_site);
+    $cutSiteLeftHalf  = substr($cut_site, 0, $offset);
+    $cutSiteRightHalf = substr($cut_site, $offset, $offset);
+    $cutSiteOffset    = $offset;
 }
+close $inH;
+$cutSiteLeftHalf or die "unrecognized enzyme; must be a blunt cutter in shared/modules/REs/blunt_enzymes.csv\n";
 
 # initalize the adapter search sequences
 my $adapterCore = $ADAPTER_SEQUENCE; # duplex portion of the ONT kit adapter; for ligation kit, last T matches the one-base A-tail; fused to 5' genomic ends 
@@ -96,6 +90,7 @@ while (my $read = <STDIN>){
     if($read =~ m/^\@/){
         print $read;
     } else {
+        chomp $read;
         my @read = split("\t", $read, 12);
         length($read[SEQ]) >= MIN_INSERT_SIZE or next; # reject reads too small to even search for adapaters
         my ($found5, $trimLen5) = find_adapter($adapter5, substr($read[SEQ], 0, SEARCH_SPACE_5), FORCE_QRY_END,   5);
@@ -108,13 +103,8 @@ while (my $read = <STDIN>){
             $read[SEQ]  = substr($read[SEQ],  $trimLen5);
             $read[QUAL] = substr($read[QUAL], $trimLen5);
         }
-        $read[QNAME] = join(":", 
-            $read[QNAME], # QNAME exits as QNAME:channel:trim5:trim3
-            $read[TAGS] =~ m/ch:i:(\d+)/ ? $1 : 0,
-            $found5 ? $trimLen5 : 0, 
-            $found3 ? $trimLen3 : 0
-        );
-        print join("\t", @read);
+        # add trim tag and print
+        print join("\t", @read, "tl:Z:".($found5 ? $trimLen5 : 0).",".($found3 ? $trimLen3 : 0)), "\n";
     }
 }
 
@@ -157,9 +147,7 @@ sub find_adapter {
         
         # if not found, use smith_waterman to locate an adapter-gDNA transition without the RE half-site
         # in addition to sequencing errors, this may arise from adapter ligation onto a non-RE gDNA end
-            # allow this on the 3' end only - 5' ends are expected to match an RE half-site
-            # } elsif($end == 3) {
-        } elsif ($includeREHalfSite) { # this would be redundant for tagFree, Cas9, etc.
+        } else { 
             ($qryOnRef, $score, $startQry0, $endQry0, $startRef0, $endRef0) = 
                 smith_waterman($$adapter{adapter}, $readSegment, NOT_FAST, $forcedEnd);
             if($score >= $MIN_SCORE){
@@ -171,11 +159,3 @@ sub find_adapter {
     }
     return ($score >= $MIN_SCORE, $trimLen);
 }
-
-# 414239e5-00ca-44cd-8276-489a8cdf3c12    4       *       0       0       *       *       0       0       
-# ATGTGCCCTCTACTGGTTCAGTTAGTATTGCTATCTTACAAACTCTTTGAGACCATGAATACCAGCACAGATTACTACATCCAGCAAAATTTTCAACTACTGTAGATGAAGAAAACAAAACATTTCATGACAAAGTCAAATTTGAACATTATCCAACAATATAGCTGTACAGAAAATACTAAAAGGAAAATTCCAACCCAAGGAAGTTAACTACATCCATGAAAACATAAGCAATAAATAATCCTGCACCAGTATCACCCAAAGAAGGGATGTTTATTAATATATTTCAATATCAATTGACTAAATTCTCTAGTAAATAGGCACAGGCTAATAGAATGTATATAATCACAGAATCAGTATGAATATATGAAACATAACTCAATATTAAAGATAGATATTACCTCAGAATAAAGAGTTAGGAACAGATTTTTCCAAGCAAATGGACACACAAAGCAAACTGATATAACTGTTTTAAAATCTAACAAAGTAGCTTTCATATAAAATTAATCAAAAGATGGAGAAGTTCCTACTAATTAAAGAAAAAAATCTACCAAGATAATGTTTCAATTCATACCATCTATGTCCAAAATGCAAGAGAACCCACATTTGTAAAAGAAACATTTGTAAAGCTTATATAACATATTGAAACTTACATATTAATAATGGGAGATTTCAATACTTGATTCTGACCAGACAAAAAGTCAAAGAGAAATAAGAGAACTAGCAGTCAC      
-# #$$%$&*++**)*+((((',/++(&&&(**+<<<:<<<=ACC>>===BBC><<<<@>?@A@><<99::;???@?A?@?@DDB?=ACCCOLIIJFFEEDCAA???>>@@@E@?@@PJDEEDDFCA=;;==DA@BA;;;;<FFJHEDDDEGFED<;<<<CGGGEE@@@>?AAABCBCIHHA?<<;:3>::<HFGC>>>=<<<<;<<<;<=;<=<=>>?>>>?@ECHNLKJJHDAAABCLMLKIH@>><;<:9:77899?;::;<CBCA:8>88=DDB@BFJJGGEDDDBABBBCDDBBDDA@>>>@ACHCB>==<=?@ADD:9888;;87889AB;;;;<ABBBFFIJEEBB???A@D@???;===>CCDCBCCBDCBB??>>>BBHEEFG@>==;<<<<EA>>>=>>?@@@DE@?>==@=<<=<>@@?==:978777;;<;DB>===>A???A<<<<=DDBABBBFDBB@@@BCFEIIMDBA@?AAC>==99::;BGFEEFEIJIKGFHGBA?:5*'%%$$$$$%&&&),/266885558<<=GMJJIBA@?>AA@ABAADBBCBABBAA====<>>>=?AA>@>>=?@CGA???=><<<=;<<<<ABCFD///0>?SODDDEEA????A????AGFFFDDCCCDBBBBCFEDCCCCCEFIHIFFF@>=<<>ABBCA@?@@??@CECCBB@AB@@AAABDFGEFFCMKIHGGHGD>=::;200.......-- 
-# qs:i:20 du:f:1.8524     ns:i:9262       ts:i:10 mx:i:4  ch:i:1092       
-# st:Z:2024-04-25T20:38:44.242+00:00   rn:i:51659      
-# fn:Z:PAO64638_pass_006c84b6_9f549c95_1140.pod5  sm:f:-810.172   
-# sd:f:0.00798761 sv:Z:pa dx:i:0  RG:Z:9f549c95bcae9f37c4365b25d9a7ef0166b3a379_dna_r10.4.1_e8.2_400bps_sup@v4.3.0

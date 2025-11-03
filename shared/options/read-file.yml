@@ -9,7 +9,7 @@ options:
         default: null
         directory:
             must-exist: false # since might still need to be created by a basecaller
-        description: "directory with one or more *.fastq.gz or [ubam/]*.unaligned.bam [TASK_DIR]"
+        description: "directory with one or more unaligned bam files with required tags [TASK_DIR/ubam]"
     read-file-prefix: 
         order: 2
         short: x

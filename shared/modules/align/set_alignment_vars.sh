@@ -6,7 +6,6 @@
 #     source $MODULES_DIR/align/set_alignment_vars.sh
 
 # set the alignment log files
-export FASTP_LOG_PREFIX=$LOG_FILE_PREFIX.fastp
 export MINIMAP_LOG_FILE=$LOG_FILE_PREFIX.minimap.log
 
 # set the product alignment files
@@ -17,5 +16,6 @@ export MINIMAP_LOG_FILE=$LOG_FILE_PREFIX.minimap.log
 export NAME_BAM_FILE=$DATA_GENOME_PREFIX.name.bam
 export COORDINATE_BAM_FILE=$DATA_GENOME_PREFIX.coordinate.bam
 export COORDINATE_BAM_INDEX=$COORDINATE_BAM_FILE.bai
-export NAME_REALIGNED_BAM_FILE=$DATA_GENOME_PREFIX.name.realigned.bam
-export COORDINATE_REALIGNED_BAM_FILE=$DATA_GENOME_PREFIX.coordinate.realigned.bam
+
+# pre-filtering insert sizes file, i.e., as determined prior to alignment
+export UNFILTERED_INSERT_SIZES_FILE=${DATA_FILE_PREFIX}.insert_sizes.unfiltered.txt

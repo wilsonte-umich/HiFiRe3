@@ -7,39 +7,42 @@ use warnings;
 
 # output variables
 our ($nRegions, $sumTargetLens, $sumPaddedTargetLens) = (0, 0, 0);
-our (%targetRegions, %targetClassCounts, @regionCenters);
+our (%targetChroms, %targetRegions, %targetClassCounts, @regionCenters);
 
 # constants
 use constant {
     S_QNAME             => 0, # SITE_SAM fields
     S_FLAG              => 1,
     S_RNAME             => 2,
-    S_POS1              => 3, # 1-based
+    S_POS1              => 3,
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
-    N_REF_BASES         => 10,
-    N_READ_BASES        => 11,
-    BLOCK_N             => 12,
-    SITE_INDEX1_1       => 13,
-    SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_INDEX1_1       => 6,
+    SITE_POS1_1         => 7,
+    SITE_DIST_1         => 8,
+    SITE_INDEX1_2       => 9,
+    SITE_POS1_2         => 10,
+    SITE_DIST_2         => 11,
+    SEQ_SITE_INDEX1_2   => 12,
+    SEQ_SITE_POS1_2     => 13,
+    IS_END_TO_END       => 14,
+    CH_TAG              => 15,
+    TL_TAG              => 16,
+    INSERT_SIZE         => 17,
+    IS_ALLOWED_SIZE     => 18,
+    DE_TAG              => 19,
+    HV_TAG              => 20,
+    N_REF_BASES         => 21,
+    N_READ_BASES        => 22,
+    STEM5_LENGTH        => 23,
+    STEM3_LENGTH        => 24,
+    PASSED_STEM5        => 25,
+    PASSED_STEM3        => 26,
+    BLOCK_N             => 27,
+    ALN_FAILURE_FLAG    => 28,
+    JXN_FAILURE_FLAG    => 29,
+    TARGET_CLASS        => 30,
+    # ... unused fields ...
     #-------------
     ON_TARGET   => "T",
     NEAR_TARGET => "A", # for "adjacent"
@@ -107,6 +110,7 @@ sub loadTargetRegions_ {
         chomp $line;
         $line =~ s/\r//g;
         my ($chr, $start, $end, $name) = split("\t", $line);
+        $targetChroms{$chr} = 1; # lookup for whether a chromosome has target regions
         for(my $pos =  int(($start - $regPad) / $TARGET_SCALAR);
                $pos <= int(($end   + $regPad) / $TARGET_SCALAR);
                $pos++){    
@@ -139,6 +143,9 @@ sub getTargetRegions {
     }
     close $inH;
     return \@regions;
+}
+sub getTargetChroms {
+    return keys %targetChroms;
 }
 
 # return information on a single genome position relative to target regions
@@ -196,6 +203,7 @@ sub setAlnTargetClasses {
         $targetClassCounts{$cc}{nSeqBases}  += $rightPos1_5 - $leftPos1_5 + 1;
         $targetClassCounts{$cc}{nProjBases} += abs($alns[0][SEQ_SITE_POS1_2] - $alns[0][SITE_POS1_1]) + 1;
     }
+    return $targetI1_5 == NULL_TARGET_I ? FALSE : TRUE; # return $isOnTarget_5
 }
 
 # print target class counts to log

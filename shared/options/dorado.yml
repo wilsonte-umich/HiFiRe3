@@ -1,64 +1,57 @@
 ---
-# versions current as of August 2024
+# versions current as of August 2025
 options:
     dorado-version: 
         order: 1
         short: A
         type: string
         required: false
-        default: 0.7.3-linux-x64
-        description: "Dorado version to be downloaded and used, e.g., 0.7.3-linux-x64"
-    ont-model: 
+        default: 1.1.1-linux-x64
+        description: "Dorado version to be downloaded and used, e.g., 1.1.1-linux-x64"
+    ont-model-complex: 
         order: 2
         short: M
         type: string
         required: false
-        default: dna_r10.4.1_e8.2_400bps_sup@v5.0.0
-        description: "ONT basecalling model, based on flow cell, base rate, accuracy, and version"
-    modified-base-model:
+        default: sup
+        description: "ONT main basecalling model complex = (fast|hac|sup)[@(version|latest)]"
+    modified-base-models:
         order: 3
         short: b
         type: string
         required: false
-        default: null
-        description: "optional name of a modified base model to use, similar to --ont-model"
-    modified-base:
-        order: 4
-        short: B
-        type: string
-        required: false
-        default: C
-        description: "single-letter code of the parent base relevant to --modified-base-model, A, C, G or T"
+        default: null # e.g., 5mCG_5hmCG
+        description: "optional comma-separated list of modified base models = modification[@(version|latest)]]"
     pod5-buffer: 
-        order: 5
+        order: 4
         short: 5
         type: string
         required: false
         default: shm # or tmp, for fewer, overly large pod5 files
         description: "whether to use shared memory (shm) or --tmp-dir (tmp) for pod5 buffering"
     pod5-buffer-size: 
-        order: 6
+        order: 5
         short: Z
         type: string
         required: false
         default: 60G
         description: "maximum size of pod5-buffer in Gb used when auto-batching POD5 files, e.g., 50G"
     min-pod5-size: 
-        order: 7
+        order: 6
         short: y
         type: string
         required: false
         default: 1000M
         description: "minimum size of a pod5 file in Mb to use when auto-batching POD5 files, e.g., 100M"
     dorado-options: 
-        order: 8
+        order: 7
         short: D
         type: string
         required: false
         default: null 
         description: "additional options passed directly to `dorado basecaller` [none]"
     force-basecalling: 
-        order: 9
+        order: 8
         short: F
         type: boolean
         required: false

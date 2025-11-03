@@ -1,11 +1,12 @@
 # actions:
-#   describe the SNV/indel combinations of the 5'-most alignment of all reads
+#   describe the SNV/indel combinations of single-alignment, i.e., non-SV, end-to-end RE fragments
+#       in HiFiRe3, these are always PacBio HiFi reads, which are implicitly duplex and thus not stranded
 #   use a streamlined, reduced-representation fragment index to count unique combinations
 #   see index_fragments.pl for details
 # input:
 #   $SITE_SAM_PREFIX.$chrom.site_sam.gz, created by `analyze fragments`
 # output:
-#   $SNV_ALNS_PREFIX.<zeroPaddedChromIndex1>.<strandIndex0>.txt.gz
+#   $SNV_ALNS_PREFIX.<zeroPaddedChromIndex1>.txt.gz
 #   $SNV_BASE_QUALITIES_FILE
 
 # file paths

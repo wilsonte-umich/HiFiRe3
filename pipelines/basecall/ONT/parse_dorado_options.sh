@@ -7,6 +7,8 @@ mkdir -p ${DORADO_DIR}
 DORADO_VERSION_NAME=dorado-${DORADO_VERSION}
 DORADO_VERSION_DIR=${DORADO_DIR}/${DORADO_VERSION_NAME}
 DORADO_EXECUTABLE=${DORADO_VERSION_DIR}/bin/dorado
+DORADO_MODELS_DIR=${DORADO_DIR}/models
+mkdir -p ${DORADO_MODELS_DIR}
 
 # obtain dorado if not already present
 if [ ! -d ${DORADO_VERSION_DIR} ]; then
@@ -14,7 +16,7 @@ if [ ! -d ${DORADO_VERSION_DIR} ]; then
     TMP_DIR=${PWD}
     cd ${DORADO_DIR}
     DORADO_ARCHIVE=${DORADO_VERSION_NAME}".tar.gz"
-    wget "https://cdn.oxfordnanoportal.com/software/analysis/"${DORADO_ARCHIVE}
+    wget --no-verbose "https://cdn.oxfordnanoportal.com/software/analysis/"${DORADO_ARCHIVE}
     echo "extracting Dorado"
     tar -xzf ${DORADO_ARCHIVE}
     rm -f ${DORADO_ARCHIVE}

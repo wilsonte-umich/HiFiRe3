@@ -3,7 +3,6 @@ use warnings;
 
 # action:
 #   fragment indexing for SNV/indel tallying in preparation for pileup
-#   indexing of the variant types is handled by the calling scripts
 
 # load dependencies
 my $perlUtilDir = "$ENV{MODULES_DIR}/utilities/perl";
@@ -14,16 +13,16 @@ require "$ENV{ACTION_DIR}/index/parsing_functions.pl";
 require "$ENV{MODULES_DIR}/analyze/SNVs/va_tag_utils.pl";
 
 # environment variables
-fillEnvVar(\our $N_CPU,           'N_CPU');
-fillEnvVar(\our $SITE_SAM_PREFIX, 'SITE_SAM_PREFIX');
-fillEnvVar(\our $GENOME_FASTA,    'GENOME_FASTA');
+fillEnvVar(\our $N_CPU,            'N_CPU');
+fillEnvVar(\our $SITE_SAM_PREFIX,  'SITE_SAM_PREFIX');
+fillEnvVar(\our $GENOME_FASTA,     'GENOME_FASTA');
 
 # shared functions to support SV and SNV/indel indexing
-use vars qw($error %chromIndex $snvAlnsH0 $snvAlnsH1);
+use vars qw($error %chromIndex $snvAlnsH);
 our (
     $chrom, $chromIndex1, $paddedChromIndex1, $chromSize,
-    $prevRead, @alns, @index,
-    $strandIndex0, $varKey, $snvAlnsH
+    @aln, @index,
+    $varKey
 );
 
 # constants
@@ -31,32 +30,39 @@ use constant {
     S_QNAME             => 0, # SITE_SAM fields
     S_FLAG              => 1,
     S_RNAME             => 2,
-    S_POS1              => 3, # 1-based
+    S_POS1              => 3,
     S_MAPQ              => 4,
     S_CIGAR             => 5,
-    DE_TAG              => 6,
-    CS_TAG              => 7,
-    XF_TAG              => 8,
-    XH_TAG              => 9,
-    N_REF_BASES         => 10,
-    N_READ_BASES        => 11,
-    BLOCK_N             => 12,
-    SITE_INDEX1_1       => 13,
-    SITE_POS1_1         => 14,
-    SITE_HAPS_1         => 15,
-    SITE_DIST_1         => 16,
-    SITE_INDEX1_2       => 17,
-    SITE_POS1_2         => 18,
-    SITE_HAPS_2         => 19,
-    SITE_DIST_2         => 20,
-    SEQ_SITE_INDEX1_2   => 21,
-    SEQ_SITE_POS1_2     => 22,
-    SEQ_SITE_HAPS_2     => 23,
-    IS_END_TO_END       => 24,
-    READ_HAS_JXN        => 25,
-    TARGET_CLASS        => 26,
-    S_SEQ               => 27,
-    S_QUAL              => 28,
+    SITE_INDEX1_1       => 6,
+    SITE_POS1_1         => 7,
+    SITE_DIST_1         => 8,
+    SITE_INDEX1_2       => 9,
+    SITE_POS1_2         => 10,
+    SITE_DIST_2         => 11,
+    SEQ_SITE_INDEX1_2   => 12,
+    SEQ_SITE_POS1_2     => 13,
+    IS_END_TO_END       => 14,
+    CH_TAG              => 15,
+    TL_TAG              => 16,
+    INSERT_SIZE         => 17,
+    IS_ALLOWED_SIZE     => 18,
+    DE_TAG              => 19,
+    HV_TAG              => 20,
+    N_REF_BASES         => 21,
+    N_READ_BASES        => 22,
+    STEM5_LENGTH        => 23,
+    STEM3_LENGTH        => 24,
+    PASSED_STEM5        => 25,
+    PASSED_STEM3        => 26,
+    BLOCK_N             => 27,
+    ALN_FAILURE_FLAG    => 28,
+    JXN_FAILURE_FLAG    => 29,
+    TARGET_CLASS        => 30,
+    END5_ON_TARGET      => 31,
+    READ_HAS_JXN        => 32,
+    S_SEQ               => 33,
+    S_QUAL              => 34,
+    CS_TAG              => 35,
     #-------------
     _IS_PAIRED      => 1,  # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -76,6 +82,11 @@ use constant {
     #-------------
     INDEX_BIN_SIZE => 1000,
     N_CHAR_ALN_SORT => 18, # leftPos1rightPos1 = 9 + 9
+    #-------------
+    ALN_HAS_SNV         => 1, # variant flag bits
+    READ_HAS_SNV        => 2,
+    READ_HAS_SV         => 4,
+    READ_HAS_VARIANT    => 8,
 };
 
 # initialize the genome
@@ -125,47 +136,37 @@ sub processChroms {
         # index reads one at a time, counting unique encountered variant patterns per RE fragment
         # indexing action is defined by the calling script
         print STDERR "  $chrom\tassembling index\n";
-        ($prevRead, @alns, @index) = ();
+        @index = ();
         while(my $aln = <$chromH>){
             chomp $aln;
-            my @aln = split("\t", $aln);
+            @aln = split("\t", $aln);
+            # filter to non-SV reads (here, based on original alignments in hv tag)
+            # thus, there will only ever be one alignment per processed read
+            ($aln[IS_END_TO_END] and !($aln[HV_TAG] & READ_HAS_SV)) or next;
 
-            # only process the 5'-most alignment of a read; drop distal, 3' SV alignments
-            # S_QNAME has appended readN at this point, so paired reads will always both be processed
-            if($prevRead and $prevRead ne $aln[S_QNAME]){
-                $strandIndex0 = ($alns[0][S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
-                $index[ $strandIndex0 ][ int($alns[0][S_POS1] / INDEX_BIN_SIZE) ]{ indexRead() }++;
-                @alns = (); # don't reset @index of course
-            }
+            # TODO: do any other work to reverse complement reverse strand alignments
+            # everything should leave here oriented as top strand alignments
+            # this is fine, since PacBio reads are implicitly duplex and thus not strand-specific
 
-            # parse incoming alignments to stranded VA tag format and save
+            # parse incoming alignments to stranded VA tag format
             cs_to_va_tag_aln(\@aln);
-            ($aln[S_FLAG] & _REVERSE) and invertReverseStrandAlignment(\@aln, $chromSize);
-            push @alns, \@aln;
-            $prevRead = $aln[S_QNAME];
-        }
+            # ($aln[S_FLAG] & _REVERSE) and invertReverseStrandAlignment(\@aln, $chromSize); # this is not what we need for HiFiRe3
 
-        # process the last read
-        if(@alns){ # `if` here is a catch for siteless chromosomes
-            $strandIndex0 = ($alns[0][S_FLAG] & _REVERSE) ? BOTTOM_STRAND : TOP_STRAND;
-            $index[ $strandIndex0 ][ int($alns[0][S_POS1] / INDEX_BIN_SIZE) ]{ indexRead() }++;
+            # add read to the index
+            $index[ int($aln[S_POS1] / INDEX_BIN_SIZE) ]{ indexRead() }++;
         }
         close $chromH;
 
         # unpack unique encountered variants
         # print to coorindate-sorted output as performed by the calling script
         print STDERR "  $chrom\tsorting and printing bins\n";
-        foreach $strandIndex0(TOP_STRAND, BOTTOM_STRAND){
-            $index[$strandIndex0] or next;
-            $snvAlnsH = $strandIndex0 == TOP_STRAND ? $snvAlnsH0 : $snvAlnsH1;
-            foreach my $binI(0..$#{$index[$strandIndex0]}){
-                my $vars = $index[$strandIndex0][$binI] or next;
-                foreach $varKey(sort { 
-                    substr($a, 0, N_CHAR_ALN_SORT) cmp substr($b, 0, N_CHAR_ALN_SORT) or  # zero-padded leftPos1.rightPos1 sort
-                    $$vars{$b} <=> $$vars{$a} # most frequent variant pattern sorts first for a given leftPos1.rightPos1
-                } keys %$vars){
-                    printIndexedVariant($$vars{$varKey});
-                }
+        foreach my $binI(0..$#index){
+            my $vars = $index[$binI] or next;
+            foreach $varKey(sort { 
+                substr($a, 0, N_CHAR_ALN_SORT) cmp substr($b, 0, N_CHAR_ALN_SORT) or  # zero-padded leftPos1.rightPos1 sort
+                $$vars{$b} <=> $$vars{$a} # most frequent variant pattern sorts first for a given leftPos1.rightPos1
+            } keys %$vars){
+                printIndexedVariant($$vars{$varKey});
             }
         }
         closeFileHandles();

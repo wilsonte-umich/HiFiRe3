@@ -13,3 +13,6 @@ dependencies:
     - r-base=4.4
     - r-essentials=4.4
     - r-r.utils=2.13
+
+  # for orthogonal validation of chimeras
+    - blast=2.17

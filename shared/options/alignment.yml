@@ -6,7 +6,7 @@ options:
         short: b
         type: string
         required: false
-        default: 500;3300
+        default: 500,3300
         description: "bandwidth for chaining and base alignment, same as minimap2 -r"
     force-alignment:
         order: 2

@@ -9,7 +9,8 @@ column_number,column_name,description
 8,isLocalSv,true if the two breakpoints of a junction were within 1Mb on the same chromosome
 9,isInterGenome,true if the two breakpoints of a junction were on different genomes of a mixed-species sample
 10,isValidated,true if the junction was validated by 3 or more reads; false means the junction had a single read (junctions with two reads are excluded)
-11,isExpected,true if the junction was an SV relative to genome but matched a path in a genotype assembly
-12,nBkpts,the number of breakpoints that match the key defined by columns 1 to 11
-13,fracBkpts_genome,the fraction of nBkpts within genome
-14,fracBkpts_all,the fraction of nBkpts within both genomes if a mixed-species sample; otherwise equal to fracBkpts_genome
+11,hasAllowedSize,true if any molecule that sequenced a junction was within the allowed insert size range
+12,hasDisallowedSize,true if any molecule that sequenced a junction was not within the allowed insert size range
+13,nBkpts,the number of breakpoints that match the key defined by columns 1 to 11
+14,fracBkpts_genome,the fraction of nBkpts within genome
+15,fracBkpts_all,the fraction of nBkpts within both genomes if a mixed-species sample; otherwise equal to fracBkpts_genome
