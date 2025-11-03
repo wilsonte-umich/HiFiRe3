@@ -214,7 +214,7 @@ af_bgzColumns <- list(
         quals           = "character",
         cigars          = "character", # one per flanking alignment as CIGAR_1::CIGAR_2
         orientations    = "character",
-        isExpected     = "integer",
+        isExpected      = "integer",
         hasAltAlignment = "integer",
         svSize          = "integer",
         isIntergenome   = "integer",
@@ -343,7 +343,7 @@ af_getTrackData_bgz <- function(sourceId, fileType, coord){
     coord$chromosome <- af_getChromIndex(sourceId, coord$chromosome)
     bgzFile <- getSourceFilePath(sourceId, fileType)
     if(!isTruthy(bgzFile) || !file.exists(bgzFile)) return(data.table()) # no data of this type
-    getCachedTabix(bgzFile) %>% 
+    getCachedTabix(bgzFile) %>% # create = TRUE, force = TRUE
     getTabixRangeData(
         coord, 
         col.names  =  names(af_bgzColumns[[fileType]]), 
@@ -458,6 +458,7 @@ af_getJunctions_all_source <- function(sourceId){
                     )
                 )
             )]
+            jxns
         }
     )
     persistentCache[[filePath]]$data
