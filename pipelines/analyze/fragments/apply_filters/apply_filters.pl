@@ -34,6 +34,7 @@ fillEnvVar(\our $SEQUENCING_PLATFORM,       'SEQUENCING_PLATFORM');
 fillEnvVar(\our $IS_END_TO_END_READ,        'IS_END_TO_END_READ');
 fillEnvVar(\our $MIN_SELECTED_SIZE,         'MIN_SELECTED_SIZE');
 fillEnvVar(\our $SELECTED_SIZE_CV,          'SELECTED_SIZE_CV');
+fillEnvVar(\our $MIN_ALLOWED_SIZE,          'MIN_ALLOWED_SIZE');
 fillEnvVar(\our $HAS_BASE_ACCURACY,         'HAS_BASE_ACCURACY');
 # RE site matching
 # fillEnvVar(\our $ENZYME_NAME,               'ENZYME_NAME');
@@ -77,7 +78,8 @@ map { require "$ENV{APPLY_FILTERS_DIR}/$_.pl" } qw(
 use vars qw(%chromData %insertSizeCounts @nAlnsRejected @avgBaseQual);
 our $isONT = $SEQUENCING_PLATFORM eq "ONT";
 our $isEndToEndPlatform = ($IS_END_TO_END_READ eq "TRUE");
-our $minAllowedSize = $MIN_SELECTED_SIZE / (1 + $SELECTED_SIZE_CV); # i.e., 1N
+$MIN_SELECTED_SIZE or $MIN_ALLOWED_SIZE or die "$error: either --min-selected-size or --min-allowed-size must be provided\n";
+our $minAllowedSize = $MIN_ALLOWED_SIZE ? $MIN_ALLOWED_SIZE : $MIN_SELECTED_SIZE / (1 + $SELECTED_SIZE_CV); # i.e., 1N
 our $maxAllowedSize = $minAllowedSize * 2;
 our $TARGET_SCALAR = 10;
 
