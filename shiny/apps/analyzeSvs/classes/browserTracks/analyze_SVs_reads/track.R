@@ -37,9 +37,6 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
     sourceId <- selectedSourceIds[1]
     projectName <- strsplit(getSourceFilePackageName(sourceId), "\\.")[[1]][1]
 
-    dmsg()
-    dmsg(projectName)
-    
     # set plot configuration
     # maxCoverage <- track$settings$get("SV_Reads","Fragments_Max_Coverage")
     padding <- padding(track, layout)

@@ -27,6 +27,7 @@ checkEnvVars(list(
     ),
     integer = c(
         'MIN_SELECTED_SIZE',
+        'MIN_ALLOWED_SIZE',
         'N_CPU'
     ),
     double = c(
@@ -42,9 +43,16 @@ env$ENOUGH_READS <- 50
 #=====================================================================================
 
 #=====================================================================================
-# derive minAllowedSize and maxAllowedSize from MIN_SELECTED_SIZE
+# derive minAllowedSize and maxAllowedSize from MIN_SELECTED_SIZE or MIN_ALLOWED_SIZE
 #-------------------------------------------------------------------------------------
-minAllowedSize <- env$MIN_SELECTED_SIZE / (1 + env$SELECTED_SIZE_CV)
+if(env$MIN_SELECTED_SIZE == 0 && env$MIN_ALLOWED_SIZE == 0){
+  stop("either --min-selected-size or --min-allowed-size must be provided\n")
+}
+minAllowedSize <- if (env$MIN_ALLOWED_SIZE > 0) {
+    env$MIN_ALLOWED_SIZE
+} else {
+    env$MIN_SELECTED_SIZE / (1 + env$SELECTED_SIZE_CV)
+}
 maxAllowedSize <- minAllowedSize * 2
 #=====================================================================================
 
@@ -111,7 +119,9 @@ plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x
         bg = "white", res = 600, type = "cairo")
     maxX <- minAllowedSize * 4
     insertSizeFreqs <- insertSizeFreqs[, ..insertSizeTypeNames]
-    maxY <- max(unlist(insertSizeFreqs))
+    maxY  <- max(unlist(insertSizeFreqs))
+    qMaxY <- quantile(unlist(insertSizeFreqs), probs = 0.975) * 1.2
+    maxY  <- if(maxY > qMaxY * 1.2) qMaxY else maxY
     plot(
         x = NA,
         y = NA,
