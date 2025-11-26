@@ -46,7 +46,7 @@ res[, reKey := paste(gsub("\\s", "", enzyme), toupper(cut_site), sep = "_")]
 #-------------------------------------------------------------------------------------
 message("parsing restriction fragments")
 frags <- sapply(res$reKey, function(reKey_){
-    message(paste("", "", reKey_, sep = "\t"))
+    message(paste("", reKey_, sep = "\t"))
     filePrefix <- paste(env$GENOME, "digest", reKey_, sep = ".")
     sitesFile <- paste(filePrefix, "txt.gz", sep = ".")
     sitesFile <- file.path(env$GENOME_REMAPS_DIR, sitesFile)

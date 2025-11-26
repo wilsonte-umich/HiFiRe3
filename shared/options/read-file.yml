@@ -9,7 +9,7 @@ options:
         default: null
         directory:
             must-exist: false # since might still need to be created by a basecaller
-        description: "directory with one or more unaligned bam files with required tags [TASK_DIR/ubam]"
+        description: "directory with one or more FASTQ or unaligned BAM files with required tags [TASK_DIR/ubam]"
     read-file-prefix: 
         order: 2
         short: x
@@ -17,3 +17,10 @@ options:
         required: false
         default: null
         description: "file name prefix identifying files in --read-file-dir to align [use all files]"
+    read-number-format: 
+        order: 3
+        short: n
+        type: string
+        required: false
+        default: _Rx_
+        description: "portion of file name that identifies paired read files ('x' is replaced with 1 or 2)"

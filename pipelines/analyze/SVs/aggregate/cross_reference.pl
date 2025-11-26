@@ -39,8 +39,7 @@ fillEnvVar(\our $TMP_FILE_PREFIX_SHM, 'TMP_FILE_PREFIX_SHM');
 fillEnvVar(\our $ALIGNMENT_MODE,      'ALIGNMENT_MODE');
 fillEnvVar(\our $GROUP_BREAKPOINT_DISTANCE, 'GROUP_BREAKPOINT_DISTANCE');
 fillEnvVar(\our $CROSS_REFERENCE_PADDING,   'CROSS_REFERENCE_PADDING');
-# fillEnvVar(\our $BANDWIDTH,           'BANDWIDTH');
-my $BANDWIDTH = "500,3300"; 
+fillEnvVar(\our $BANDWIDTH,           'BANDWIDTH');
 
 # constants
 use constant {
@@ -291,7 +290,7 @@ foreach my $qryJxnId(1..$#jxnTargets){ # there is no junction ID 0
         chomp $aln;
         my @aln = split("\t", $aln, SPLIT_TO_TAGS);
         ($aln[FLAG] & _SUPPLEMENTAL) and next;
-        $aln[TAGS] =~ m/AS:i:(\S+)/;
+        "\t$aln[TAGS]" =~ m/\tAS:i:(\S+)/;
         my $alnScore = $1;
         my $prType = (split("_", $aln[RNAME]))[0];
         if($results{$prType}){ # the second jxn type encountered

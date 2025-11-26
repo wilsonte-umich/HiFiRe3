@@ -2,7 +2,7 @@
 
 # set derivative environment variables and file paths
 export PIPELINE_SHARED_DIR=${PIPELINE_DIR}/shared
-source ${PIPELINE_SHARED_DIR}/Workflow.sh
+source ${PIPELINE_SHARED_DIR}/workflow.sh
 
 # copy GENOME_FASTA to TMP_DIR_WRK_SHM for fast access
 echo "copying $GENOME fasta file to shared memory"
@@ -27,8 +27,8 @@ runWorkflowStep 3 tally_junctions tally/tally_junctions.sh
 # report some useful summary information target/genic genome regions
 runWorkflowStep 4 tally_genome tally/tally_genome.sh
 
-# report some useful summary information target/genic genome regions
-runWorkflowStep 5 package package/package.sh
+# reduce the size of the final junctions files for loading in the app
+runWorkflowStep 5 package ${MODULES_DIR}/analyze/SVs/package/package.sh
 
 # clean up
 rm -fr $TMP_DIR_WRK_SMALL

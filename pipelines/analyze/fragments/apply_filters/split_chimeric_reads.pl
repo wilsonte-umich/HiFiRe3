@@ -18,6 +18,7 @@ our (@siteDistances, @adapterScores, %insertSizeCounts, %stemLengthCounts);
 
 # variables
 use vars qw(
+    $REJECTING_JUNCTION_RE_SITES
     $REJECT_JUNCTION_DISTANCE
     $INSERTION_WINDOW_SIZE
     $MIN_INSERTION_WINDOW_QUAL
@@ -30,12 +31,14 @@ use vars qw(
     $FILTERED_STEM_LENGTHS_FILE
     %chromIndex
     $isONT
+    $sizePlotBinSize
 );
 my $minSumInsQual = ($MIN_INSERTION_WINDOW_QUAL + 33) * $INSERTION_WINDOW_SIZE;
 my $adapterCore = $INSERTION_ADAPTER_SEQUENCE; # duplex portion of the ONT kit adapter; for ligation kit, last T matches the one-base A-tail; fused to 5' genomic ends 
 my $adapterCoreRc = $adapterCore;    # fused to 3' genomic ends
 rc(\$adapterCoreRc);
-my ($aln1, $aln2, $isOnTarget_5, $isChimeric, $isFoldback, $clip1, $clip2, $jxnInsSize);
+my ($aln1, $aln2, $readLen,
+    $isChimeric, $isFoldback, $clip1, $clip2, $jxnInsSize);
 
 # constants
 use constant {
@@ -53,21 +56,25 @@ use constant {
     SITE_DIST_2         => 11,
     SEQ_SITE_INDEX1_2   => 12,
     SEQ_SITE_POS1_2     => 13,
-    IS_END_TO_END       => 14,
-    CH_TAG              => 15,
-    TL_TAG              => 16,
-    INSERT_SIZE         => 17,
-    IS_ALLOWED_SIZE     => 18,
-    DE_TAG              => 19,
-    HV_TAG              => 20,
-    N_REF_BASES         => 21,
-    N_READ_BASES        => 22,
-    STEM5_LENGTH        => 23,
-    STEM3_LENGTH        => 24,
+    IS_END_TO_END_READ  => 14,
+    IS_END_TO_END_INSERT=> 15,
+    NODE_5              => 16,
+    NODE_3              => 17,
+    CH_TAG              => 18,
+    TL_TAG              => 19,
+    INSERT_SIZE         => 20,
+    IS_ALLOWED_SIZE     => 21,
+    FM_TAG              => 22,
+    DE_TAG              => 23,
+    HV_TAG              => 24,
+    N_REF_BASES         => 25,
+    N_READ_BASES        => 26,
+    STEM5_LENGTH        => 27,
+    STEM3_LENGTH        => 28,
     # ... unused fields ...
-    S_SEQ               => 33,
-    S_QUAL              => 34,
-    CS_TAG              => 35,
+    S_SEQ               => 37,
+    S_QUAL              => 38,
+    CS_TAG              => 39,
     #-------------
     _IS_PAIRED      => 1,  # SAM FLAG bits
     _PROPER_PAIR    => 2,
@@ -86,8 +93,6 @@ use constant {
     #--------------
     FALSE => 0,
     TRUE  => 1,
-    #-------------
-    SIZE_PLOT_BIN_SIZE => 250,
     # -------------
     JXN_FAIL_NONE            => 0,
     JXN_FAIL_TRAVERSAL_DELTA => 1,
@@ -119,7 +124,7 @@ my $READ_LEN_NON_CHIMERIC = READ_LEN_NON_CHIMERIC;
 
 # check junction quality from pairs of alignments
 sub getJxnFailureFlag {
-    ($aln1, $aln2, $isOnTarget_5) = @_;
+    ($aln1, $aln2, $readLen) = @_;
     $isChimeric = FALSE;
     $isFoldback = FALSE;
 
@@ -129,7 +134,7 @@ sub getJxnFailureFlag {
 
     # reject junctions that fail REJECT_JUNCTION_DISTANCE
     # reject ONT junctions that contain adapters, if not already caught by REJECT_JUNCTION_DISTANCE    
-    breakpointMatchesSite() and return JXN_FAIL_SITE_MATCH;
+    $REJECTING_JUNCTION_RE_SITES and breakpointMatchesSite() and return JXN_FAIL_SITE_MATCH;
     isFoldbackInversion()   and return JXN_FAIL_FOLDBACK_INV;
     isOntFollowOn()         and return JXN_FAIL_ONT_FOLLOW_ON;
     junctionHasAdapters()   and return JXN_FAIL_HAS_ADAPTER;
@@ -185,7 +190,7 @@ sub isOntFollowOn {
         ($$aln2[S_FLAG] & _REVERSE) ? 
         getRightClip($$aln2[S_CIGAR]) :
         getLeftClip($$aln2[S_CIGAR]);
-    $jxnInsSize = ($clip1 + $clip2) - $$aln1[INSERT_SIZE];
+    $jxnInsSize = ($clip1 + $clip2) - $readLen;
     $isONT or return FALSE;
     $jxnInsSize < $MIN_ADAPTER_LENGTH and return FALSE;
     $jxnInsSize > $INSERTION_WINDOW_SIZE or return FALSE;
@@ -250,8 +255,8 @@ sub recordVariantSizes {
     $isFoldback and return;
     my $stemLengthBin = int(min(
         $alns[0][STEM5_LENGTH],
-        $alns[1][IS_END_TO_END] ? $alns[1][STEM3_LENGTH] : 1e9
-    ) / SIZE_PLOT_BIN_SIZE) * SIZE_PLOT_BIN_SIZE;
+        $alns[1][STEM3_LENGTH] ? $alns[1][STEM3_LENGTH] : 1e9
+    ) / $sizePlotBinSize) * $sizePlotBinSize;
 
     # record insert sizes for all single-junction SV reads stratified by chimericity
     # non-chimeric here may contain deletion and other true SVs
@@ -325,10 +330,13 @@ sub printChimeraSummary {
     close $stemsH;
 
     # print site distance distribution to log
-    print STDERR "\njunction node-to-site distances\n";
-    foreach my $dist(0..MAX_SITE_DISTANCE){
-        print STDERR join("\t", $dist, $siteDistances[$dist] || 0), "\n";
+    if($REJECTING_JUNCTION_RE_SITES){
+        print STDERR "\njunction node-to-site distances\n";
+        foreach my $dist(0..MAX_SITE_DISTANCE){
+            print STDERR join("\t", $dist, $siteDistances[$dist] || 0), "\n";
+        }
     }
+
     # print adapter SW score distribution to log
     print STDERR "\nadapter SW scores\n";
     foreach my $score(0..100){

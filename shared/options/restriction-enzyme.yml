@@ -4,9 +4,9 @@ options:
         order: 1
         short: e
         type: string
-        required: true
-        default: null 
-        description: "name of the restriction enzyme used to cleave genomic DNA (from shared/modules/REs/blunt_enzymes.csv)" 
+        required: false
+        default: NA 
+        description: "name of the restriction enzyme used to cleave genomic DNA (from shared/modules/REs/blunt_enzymes.csv if not NA)" 
     # site-tolerance: # used during both intial site localization and SV-site matching
     #     order: 2
     #     short: s

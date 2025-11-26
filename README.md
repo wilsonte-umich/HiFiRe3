@@ -8,26 +8,29 @@ single nucleotide variants (SNVs) and structural variants (SVs)
 by controlling input fragment sizes and/or by
 **Re**striction enzyme-mediated **Re**duced **Re**presentation.
 
-**IMPORTANT**: tools in this repository assume that any
+**IMPORTANT**: HiFiRe3 tools assume that any
 insert size selection during library preparation was performed 
-_before adapter ligation_, targeting insert sizes from 1N to 2N bp. 
-They also generally assume that input libararies are PCR-free.
+_before adapter ligation_, targeting molecules from 1N to 2N bp. 
+They also assume that input libararies are either PCR-free
+or used pooled PCR with unique dual indices to minimize chimeric 
+template switching.
 
 The steps to using HiFiRe3 are to:
 - install the codebase
 - build the conda enviroment
 - download and digest a reference genome using `prepare genome`
 - if needed, basecall reads using `basecall PacBio` or `basecall ONT`
-- align and analyze basecalled reads using 
+- align and analyze basecalled reads using:
     - `analyze fragments`
     - `analyze SVs` and/or `analyze SNVs`
+- compare samples using `compare SVs` and/or `compare SNVs`
 - visualize results in the R Shiny apps
 
 ## Single-suite installation (recommended)
 
 HiFiRe3 is implemented in the
-[Michigan Data Interface](https://midataint.github.io/) (MDI),
-a framework for developing, installing and running 
+[Michigan Data Interface](https://midataint.github.io/) (MDI)
+for developing, installing and running 
 Stage 1 HPC **pipelines** and Stage 2 interactive web **apps**.
 Because HiFiRe3 is packaged as standalone software, 
 we recommend a single-suite installation (see the 
@@ -55,9 +58,8 @@ minute, answer 'n' (no) to skip installation of the Stage 2 Apps (for now).
 perl alias.pl hf3 
 ```
 
-Answer 'y' to add the alias to your bash profile.
-
-Reload a new shell to activate the alias for use.
+Answer 'y' to add the alias to your bash profile, then 
+reload a new shell to activate the alias for use.
 
 If you prefer not to use an alias, 
 add the installation directory to your PATH variable
@@ -166,7 +168,8 @@ listed here in execution order:
 
 Required/common options are described below; use 
 `hf3 <pipeline> <action> --help` or `hf3 <pipeline> template` 
-for complete option information.
+for complete option information, or see the output of all action help commands
+[here](https://github.com/wilsontelab/HiFiRe3/tree/main/options).
 
 ### Universally required options
 
@@ -314,8 +317,8 @@ invoke modified basecalling.
 The final output of either HiFiRe3 `basecall` action is one or more unaligned
 BAM files in folder `<--output-dir>/<--data-name>/ubam`. Important custom tags specific to HiFiRe3
 or derived from vendor files are (all propagate into aligned BAM files, below):
-- ch:i: = ONT channel (missing for other platforms)
-- tl:Z: = ONT adapter trim lengths in format `<5' trim>,<3' trim>` (missing for other platforms)
+- ch:i: = ONT channel (absent for other platforms)
+- tl:Z: = ONT adapter trim lengths in format `<5' trim>,<3' trim>` (absent for other platforms)
 
 ## Shared fragment analysis upstream of SV and SNV calling
 

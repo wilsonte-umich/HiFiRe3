@@ -2,7 +2,7 @@
 
 # set derivative environment variables and file paths
 export PIPELINE_SHARED_DIR=${PIPELINE_DIR}/shared
-source ${PIPELINE_SHARED_DIR}/Workflow.sh
+source ${PIPELINE_SHARED_DIR}/workflow.sh
 source $MODULES_DIR/align/set_read_file_vars.sh
 mkdir -p $PLOTS_DIR
 
@@ -31,10 +31,9 @@ runWorkflowStep 2 extract_endpoints locate/extract_endpoints.sh
 # creates a table of filtering sites for tolerance matching, etc.
 runWorkflowStep 3 tabulate_endpoints locate/tabulate_endpoints.sh
 
-# TODO: consider letting match_sites.sh create the index files in temporary directories
-#       rather than writing them to the permanent output directory
-
 # create binary lookup files to speed matching of sample endpoints to filtering sites
+#   at sample level if EXPECTING_ENDPOINT_RE_SITES==TRUE
+#   at genome level if only REJECTING_JUNCTION_RE_SITES==TRUE
 runWorkflowStep 4 create_index locate/create_index.sh
 
 #-------------------------------------------------------------------------------

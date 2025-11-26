@@ -20,13 +20,20 @@ BGZIP="bgzip --threads $N_CPU --force --output"
 TABIX="tabix --threads $N_CPU --sequence 1"
 
 # index and parse unique fragment alignments and junctions
-echo "indexing alignments by $ENZYME_NAME outer RE sites"
+SUMMATION_COMMAND=cat
+if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ]; then
+    echo "indexing alignments by $ENZYME_NAME outer RE sites"
+    if [ "$SEQUENCING_PLATFORM" == "ONT" ]; then # only ever deduplicate RE fragments per ONT channel
+        SUMMATION_COMMAND="bash ${ACTION_DIR}/index/deduplicate_reads.sh"
+    fi
+else 
+    echo "indexing alignments by outer endpoints" # may still perform junction RE site matching
+    if [ "$DEDUPLICATE_READS" == "TRUE" ]; then # disregard very rare two-strand sequencing from the same PCR-free molecule
+        SUMMATION_COMMAND="bash ${ACTION_DIR}/index/deduplicate_reads.sh"
+    fi
+fi
 perl ${ACTION_DIR}/index/index_fragments.pl
 checkPipe
-SUMMATION_SCRIPT=${ACTION_DIR}/index/sum_not_deduplicated.sh
-if [ "$SEQUENCING_PLATFORM" == "ONT" ]; then
-    SUMMATION_SCRIPT=${ACTION_DIR}/index/sum_deduplicated.sh
-fi
 
 # concenate pseudo-reference sequences into a single file for use in app
 echo "concatenating read paths"
@@ -41,7 +48,7 @@ checkPipe
 # summarize the library read and base counts, with deduplication as needed
 echo "calculating (deduplicated) library read and base counts"
 zcat $SAMPLE_PATHS_PREFIX_WRK.alignment_sizes.*.txt.gz | 
-bash $SUMMATION_SCRIPT | 
+$SUMMATION_COMMAND | 
 perl ${ACTION_DIR}/index/summarize_library.pl
 
 # finish the sort on distal alignments and merge into first alignments, which were sorted during path indexing

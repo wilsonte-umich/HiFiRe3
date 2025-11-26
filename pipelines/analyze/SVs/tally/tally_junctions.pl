@@ -71,9 +71,9 @@ use constant {
     UJXN_GENE_DIST_2          => 37,
     UJXN_IS_EXCLUDED_1        => 38,
     UJXN_IS_EXCLUDED_2        => 39,
-    UJXN_BKPT_COVERAGE_1      => 40, # added by this script
+    UJXN_BKPT_COVERAGE_1      => 40,
     UJXN_BKPT_COVERAGE_2      => 41,
-    CMP_N_SAMPLES             => 42, # initialized to null values by this script
+    CMP_N_SAMPLES             => 42,
     CMP_SAMPLES               => 43,
     #-------------
     TYPE_PROPER         => 0, # junction/edge types

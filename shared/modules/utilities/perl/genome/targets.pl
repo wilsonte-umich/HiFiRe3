@@ -25,23 +25,27 @@ use constant {
     SITE_DIST_2         => 11,
     SEQ_SITE_INDEX1_2   => 12,
     SEQ_SITE_POS1_2     => 13,
-    IS_END_TO_END       => 14,
-    CH_TAG              => 15,
-    TL_TAG              => 16,
-    INSERT_SIZE         => 17,
-    IS_ALLOWED_SIZE     => 18,
-    DE_TAG              => 19,
-    HV_TAG              => 20,
-    N_REF_BASES         => 21,
-    N_READ_BASES        => 22,
-    STEM5_LENGTH        => 23,
-    STEM3_LENGTH        => 24,
-    PASSED_STEM5        => 25,
-    PASSED_STEM3        => 26,
-    BLOCK_N             => 27,
-    ALN_FAILURE_FLAG    => 28,
-    JXN_FAILURE_FLAG    => 29,
-    TARGET_CLASS        => 30,
+    IS_END_TO_END_READ  => 14,
+    IS_END_TO_END_INSERT=> 15,
+    NODE_5              => 16,
+    NODE_3              => 17,
+    CH_TAG              => 18,
+    TL_TAG              => 19,
+    INSERT_SIZE         => 20,
+    IS_ALLOWED_SIZE     => 21,
+    FM_TAG              => 22,
+    DE_TAG              => 23,
+    HV_TAG              => 24,
+    N_REF_BASES         => 25,
+    N_READ_BASES        => 26,
+    STEM5_LENGTH        => 27,
+    STEM3_LENGTH        => 28,
+    PASSED_STEM5        => 29,
+    PASSED_STEM3        => 30,
+    BLOCK_N             => 31,
+    ALN_FAILURE_FLAG    => 32,
+    JXN_FAILURE_FLAG    => 33,
+    TARGET_CLASS        => 34,
     # ... unused fields ...
     #-------------
     ON_TARGET   => "T",
@@ -73,7 +77,7 @@ my @countClasses = (
 );
 
 # operating parameters
-use vars qw($TARGETS_BED $REGION_PADDING $TARGET_SCALAR);
+use vars qw($TARGETS_BED $REGION_PADDING $TARGET_SCALAR $isONT);
 defined $REGION_PADDING or $REGION_PADDING = 0;
 defined $TARGET_SCALAR  or $TARGET_SCALAR  = 1;
 
@@ -186,16 +190,20 @@ sub getAlnTarget {
 # assembled TARGET_CLASS reflects:
 #   the read outermost alignments
 #   each alignment, with its matching targetI1
+# return TRUE if the 5' most (ONT adaptive) or any (other platforms) alignment of the read was on target
 sub setAlnTargetClasses {
     my (@alns) = @_;
     my ($targetClass5, $targetI1_5, $leftPos1_5, $rightPos1_5) = getAlnTarget($alns[0]);
     if(@alns > 1){
         my ($targetClass3) = getAlnTarget($alns[$#alns]);
+        my $targetI1_all = 0;
         foreach my $aln(@alns){
             my ($targetClass, $targetI1) = getAlnTarget($aln);
             $$aln[TARGET_CLASS] = $targetI1 << 9 | $targetClass5 << 6 | $targetClass3 << 3 | $targetClass; 
             # only non-SV reads are used for enrichment/coverage assessment
+            $targetI1_all += $targetI1;
         }
+        $isONT or return $targetI1_all == NULL_TARGET_I ? FALSE : TRUE; # other platforms allow any alignment to be on-target
     } else {
         $alns[0][TARGET_CLASS] = $targetI1_5 << 9 | $targetClass5 << 6 | $targetClass5 << 3 | $targetClass5;
         my $cc = $countClasses[$targetClass5];
@@ -203,7 +211,7 @@ sub setAlnTargetClasses {
         $targetClassCounts{$cc}{nSeqBases}  += $rightPos1_5 - $leftPos1_5 + 1;
         $targetClassCounts{$cc}{nProjBases} += abs($alns[0][SEQ_SITE_POS1_2] - $alns[0][SITE_POS1_1]) + 1;
     }
-    return $targetI1_5 == NULL_TARGET_I ? FALSE : TRUE; # return $isOnTarget_5
+    return $targetI1_5 == NULL_TARGET_I ? FALSE : TRUE; # ONT adaptive requires 5' alignment to be on-target
 }
 
 # print target class counts to log

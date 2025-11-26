@@ -28,9 +28,11 @@ map { require "$perlUtilDir/sequence/$_.pl" } qw(general smith_waterman);
 fillEnvVar(\our $BLUNT_RE_TABLE,   'BLUNT_RE_TABLE'); # HiFiRe3 only supports blunt REs
 fillEnvVar(\our $ENZYME_NAME,      'ENZYME_NAME');
 fillEnvVar(\our $ADAPTER_SEQUENCE, 'ADAPTER_SEQUENCE');
+fillEnvVar(\our $PLATFORM_MIN_INSERT_SIZE, 'PLATFORM_MIN_INSERT_SIZE');
 
 # set operating parameters
 my $MIN_SCORE = 10; # 3 RE bases + 1 A-tail + 6 adapter bases
+my $includeREHalfSite = ($ENZYME_NAME ne "NA");
 
 # constants
 use constant {
@@ -52,23 +54,24 @@ use constant {
     FORCE_QRY_END   => 2,
     SEARCH_SPACE_5  => 60, # search spaces empirically determined from actual reads
     SEARCH_SPACE_3  => 20, # wide enough to be sensitive, narrow enough to be fast and specific
-    MIN_INSERT_SIZE => 250
 };
 
 # initialize the RE
 my ($cutSiteLeftHalf, $cutSiteRightHalf, $cutSiteOffset) = ("", "", 0);
-open my $inH, "<", $BLUNT_RE_TABLE or die "could not open: $BLUNT_RE_TABLE: $!\n";
-my $header = <$inH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,...
-while (my $line = <$inH>){
-    my ($enzyme, $strand, $cut_site, $regex, $offset) = split(",", $line);
-    $enzyme eq $ENZYME_NAME or next;
-    $cut_site = uc($cut_site);
-    $cutSiteLeftHalf  = substr($cut_site, 0, $offset);
-    $cutSiteRightHalf = substr($cut_site, $offset, $offset);
-    $cutSiteOffset    = $offset;
+if($includeREHalfSite){
+    open my $inH, "<", $BLUNT_RE_TABLE or die "could not open: $BLUNT_RE_TABLE: $!\n";
+    my $header = <$inH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,...
+    while (my $line = <$inH>){
+        my ($enzyme, $strand, $cut_site, $regex, $offset) = split(",", $line);
+        $enzyme eq $ENZYME_NAME or next;
+        $cut_site = uc($cut_site);
+        $cutSiteLeftHalf  = substr($cut_site, 0, $offset);
+        $cutSiteRightHalf = substr($cut_site, $offset, $offset);
+        $cutSiteOffset    = $offset;
+    }
+    close $inH;
+    $cutSiteLeftHalf or die "unrecognized enzyme; must be a blunt cutter in shared/modules/REs/blunt_enzymes.csv\n";
 }
-close $inH;
-$cutSiteLeftHalf or die "unrecognized enzyme; must be a blunt cutter in shared/modules/REs/blunt_enzymes.csv\n";
 
 # initalize the adapter search sequences
 my $adapterCore = $ADAPTER_SEQUENCE; # duplex portion of the ONT kit adapter; for ligation kit, last T matches the one-base A-tail; fused to 5' genomic ends 
@@ -92,7 +95,7 @@ while (my $read = <STDIN>){
     } else {
         chomp $read;
         my @read = split("\t", $read, 12);
-        length($read[SEQ]) >= MIN_INSERT_SIZE or next; # reject reads too small to even search for adapaters
+        length($read[SEQ]) >= $PLATFORM_MIN_INSERT_SIZE or next; # reject reads too small to even search for adapaters
         my ($found5, $trimLen5) = find_adapter($adapter5, substr($read[SEQ], 0, SEARCH_SPACE_5), FORCE_QRY_END,   5);
         my ($found3, $trimLen3) = find_adapter($adapter3, substr($read[SEQ], -SEARCH_SPACE_3),   FORCE_QRY_START, 3);
         if($found3){ # order is important
@@ -147,7 +150,7 @@ sub find_adapter {
         
         # if not found, use smith_waterman to locate an adapter-gDNA transition without the RE half-site
         # in addition to sequencing errors, this may arise from adapter ligation onto a non-RE gDNA end
-        } else { 
+        } elsif ($includeREHalfSite) {
             ($qryOnRef, $score, $startQry0, $endQry0, $startRef0, $endRef0) = 
                 smith_waterman($$adapter{adapter}, $readSegment, NOT_FAST, $forcedEnd);
             if($score >= $MIN_SCORE){

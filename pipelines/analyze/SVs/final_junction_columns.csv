@@ -41,5 +41,5 @@ column_number,column_name,data_type,description
 40,UJXN_IS_EXCLUDED_2,integer,boolean 0|1 value indicating whether breakpoint 2 lies within a genome excluded region
 41,UJXN_BKPT_COVERAGE_1,integer,total number of reads that crossed OJXN_REF_POS1_1; includes all reads not just SV reads
 42,UJXN_BKPT_COVERAGE_2,integer,total number of reads that crossed OJXN_REF_POS1_2; includes all reads not just SV reads
-43,CMP_N_SAMPLES,integer,number of samples that called this junction; added by compare SVs
-44,CMP_SAMPLES,character,comma-delimited list of the samples that called this junction
+43,CMP_N_SAMPLES,integer,number of samples that called this junction
+44,CMP_SAMPLES,character,comma-delimited list of the samples that called this junction; starts and ends with a comma for easy pattern matching e.g. <comma>sample1<comma>sample2<comma>

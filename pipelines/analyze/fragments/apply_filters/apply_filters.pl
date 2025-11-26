@@ -14,7 +14,7 @@ use warnings;
 # initialize reporting
 our $script = "apply_filters";
 our $error  = "$script error";
-my ($nAlns, $nReads, $nSvReads, $nJunctions, $nBlocks, $nFailedTraversal) = (0) x 100;
+my ($nAlns, $nInputEvents, $nOutputReads, $nSvReads, $nJunctions, $nBlocks, $nFailedTraversal) = (0) x 100;
 our (%genomeCounts, %discardCounts, %stemLengthCounts, @nJxnsRejected, %readOutcomes);
 
 # load dependencies
@@ -30,12 +30,17 @@ fillEnvVar(\our $GENOME_SIZE,               'GENOME_SIZE');
 fillEnvVar(\our $IS_COMPOSITE_GENOME,       'IS_COMPOSITE_GENOME');
 # fillEnvVar(\our $ZOO_FILTER_LIST,   'ZOO_FILTER_LIST');
 # platform and library properties
-fillEnvVar(\our $SEQUENCING_PLATFORM,       'SEQUENCING_PLATFORM');
-fillEnvVar(\our $IS_END_TO_END_READ,        'IS_END_TO_END_READ');
-fillEnvVar(\our $MIN_SELECTED_SIZE,         'MIN_SELECTED_SIZE');
-fillEnvVar(\our $SELECTED_SIZE_CV,          'SELECTED_SIZE_CV');
-fillEnvVar(\our $MIN_ALLOWED_SIZE,          'MIN_ALLOWED_SIZE');
-fillEnvVar(\our $HAS_BASE_ACCURACY,         'HAS_BASE_ACCURACY');
+fillEnvVar(\our $SEQUENCING_PLATFORM,        'SEQUENCING_PLATFORM');
+fillEnvVar(\our $PLATFORM_MAX_INSERT_SIZE,   'PLATFORM_MAX_INSERT_SIZE');
+fillEnvVar(\our $IS_END_TO_END_READ,         'IS_END_TO_END_READ');
+fillEnvVar(\our $READ_PAIR_TYPE,             'READ_PAIR_TYPE');
+fillEnvVar(\our $READ_LENGTH_TYPE,           'READ_LENGTH_TYPE');
+fillEnvVar(\our $MIN_SELECTED_SIZE,          'MIN_SELECTED_SIZE');
+fillEnvVar(\our $SELECTED_SIZE_CV,           'SELECTED_SIZE_CV');
+fillEnvVar(\our $MIN_ALLOWED_SIZE,           'MIN_ALLOWED_SIZE');
+fillEnvVar(\our $HAS_BASE_ACCURACY,          'HAS_BASE_ACCURACY');
+fillEnvVar(\our $EXPECTING_ENDPOINT_RE_SITES,'EXPECTING_ENDPOINT_RE_SITES');
+fillEnvVar(\our $REJECTING_JUNCTION_RE_SITES,'REJECTING_JUNCTION_RE_SITES');
 # RE site matching
 # fillEnvVar(\our $ENZYME_NAME,               'ENZYME_NAME');
 # fillEnvVar(\our $BLUNT_RE_TABLE,            'BLUNT_RE_TABLE');
@@ -67,8 +72,12 @@ fillEnvVar(\our $FILTERED_INSERT_SIZES_FILE,'FILTERED_INSERT_SIZES_FILE');
 fillEnvVar(\our $FILTERED_STEM_LENGTHS_FILE,'FILTERED_STEM_LENGTHS_FILE');
 
 # load more dependencies
+if($REJECTING_JUNCTION_RE_SITES){
+    map { require "$ENV{APPLY_FILTERS_DIR}/$_.pl" } qw(
+        match_nodes_to_sites
+    );
+}
 map { require "$ENV{APPLY_FILTERS_DIR}/$_.pl" } qw(
-    match_nodes_to_sites
     check_traversal_delta
     enforce_quality_filters
     split_chimeric_reads
@@ -78,16 +87,19 @@ map { require "$ENV{APPLY_FILTERS_DIR}/$_.pl" } qw(
 use vars qw(%chromData %insertSizeCounts @nAlnsRejected @avgBaseQual);
 our $isONT = $SEQUENCING_PLATFORM eq "ONT";
 our $isEndToEndPlatform = ($IS_END_TO_END_READ eq "TRUE");
-$MIN_SELECTED_SIZE or $MIN_ALLOWED_SIZE or die "$error: either --min-selected-size or --min-allowed-size must be provided\n";
-our $minAllowedSize = $MIN_ALLOWED_SIZE ? $MIN_ALLOWED_SIZE : $MIN_SELECTED_SIZE / (1 + $SELECTED_SIZE_CV); # i.e., 1N
+our $isPairedReadPlatform = ($READ_PAIR_TYPE eq "paired");
+our $isSizeSelected = ($MIN_SELECTED_SIZE or $MIN_ALLOWED_SIZE);
+our $minAllowedSize = $MIN_ALLOWED_SIZE ? $MIN_ALLOWED_SIZE : $MIN_SELECTED_SIZE / (1 + $SELECTED_SIZE_CV); # i.e., 1N, zero if not size-selected
 our $maxAllowedSize = $minAllowedSize * 2;
 our $TARGET_SCALAR = 10;
+our $sizePlotBinSize = $READ_LENGTH_TYPE eq "short" ? 10 : 250; # bp
 
 # initialize the target regions, if any
 use vars qw($nRegions);
 loadTargetRegions();
 
 # initialize the genome and output files
+use vars qw(%chromIndex);
 setCanonicalChroms();
 my @nuclearChroms = getNuclearChroms();
 my %nuclearChroms = map { $_ => 1 } @nuclearChroms;
@@ -144,29 +156,33 @@ use constant {
     SITE_DIST_2         => 11,
     SEQ_SITE_INDEX1_2   => 12,
     SEQ_SITE_POS1_2     => 13,
-    IS_END_TO_END       => 14,
-    CH_TAG              => 15,
-    TL_TAG              => 16,
-    INSERT_SIZE         => 17,
-    IS_ALLOWED_SIZE     => 18,
-    DE_TAG              => 19,
-    HV_TAG              => 20,
-    N_REF_BASES         => 21,
-    N_READ_BASES        => 22,
-    STEM5_LENGTH        => 23,
-    STEM3_LENGTH        => 24,
-    PASSED_STEM5        => 25,
-    PASSED_STEM3        => 26,
-    BLOCK_N             => 27,
-    ALN_FAILURE_FLAG    => 28,
-    JXN_FAILURE_FLAG    => 29,
-    TARGET_CLASS        => 30,
-    END5_ON_TARGET      => 31,
-    READ_HAS_JXN        => 32,
-    S_SEQ               => 33,
-    S_QUAL              => 34,
-    CS_TAG              => 35,
-    SAM_TAGS            => 36, # used and then discarded
+    IS_END_TO_END_READ  => 14,
+    IS_END_TO_END_INSERT=> 15,
+    NODE_5              => 16,
+    NODE_3              => 17,
+    CH_TAG              => 18,
+    TL_TAG              => 19,
+    INSERT_SIZE         => 20,
+    IS_ALLOWED_SIZE     => 21,
+    FM_TAG              => 22,
+    DE_TAG              => 23,
+    HV_TAG              => 24,
+    N_REF_BASES         => 25,
+    N_READ_BASES        => 26,
+    STEM5_LENGTH        => 27,
+    STEM3_LENGTH        => 28,
+    PASSED_STEM5        => 29,
+    PASSED_STEM3        => 30,
+    BLOCK_N             => 31,
+    ALN_FAILURE_FLAG    => 32,
+    JXN_FAILURE_FLAG    => 33,
+    TARGET_CLASS        => 34,
+    IS_ON_TARGET        => 35,
+    READ_HAS_JXN        => 36,
+    S_SEQ               => 37,
+    S_QUAL              => 38,
+    CS_TAG              => 39,
+    SAM_TAGS            => 40, # used and then discarded
     # -------------
     FALSE   => 0,
     TRUE    => 1,
@@ -178,10 +194,17 @@ use constant {
     CLIP_TOO_LARGE          => "reads had a clip that was too large",
     DISTANCE_TOO_LARGE      => "reads had an outer site distance that was too large",
     UNTRIMMED_ONT_ADAPTER   => "ONT reads lacked a 5' adapter trim",
-    END5_OFF_TARGET         => "reads had an off-target 5' alignment",
+    IS_OFF_TARGET           => "reads had 5' (ONT) or all (other platforms) off-target alignment(s)",
     #-------------
     TRIM5 => 0, 
     TRIM3 => 1,
+    # -------------
+    EVENT   => 0,
+    READ1   => 1,
+    READ2   => 2,
+    #-------------
+    TOP_STRAND    => "", # signs for integer-encoded nodes
+    BOTTOM_STRAND => "-",
     # -------------
     ALN_FAIL_NONE            => 0,
     ALN_FAIL_MAPQ            => 1,
@@ -199,8 +222,6 @@ use constant {
     #-------------
     AVG_BASE_QUAL_BIN_SIZE => 5,
     #-------------
-    SIZE_PLOT_BIN_SIZE => 250,
-    #-------------
     READ_LEN_PROPER       => "nonSV.actual",
     PROJ_LEN_PROPER       => "nonSV.projected",
     READ_LEN_CHIMERIC     => "SV.chimeric", # cannot assess projected size of structural variant reads
@@ -211,6 +232,7 @@ my $PROJ_LEN_PROPER = PROJ_LEN_PROPER;
 my $hasPassedJxn  = "at least one passed junction";
 my $allFailedJxns = "all failed junctions";
 my $hasNoJxns     = "no junctions";
+my @nullSites = (0, 0, 0, 0, 0, 0);
 
 # # load any available zoo rejections (sequence that aligned better to another species)
 # my %zooRejections;
@@ -233,7 +255,7 @@ foreach my $chrom(@targetChroms){
 }
 
 # parse input SAM alignments into reads for processing
-my ($prevQName, @samAlns, @alns);
+my ($prevQName, @alnsByReadN, @samAlns, @alns);
 while(my $sam = <STDIN>){
     chomp $sam;
     my @sam = split("\t", $sam, SPLIT_TO_TAGS);
@@ -244,16 +266,17 @@ while(my $sam = <STDIN>){
 
     # handle sequences as a set of alignments
     if($prevQName and $prevQName ne $sam[QNAME]){
-        $discardCounts{ processQName() }++;
-        @samAlns = ();
+        processEvent();
+        @alnsByReadN = ();
     }
-    push @samAlns, \@sam;
+    my $readN = ($sam[FLAG] & _IS_PAIRED and $sam[FLAG] & _SECOND_IN_PAIR) ? READ2 : READ1;
+    push @{$alnsByReadN[$readN]}, \@sam;
     $prevQName = $sam[QNAME];
 }
-$discardCounts{ processQName() }++;
+processEvent();
 
 # close output handles
-finishMatchSites();
+$REJECTING_JUNCTION_RE_SITES and finishMatchSites();
 foreach my $chrom(keys %chromHs){
     my $chromH = $chromHs{$chrom};
     close $chromH;
@@ -266,8 +289,9 @@ sub printSummaryCounts {
     # printCount(commify($nZooRejections),'nZooRejections', 'reads rejected by zoo');
 
     # counts of all input reads and alignments
-    printCount(commify($nReads), 'nReads', 'input reads');
-    printCount(commify($nAlns),  'nAlns',  'input alignments');
+    printCount(commify($nAlns),        'nAlns',        'input alignments');
+    printCount(commify($nInputEvents), 'nInputEvents', 'input events (single-end reads or read pairs)');
+    printCount(commify($nOutputReads), 'nOutputReads', 'output reads (after splitting unmerged read pairs)');
     print STDERR $sep;
 
     # report counts by genome when applicable
@@ -283,7 +307,7 @@ sub printSummaryCounts {
         KEPT_SEQUENCE, 
         NONCANONICAL_CHROM, 
         FAILED_SITE_LOOKUP, TELOMERIC_FRAGMENT, CLIP_TOO_LARGE, DISTANCE_TOO_LARGE, # UNTRIMMED_ONT_ADAPTER
-        END5_OFF_TARGET
+        IS_OFF_TARGET
     ){
         printCount(commify($discardCounts{$reason} || 0), $reason, '');
     }
@@ -336,17 +360,49 @@ sub printSummaryCounts {
 }
 printSummaryCounts();
 
-# process QNAME alignment groups, return read rejection reason for counting
-sub processQName {
-    $nReads++;
+# determine if read is unmerged pair, process accordingly
+our ($isUnmergedPair, $eventHasJxn);
+sub processEvent {
+    $nInputEvents++;
+    $isUnmergedPair = $alnsByReadN[READ2] ? TRUE : FALSE;
+    if($isUnmergedPair){
+        # collect outer ends of unmerged pairs to define their insert-level properties
+        my @pairedAlns = (
+            undef,
+            # order alignments from read 5' to 3'
+            [sort { getQueryStart0(@{$a}[FLAG, CIGAR]) <=> getQueryStart0(@{$b}[FLAG, CIGAR]) } @{$alnsByReadN[READ1]}],
+            [sort { getQueryStart0(@{$a}[FLAG, CIGAR]) <=> getQueryStart0(@{$b}[FLAG, CIGAR]) } @{$alnsByReadN[READ2]}]
+        );
+        $eventHasJxn = (@{$alnsByReadN[READ1]} > 1 or @{$alnsByReadN[READ2]} > 1) ? TRUE : FALSE;
+        # then process each read separately
+        foreach my $readN(READ1, READ2){
+            @samAlns = @{$pairedAlns[$readN]};
+            # adjust QNAMEs to indicate read number, i.e., to be unique per paired read
+            # from here forward, unmerged paired reads are essentially treated as fixed-length single reads
+            # junctions in anomalous gaps are unverifiable and not considered for rare SV analysis
+            # pass the paired 5' read end for proper outer node assignment
+            foreach my $sam(@samAlns){ $$sam[QNAME] .= "/$readN"; }
+            $discardCounts{ processOutputRead($readN == READ1 ? $pairedAlns[READ2][0] : $pairedAlns[READ1][0]) }++;
+        }
+    } else {
+        # order alignments from read 5' to 3'
+        @samAlns = sort { getQueryStart0(@{$a}[FLAG, CIGAR]) <=> getQueryStart0(@{$b}[FLAG, CIGAR]) } @{$alnsByReadN[READ1]};
+        $eventHasJxn = @samAlns > 1 ? TRUE : FALSE;
+        $discardCounts{ processOutputRead() }++;
+    }
+}
 
-    # order alignments from read 5' to 3'
-    @samAlns > 1 and @samAlns = sort { getQueryStart0(@{$a}[FLAG, CIGAR]) <=> getQueryStart0(@{$b}[FLAG, CIGAR]) } @samAlns;
+# process QNAME alignment groups, return read rejection reason for counting
+sub processOutputRead {
+    my ($pairedAln5) = @_;
+    $nOutputReads++;
+
+    # only consider reads whose 5' alignment is on a canonical chromosome
     $nuclearChroms{$samAlns[0][RNAME]} or return NONCANONICAL_CHROM;
 
     # count intergenomic vs intragenomic reads when applicable
     if($IS_COMPOSITE_GENOME){
-        my ($chrom5,$genome5) = ($samAlns[0][RNAME] =~ m/(.+)_(.+)/); # e.g., chr1_(hs1)
+        my ($chrom5, $genome5) = ($samAlns[0][RNAME] =~ m/(.+)_(.+)/); # e.g., chr1_(hs1)
         $genomeCounts{$genome5}++;
     }
 
@@ -355,7 +411,7 @@ sub processQName {
     @alns = map {
         my @aln = @{$_}[S_QNAME..S_CIGAR];
         @aln[S_SEQ..S_QUAL] = @{$_}[SEQ..QUAL];
-        $aln[SAM_TAGS] = $$_[TAGS];
+        $aln[SAM_TAGS] = "\t".$$_[TAGS]; # facilitate regex matching
         \@aln;
     } @samAlns;
 
@@ -368,53 +424,54 @@ sub processQName {
     #        *       *       *     proper sitePos1 values
     #   ----|5-----3/5-----3|----  as nodes are numbered for alignments
     #   ----|3-----5/3-----5|----
-    my ($isEndToEnd, @trims);
-    my $tl = $alns[0][SAM_TAGS] =~ m/tl:Z:(\S+)/ ? $1 : "0,0";
+    my ($isEndToEndRead, @trims);
+    my $tl = $alns[0][SAM_TAGS] =~ m/\ttl:Z:(\S+)/ ? $1 : "0,0";
     foreach my $i(0..$#alns){
-        if($alns[$i][S_FLAG] & _REVERSE){
-            @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = (
+        if($alns[$i][S_FLAG] & _REVERSE){ # outer endpoints are site matched even when EXPECTING_ENDPOINT_RE_SITES is FALSE if REJECTING_JUNCTION_RE_SITES is TRUE
+            @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = $REJECTING_JUNCTION_RE_SITES ? (
                 findClosestSite($alns[$i][S_RNAME], getEnd($alns[$i][S_POS1], $alns[$i][S_CIGAR]) + 1),
                 findClosestSite($alns[$i][S_RNAME], $alns[$i][S_POS1])
-            );
+            ) : @nullSites;
         } else {
-            @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = ( 
+            @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = $REJECTING_JUNCTION_RE_SITES ? ( 
                 findClosestSite($alns[$i][S_RNAME], $alns[$i][S_POS1]),
                 findClosestSite($alns[$i][S_RNAME], getEnd($alns[$i][S_POS1], $alns[$i][S_CIGAR]) + 1)
-            );
+            ) : @nullSites;
         }
         if($i == 0){ # read 5' end
-            $alns[$i][SITE_INDEX1_1] or return FAILED_SITE_LOOKUP;
+            if($REJECTING_JUNCTION_RE_SITES){
+                $alns[$i][SITE_INDEX1_1] or return FAILED_SITE_LOOKUP;
 
-            # reject telomeric fragments, i.e., that would cross past the first or last RE site on chrom
-            if($alns[$i][S_FLAG] & _REVERSE){
-                abs($alns[$i][SITE_INDEX1_1]) >  1 or return TELOMERIC_FRAGMENT;
-            } else {
-                abs($alns[$i][SITE_INDEX1_1]) <  ${$chromData{$alns[$i][S_RNAME]}}[nSites_] or return TELOMERIC_FRAGMENT;
+                # reject telomeric fragments, i.e., that would cross past the first or last RE site on chrom
+                if($alns[$i][S_FLAG] & _REVERSE){
+                    abs($alns[$i][SITE_INDEX1_1]) >  1 or return TELOMERIC_FRAGMENT;
+                } else {
+                    abs($alns[$i][SITE_INDEX1_1]) <  ${$chromData{$alns[$i][S_RNAME]}}[nSites_] or return TELOMERIC_FRAGMENT;
+                }
             }
 
             # get ONT adapter trims once per read
             @trims = split(",", $tl);
 
             # perform initial end-to-end status determination
-            $isEndToEnd = (
+            $isEndToEndRead = (
                 $isEndToEndPlatform or 
-                (
-                    $isONT and 
-                    $trims[TRIM3]
-                )
+                ($isONT and $trims[TRIM3]) or # TODO: also check from 3' adapter trim on Aviti_1x300 and Ultima, i.e., add tl tag to those platforms
+                ($isPairedReadPlatform and !$isUnmergedPair)
             ) ? TRUE : FALSE;
-
             # check 5' query end, always required to match a RE site
             my $clip5 = 
                 ($isONT and !$trims[TRIM5]) ?
                 0 : # when ONT untrimmed, clip would include the adapter...
                 (($alns[$i][S_FLAG] & _REVERSE) ? getRightClip($alns[$i][S_CIGAR]) : getLeftClip($alns[$i][S_CIGAR]));
             $clip5 > $CLIP_TOLERANCE and return CLIP_TOO_LARGE;
-            my $dist5 = abs( ($alns[$i][S_FLAG] & _REVERSE) ? $alns[$i][SITE_DIST_1] + $clip5 : $alns[$i][SITE_DIST_1] - $clip5 );
-            $dist5 > $ACCEPT_ENDPOINT_DISTANCE and return DISTANCE_TOO_LARGE;
+            if($EXPECTING_ENDPOINT_RE_SITES){
+                my $dist5 = abs( ($alns[$i][S_FLAG] & _REVERSE) ? $alns[$i][SITE_DIST_1] + $clip5 : $alns[$i][SITE_DIST_1] - $clip5 );
+                $dist5 > $ACCEPT_ENDPOINT_DISTANCE and return DISTANCE_TOO_LARGE;
+            }
         }
         if($i == $#alns){ # read 3' end
-            $alns[$i][SITE_INDEX1_2] or return FAILED_SITE_LOOKUP;
+            !$REJECTING_JUNCTION_RE_SITES or $alns[$i][SITE_INDEX1_2] or return FAILED_SITE_LOOKUP;
 
             # aln3 is guaranteed by 'locate' to be between 1 and nSitesChrom
 
@@ -425,68 +482,138 @@ sub processQName {
                 0 :
                 (($alns[$i][S_FLAG] & _REVERSE) ? getLeftClip($alns[$i][S_CIGAR]) : getRightClip($alns[$i][S_CIGAR]));
             my $dist3 = abs( ($alns[$i][S_FLAG] & _REVERSE) ? $alns[$i][SITE_DIST_2] - $clip3 : $alns[$i][SITE_DIST_2] + $clip3 );
-            if($isEndToEnd){
+            if($isEndToEndRead){
                 $clip3 > $CLIP_TOLERANCE and return CLIP_TOO_LARGE;
-                $dist3 > $ACCEPT_ENDPOINT_DISTANCE and return DISTANCE_TOO_LARGE;
+                $EXPECTING_ENDPOINT_RE_SITES and $dist3 > $ACCEPT_ENDPOINT_DISTANCE and return DISTANCE_TOO_LARGE;
             }
 
             # promote incomplete sequences to end-to-end status if they got to the fragment end
-            $dist3 <= $ACCEPT_ENDPOINT_DISTANCE and $isEndToEnd = TRUE;
+            $EXPECTING_ENDPOINT_RE_SITES and $dist3 <= $ACCEPT_ENDPOINT_DISTANCE and !$isUnmergedPair and $isEndToEndRead = TRUE;
         }
     }
+    my $inEndToEndInsert = ($isEndToEndRead or $isPairedReadPlatform) ? TRUE : FALSE;
 
-    # collect next chunk of read-level metadata for passing into each alignment
+    # collect initial 3' site projections of each alignment
     my $readHasJxn = @alns > 1 ? TRUE : FALSE;
-    my $ch = $alns[0][SAM_TAGS] =~ m/ch:i:(\d+)/ ? $1 : 0;
-    my $insertSize = length($alns[0][S_SEQ]);
-    my $readStart0 = getQueryStart0($alns[ 0][S_FLAG], $alns[ 0][S_CIGAR]);
-    my $readEnd1   = getQueryEnd1(  $alns[-1][S_FLAG], $alns[-1][S_CIGAR], $insertSize);
-    my $isAllowedSize = ($insertSize >= $minAllowedSize and $insertSize <= $maxAllowedSize) ? TRUE : FALSE;
     foreach my $aln(@alns){
-        @$aln[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = ($isEndToEnd and !$readHasJxn) ?
+        @$aln[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = ($isEndToEndRead and !$readHasJxn) ?
             @{$alns[-1]}[SITE_INDEX1_2..SITE_POS1_2] :
             (0,0);
         $$aln[SEQ_SITE_INDEX1_2] = abs($$aln[SEQ_SITE_INDEX1_2]);
-        @$aln[IS_END_TO_END..IS_ALLOWED_SIZE] = ($isEndToEnd, $ch, $tl, $insertSize, $isAllowedSize);
     }
 
     # determine if the 5'-most alignment still needs to be projected
-    $alns[ 0][SEQ_SITE_INDEX1_2] or @{$alns[ 0]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[0]);
+    my ($node5, $node3);
+    if($EXPECTING_ENDPOINT_RE_SITES){
+        $alns[ 0][SEQ_SITE_INDEX1_2] or @{$alns[ 0]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[0]);
 
-    # determine if the 3'-most alignment still needs to be projected
-    # here projection is more limited and simply bumps to the next RE site on any haplotype
-    $alns[-1][SEQ_SITE_INDEX1_2] or @{$alns[-1]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[-1]);
+        # determine if the 3'-most alignment still needs to be projected
+        # here projection is more limited and simply bumps to the next RE site on any haplotype
+        $alns[-1][SEQ_SITE_INDEX1_2] or @{$alns[-1]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[-1]);
+
+        # get outer nodes based on RE site positions
+        my $pairedSitePos1;
+        if($pairedAln5){
+            $pairedSitePos1 = (findClosestSite( # may not have assigned site position to other read yet for first read of unmerged pair
+                $$pairedAln5[S_RNAME], 
+                ($$pairedAln5[S_FLAG] & _REVERSE) ? getEnd($$pairedAln5[S_POS1], $$pairedAln5[S_CIGAR]) : $$pairedAln5[S_POS1],
+            ))[1] or return FAILED_SITE_LOOKUP;
+        }
+        $node5 = parseSignedNode( # reads always define their own 5' outer node
+            $alns[0], 
+            $alns[0][SITE_POS1_1], # using site positions enables fuzzy endpoint matching when comparing reads
+            BOTTOM_STRAND, TOP_STRAND
+        );
+        $node3 = $pairedAln5 ? 
+            parseSignedNode(
+                $pairedAln5, 
+                $pairedSitePos1,
+                TOP_STRAND, BOTTOM_STRAND # invert the strand orientation of paired 5' ends to match the behavior of single or merged reads
+            ) : 
+            parseSignedNode(
+                $alns[-1], 
+                $alns[-1][SEQ_SITE_POS1_2],  # using projected 3' ends allows best deduplication of partially sequenced RE fragments
+                BOTTOM_STRAND, TOP_STRAND
+            );
+
+    # get outer nodes based on alignment positions
+    } else {
+        $node5 =  parseSignedNode(
+            $alns[0], 
+            ($alns[0][S_FLAG] & _REVERSE) ? getEnd($alns[0][S_POS1], $alns[0][S_CIGAR]) : $alns[0][S_POS1], 
+            BOTTOM_STRAND, TOP_STRAND
+        );
+        $node3 = $pairedAln5 ? 
+            parseSignedNode(
+                $pairedAln5, 
+                ($$pairedAln5[S_FLAG] & _REVERSE) ? getEnd($$pairedAln5[S_POS1], $$pairedAln5[S_CIGAR]) : $$pairedAln5[S_POS1],
+                TOP_STRAND, BOTTOM_STRAND
+            ) : 
+            parseSignedNode( # this unprojectable non-RE node position may not be the end of the insert if a single read is not end-to-end
+                $alns[-1], 
+                ($alns[-1][S_FLAG] & _REVERSE) ? $alns[-1][S_POS1] : getEnd($alns[-1][S_POS1], $alns[-1][S_CIGAR]), 
+                BOTTOM_STRAND, TOP_STRAND
+            )
+    }
+
+    # collect next chunk of read-level metadata for passing into each alignment
+    my $ch = $alns[0][SAM_TAGS] =~ m/\tch:i:(\d+)/ ? $1 : 0;
+    my $readLen = length($alns[0][S_SEQ]);
+    my $insertSize = $isUnmergedPair ? -$node3 - $node5 : $readLen;
+    $isUnmergedPair and (
+        $eventHasJxn or 
+        $insertSize < 0 or
+        $insertSize > $PLATFORM_MAX_INSERT_SIZE or 
+        $alns[0][S_RNAME] ne $$pairedAln5[S_RNAME]
+    ) and $insertSize = 0; # when read carries any type of SV, whether sequenced or not, we cannot infer the true insert size
+    my $readStart0 = getQueryStart0($alns[ 0][S_FLAG], $alns[ 0][S_CIGAR]);
+    my $readEnd1   = getQueryEnd1(  $alns[-1][S_FLAG], $alns[-1][S_CIGAR], $readLen); # may not be the end of the insert
+    my $isAllowedSize = (!$isSizeSelected or ($insertSize >= $minAllowedSize and $insertSize <= $maxAllowedSize)) ? TRUE : FALSE;
+    foreach my $aln(@alns){
+        @$aln[IS_END_TO_END_READ..IS_ALLOWED_SIZE] = (
+            $isEndToEndRead, 
+            $inEndToEndInsert,
+            $node5, # like other read and insert-level properties, these repeat the same on all alignments
+            $node3, 
+            $ch, 
+            $tl, 
+            $insertSize, 
+            $isAllowedSize
+        );
+    }
 
     # stop processing off-target reads, we have all required counts and they won't be used for variant calling
-    my $isOnTarget_5 = $nRegions ? setAlnTargetClasses(@alns) : TRUE;
+    my $isOnTarget = $nRegions ? setAlnTargetClasses(@alns) : TRUE;
     my $chromH = $chromHs{$samAlns[0][RNAME]};
-    ($isOnTarget_5 and $chromH) or return END5_OFF_TARGET;
+    ($isOnTarget and $chromH) or return IS_OFF_TARGET;
 
     # add alignment-level metadata
     my $blockN = 1;
     foreach my $aln(@alns){
-        my $stem5Len = getQueryEnd1($$aln[S_FLAG], $$aln[S_CIGAR], $insertSize) - $readStart0;
-        my $stem3Len = $readEnd1 - getQueryStart0($$aln[S_FLAG], $$aln[S_CIGAR]);
-        my $de = $$aln[SAM_TAGS] =~ m/de:f:(\S+)/ ? $1 : 0;
-        my $hv = $$aln[SAM_TAGS] =~ m/hv:i:(\d+)/ ? $1 : 0; # do not move these below
-        my $cs = $$aln[SAM_TAGS] =~ m/cs:Z:(\S+)/ ? $1 : "*";
+        my $stem5Len = getQueryEnd1($$aln[S_FLAG], $$aln[S_CIGAR], $readLen) - $readStart0;
+        my $stem3Len = $isEndToEndRead ? $readEnd1 - getQueryStart0($$aln[S_FLAG], $$aln[S_CIGAR]) : 0;
+        my $fm = $$aln[SAM_TAGS] =~ m/\tfm:Z:(\S+)/ ? $1 : "0:0:0";
+        my $de = $$aln[SAM_TAGS] =~ m/\tde:f:(\S+)/ ? $1 : 0; # do not move these below
+        my $hv = $$aln[SAM_TAGS] =~ m/\thv:i:(\d+)/ ? $1 : 0;
+        my $cs = $$aln[SAM_TAGS] =~ m/\tcs:Z:(\S+)/ ? $1 : "*";
         @$aln[
-            DE_TAG..READ_HAS_JXN,
+            FM_TAG..READ_HAS_JXN,
             CS_TAG
         ] = (
+            $fm,
             $de,
             $hv,
             getRefSpan($$aln[S_CIGAR]),     # N_REF_BASES
             getAlignedSize($$aln[S_CIGAR]), # N_READ_BASES
             $stem5Len,
             $stem3Len,
-            ($stem5Len < $minAllowedSize) ? TRUE : FALSE,
-            ($stem3Len < $minAllowedSize) ? TRUE : FALSE,
+            (!$isSizeSelected or  $stem5Len < $minAllowedSize)                    ? TRUE : FALSE,
+            (!$isSizeSelected or ($stem3Len < $minAllowedSize and $stem3Len > 0)) ? TRUE : FALSE,
             $blockN,
             getAlnFailureFlag($aln, $de, $readHasJxn),
             0, # JXN_FAILURE_FLAG
             $$aln[TARGET_CLASS] || 0,
-            $isOnTarget_5, # END5_ON_TARGET
+            $isOnTarget,
             0, # READ_HAS_JXN, NOT the same as $readHasJxn = @alns > 1, this will require JXN_FAILURE_FLAG == 0
             #--------------------
             $cs
@@ -505,7 +632,7 @@ sub processQName {
         my @failedTraversalDelta = (0) x @alns;
         foreach my $aln2I(1..$#alns){
             foreach my $aln1I(0..($aln2I - 1)){
-                failedTraversalDelta($alns[$aln1I], $alns[$aln2I], $insertSize) and
+                failedTraversalDelta($alns[$aln1I], $alns[$aln2I], $readLen) and
                     @failedTraversalDelta[($aln1I + 1)..$aln2I] = (1) x ($aln2I - $aln1I);
             }
         }
@@ -519,7 +646,7 @@ sub processQName {
             # apply chimeric junction filters
             $alns[$aln2I - 1][JXN_FAILURE_FLAG] = $failedTraversalDelta[$aln2I] ? 
                 JXN_FAIL_TRAVERSAL_DELTA : 
-                getJxnFailureFlag($alns[$aln2I - 1], $alns[$aln2I], $isOnTarget_5);
+                getJxnFailureFlag($alns[$aln2I - 1], $alns[$aln2I], $readLen);
             $nJxnsRejected[$alns[$aln2I - 1][JXN_FAILURE_FLAG]]++;
             $alns[$aln2I - 1][JXN_FAILURE_FLAG] or $anyJxnPassed = TRUE;
         }
@@ -527,14 +654,16 @@ sub processQName {
     $nBlocks += $blockN;
 
     # collect the distributions of insert sizes of on-target reads
-    my $sizeBin = int($insertSize / SIZE_PLOT_BIN_SIZE) * SIZE_PLOT_BIN_SIZE;
+    my $sizeBin = int($insertSize / $sizePlotBinSize) * $sizePlotBinSize;
     if($readHasJxn){ # disregard multi-junction reads when assessing insert sizes
-        @alns == 2 and recordVariantSizes($sizeBin, @alns); 
+        @alns == 2 and $sizeBin and recordVariantSizes($sizeBin, @alns); 
         $readOutcomes{$anyJxnPassed ? $hasPassedJxn : $allFailedJxns}++;
     } else {
-        $insertSizeCounts{$READ_LEN_PROPER}{$sizeBin}++;
-        my $projLen = abs($alns[0][SEQ_SITE_POS1_2] - $alns[0][SITE_POS1_1]) + 1;
-        $insertSizeCounts{$PROJ_LEN_PROPER}{int($projLen / SIZE_PLOT_BIN_SIZE) * SIZE_PLOT_BIN_SIZE}++;
+        $sizeBin and $insertSizeCounts{$READ_LEN_PROPER}{$sizeBin}++;
+        my $projLen = $EXPECTING_ENDPOINT_RE_SITES ? 
+            abs($alns[0][SEQ_SITE_POS1_2] - $alns[0][SITE_POS1_1]) + 1 :
+            $insertSize;
+        $projLen and $insertSizeCounts{$PROJ_LEN_PROPER}{int($projLen / $sizePlotBinSize) * $sizePlotBinSize}++;
         $readOutcomes{$hasNoJxns}++;
     }
 
@@ -545,6 +674,13 @@ sub processQName {
     }
 
     return KEPT_SEQUENCE;
+}
+
+# parse signed node representation for a read outer end
+sub parseSignedNode {
+    my ($aln, $pos1, $bottomStrand, $topStrand) = @_;
+    my $strandSign = ($$aln[S_FLAG] & _REVERSE) ? $bottomStrand : $topStrand;
+    $strandSign.$chromIndex{$$aln[S_RNAME]}.(sprintf "%09d", $pos1);
 }
 
 1;

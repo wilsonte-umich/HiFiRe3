@@ -2,7 +2,7 @@
 options:
     min-rflp-evidence: 
         order: 1
-        short: L
+        short: S
         type: integer
         required: false
         default: 3
