@@ -7,6 +7,7 @@
 
 # compatible restriction enyzmes
 export BLUNT_RE_TABLE=${MODULES_DIR}/REs/blunt_enzymes.csv
+export OVERHANG5_RE_TABLE=${MODULES_DIR}/REs/overhang5_enzymes.csv
 
 # genome+RE-specific paths
 export GENOME_REMAPS_DIR=${GENOME_DIR}/RE_maps

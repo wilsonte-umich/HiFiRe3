@@ -1,0 +1,9 @@
+[package]
+name = "genomex"
+version = "0.1.0"
+edition = "2021"
+authors = ["Thomas E. Wilson"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+regex = "1.12.2"

@@ -56,7 +56,12 @@ siteSummariesData <- reactive({
 # sweet spot size range
 #----------------------------------------------------------------------
 sweetSpot <- reactive({
-    sweetSpotMin_kb <- settings$get("RE_Settings", "Sweet_Spot_Min_kb")
+    readLengthType <- settings$get("RE_Settings", "Read_Length_Type")
+    sweetSpotMin_kb <- if(readLengthType == "short_read"){
+        settings$get("RE_Settings", "Short_Read_Min_bp") / 1000
+    } else {
+        settings$get("RE_Settings", "Long_Read_Min_kb")
+    }
     sweetSpotMax_kb <- sweetSpotMin_kb * 2
     sweetSpotMin <- sweetSpotMin_kb * 1000
     sweetSpotMax <- sweetSpotMin * 2

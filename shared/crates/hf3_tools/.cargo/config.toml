@@ -1,0 +1,2 @@
+[http]
+proxy = "http://proxy1.arc-ts.umich.edu:3128"

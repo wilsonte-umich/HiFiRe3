@@ -96,8 +96,8 @@ while (my $read = <STDIN>){
         chomp $read;
         my @read = split("\t", $read, 12);
         length($read[SEQ]) >= $PLATFORM_MIN_INSERT_SIZE or next; # reject reads too small to even search for adapaters
-        my ($found5, $trimLen5) = find_adapter($adapter5, substr($read[SEQ], 0, SEARCH_SPACE_5), FORCE_QRY_END,   5);
-        my ($found3, $trimLen3) = find_adapter($adapter3, substr($read[SEQ], -SEARCH_SPACE_3),   FORCE_QRY_START, 3);
+        my ($found5, $trimLen5) = find_adapter($adapter5, substr($read[SEQ], 0, SEARCH_SPACE_5), FORCE_QRY_END);
+        my ($found3, $trimLen3) = find_adapter($adapter3, substr($read[SEQ], -SEARCH_SPACE_3),   FORCE_QRY_START);
         if($found3){ # order is important
             $read[SEQ]  = substr($read[SEQ],  0, -$trimLen3);
             $read[QUAL] = substr($read[QUAL], 0, -$trimLen3);
@@ -114,7 +114,7 @@ while (my $read = <STDIN>){
 # execute an efficient adapter search
 # searches force alignment to the end of the adapter closest to the adapter-gDNA transition for specificity (also the highest quality bases)
 sub find_adapter {
-    my ($adapter, $readSegment, $forcedEnd, $end) = @_;
+    my ($adapter, $readSegment, $forcedEnd) = @_;
     my ($qryOnRef, $score, $startQry0, $endQry0, $startRef0, $endRef0, $trimLen);
 
         # for exploring and debugging smith_watermen

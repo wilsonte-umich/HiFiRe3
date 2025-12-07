@@ -26,6 +26,7 @@ use warnings;
 #           ====+--|*         small clips more likely reflect base differences in contiguous alignments, large clips may represent SV junctions
 #       nObserved is the count of all unique endpoints that nominated chrom,sitePos1
 #     ordered by chrom, but not by sitePos1 (since will be reordered anyway by tabulate_endpoints.R)
+#     all sitePos1 are for blunt REs, since read endpoint analysis only applies to ligation libraries
 
 # initialize reporting
 our $action = "extract_endpoints";

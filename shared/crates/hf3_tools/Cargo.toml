@@ -1,0 +1,9 @@
+[package]
+name = "hf3_tools"
+version = "0.1.0"
+edition = "2021"
+authors = ["Thomas E. Wilson"]
+
+[dependencies]
+mdi = { path = "mdi" }
+genomex = { path = "genomex" }

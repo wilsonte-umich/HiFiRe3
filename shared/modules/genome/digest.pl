@@ -19,6 +19,7 @@ map { require "$perlUtilDir/genome/$_.pl" } qw(chroms);
 fillEnvVar(\our $GENOME_REMAPS_DIR, 'GENOME_REMAPS_DIR');
 fillEnvVar(\our $GENOME,            'GENOME');
 fillEnvVar(\our $BLUNT_RE_TABLE,    'BLUNT_RE_TABLE');
+fillEnvVar(\our $OVERHANG5_RE_TABLE,'OVERHANG5_RE_TABLE');
 fillEnvVar(\our $MIN_PRIORITY_LEVEL,'MIN_PRIORITY_LEVEL');
 
 # initialize the genome
@@ -28,29 +29,34 @@ setCanonicalChroms();
 # initialize the REs
 # enzyme  strand  cut_site regex   offset  CpG_priority
 # EcoRV   0       GATATC   GATATC  3       4  
+# NcoI    0       CCATGG   CCATGG  1       5  
 # thus:
 #            *
 #  EcoRV GAT^ATC
 #        CTA^TAG
 #          *
+#  NcoI  C^CATG G
+#        G GTAC^C
 print STDERR "using restriction enyzmes:\n";
 my (@reSites, @reKeys, @reOffsets, @reRegex);
-open my $inH, "<", $BLUNT_RE_TABLE or die "could not open: $!\n";
-my $header = <$inH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,...
-while (my $line = <$inH>){
-    my ($enzyme, $strand, $cut_site, $regex, $offset, $priority) = split(",", $line);
-    $enzyme or next;
-    $priority < $MIN_PRIORITY_LEVEL and next;
-    $enzyme =~ s/\s//g;
-    $cut_site =~ s/\s//g;
-    $cut_site = uc($cut_site);
-    push @reSites, $cut_site;
-    push @reKeys, "$enzyme\_$cut_site"; # non-palindromic cut sites generate two files, one per strand
-    push @reOffsets, $offset;
-    push @reRegex, qr/$regex/;
-    print STDERR "  $enzyme\n";
+foreach my $RE_TABLE($BLUNT_RE_TABLE, $OVERHANG5_RE_TABLE){
+    open my $inH, "<", $RE_TABLE or die "could not open: $!\n";
+    my $header = <$inH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,...
+    while (my $line = <$inH>){
+        my ($enzyme, $strand, $cut_site, $regex, $offset, $priority) = split(",", $line);
+        $enzyme or next;
+        $priority < $MIN_PRIORITY_LEVEL and next;
+        $enzyme =~ s/\s//g;
+        $cut_site =~ s/\s//g;
+        $cut_site = uc($cut_site);
+        push @reSites, $cut_site;
+        push @reKeys, "$enzyme\_$cut_site"; # non-palindromic cut sites generate two files, one per strand
+        push @reOffsets, $offset;
+        push @reRegex, qr/$regex/;
+        print STDERR "  $enzyme\n";
+    }
+    close $inH;
 }
-close $inH;
 my @reIs = 0..$#reSites;
 
 # initialize the process

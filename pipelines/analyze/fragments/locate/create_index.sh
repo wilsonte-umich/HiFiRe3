@@ -5,7 +5,7 @@ BGZIP="bgzip --threads $N_CPU --force --output"
 TABIX="tabix --threads $N_CPU"
 
 # step is only relevant for inserts derived from RE-digested input DNAs
-if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ]; then
+if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ] && [ "$CREATING_SAMPLE_SITE_FILES" = "TRUE" ]; then
 
     # must always create a sample-level filtering site index
     echo "creating sample-level site lookup files"
@@ -19,9 +19,13 @@ if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ]; then
 
     echo "done"
 
+elif [ "$SITE_OVERRIDE_DIR" != "NA" ]; then
+    echo "skipping RE site indexing, using prior site calls from --site-override-dir"
+
 elif [ "$REJECTING_JUNCTION_RE_SITES" = "TRUE" ]; then
 
     # a genome-level filtering site index only needs to be created once per genome+enzyme combination
+    # may be used for non-RE endpoint libraries or when user sets --skip-rflp-detection
     if [ ! -f "$GENOME_FILTERING_SITES_BGZ" ]; then
         echo "creating genome-level site lookup files"
         mkdir -p $GENOME_ENZYME_DIR

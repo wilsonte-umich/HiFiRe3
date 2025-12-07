@@ -41,9 +41,10 @@ fillEnvVar(\our $MIN_ALLOWED_SIZE,           'MIN_ALLOWED_SIZE');
 fillEnvVar(\our $HAS_BASE_ACCURACY,          'HAS_BASE_ACCURACY');
 fillEnvVar(\our $EXPECTING_ENDPOINT_RE_SITES,'EXPECTING_ENDPOINT_RE_SITES');
 fillEnvVar(\our $REJECTING_JUNCTION_RE_SITES,'REJECTING_JUNCTION_RE_SITES');
-# RE site matching
-# fillEnvVar(\our $ENZYME_NAME,               'ENZYME_NAME');
-# fillEnvVar(\our $BLUNT_RE_TABLE,            'BLUNT_RE_TABLE');
+RE site matching
+fillEnvVar(\our $ENZYME_NAME,               'ENZYME_NAME');
+fillEnvVar(\our $BLUNT_RE_TABLE,            'BLUNT_RE_TABLE');
+fillEnvVar(\our $OVERHANG5_RE_TABLE,        'OVERHANG5_RE_TABLE');
 fillEnvVar(\our $SITE_CHROM_DATA_FILE,      'SITE_CHROM_DATA_FILE');     # in order of usage: first access the chrom's data
 fillEnvVar(\our $CLOSEST_SITE_LOOKUP_WRK,   'CLOSEST_SITE_LOOKUP_WRK');  # then find the closest site on the chrom to query pos1
 fillEnvVar(\our $SITE_DATA_LOOKUP_WRK,      'SITE_DATA_LOOKUP_WRK');     # then acquire the position and matching haplotypes
@@ -84,7 +85,7 @@ map { require "$ENV{APPLY_FILTERS_DIR}/$_.pl" } qw(
 );
 
 # set derived variables
-use vars qw(%chromData %insertSizeCounts @nAlnsRejected @avgBaseQual);
+use vars qw(%chromData $correction5 %insertSizeCounts @nAlnsRejected @avgBaseQual);
 our $isONT = $SEQUENCING_PLATFORM eq "ONT";
 our $isEndToEndPlatform = ($IS_END_TO_END_READ eq "TRUE");
 our $isPairedReadPlatform = ($READ_PAIR_TYPE eq "paired");
@@ -429,8 +430,8 @@ sub processOutputRead {
     foreach my $i(0..$#alns){
         if($alns[$i][S_FLAG] & _REVERSE){ # outer endpoints are site matched even when EXPECTING_ENDPOINT_RE_SITES is FALSE if REJECTING_JUNCTION_RE_SITES is TRUE
             @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = $REJECTING_JUNCTION_RE_SITES ? (
-                findClosestSite($alns[$i][S_RNAME], getEnd($alns[$i][S_POS1], $alns[$i][S_CIGAR]) + 1),
-                findClosestSite($alns[$i][S_RNAME], $alns[$i][S_POS1])
+                findClosestSite($alns[$i][S_RNAME], getEnd($alns[$i][S_POS1], $alns[$i][S_CIGAR]) + 1 - $correction5),
+                findClosestSite($alns[$i][S_RNAME], $alns[$i][S_POS1] - $correction5)
             ) : @nullSites;
         } else {
             @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = $REJECTING_JUNCTION_RE_SITES ? ( 
