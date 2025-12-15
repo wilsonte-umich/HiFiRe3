@@ -6,7 +6,9 @@
 # step is only relevant for reads expected to match RE site at their ends
 if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ] && [ "$CREATING_SAMPLE_SITE_FILES" = "TRUE" ]; then
 
-    perl ${ACTION_DIR}/locate/extract_endpoints.pl | 
+    # perl ${ACTION_DIR}/locate/extract_endpoints.pl | 
+    samtools view $NAME_BAM_FILE | 
+    ${MDI_DIR}/bin/hf3_tools extract_endpoints | 
     pigz -c --processes ${N_CPU} > ${OBSERVED_ENDPOINTS_FILE}
     checkPipe
     echo "done"

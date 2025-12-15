@@ -41,7 +41,7 @@ fillEnvVar(\our $MIN_ALLOWED_SIZE,           'MIN_ALLOWED_SIZE');
 fillEnvVar(\our $HAS_BASE_ACCURACY,          'HAS_BASE_ACCURACY');
 fillEnvVar(\our $EXPECTING_ENDPOINT_RE_SITES,'EXPECTING_ENDPOINT_RE_SITES');
 fillEnvVar(\our $REJECTING_JUNCTION_RE_SITES,'REJECTING_JUNCTION_RE_SITES');
-RE site matching
+# RE site matching
 fillEnvVar(\our $ENZYME_NAME,               'ENZYME_NAME');
 fillEnvVar(\our $BLUNT_RE_TABLE,            'BLUNT_RE_TABLE');
 fillEnvVar(\our $OVERHANG5_RE_TABLE,        'OVERHANG5_RE_TABLE');

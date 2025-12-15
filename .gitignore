@@ -1,10 +1,15 @@
-# never include nested, i.e., suite-centric MDI installations
+# exclude nested, i.e., suite-centric MDI installations
 # within this suite's git repository, or suite-centric containers
 /mdi/
 /containers/
+
+# exclude Rust build artifacts
+**/crates/target
+**/crates/Cargo.lock
 **/crates/*/target
 **/crates/*/Cargo.lock
 
+# exclude development artifacts and temporary files
 unused/
 old/
 _unused/

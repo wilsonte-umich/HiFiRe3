@@ -70,4 +70,6 @@ samtools view --threads $SAMTOOLS_CPU --exclude-flags $ANY_UNMAPPED $NAME_BAM_FI
 
 # apply error correction and flagging steps
 # print SITE_SAM to chromosome-level file in preparation for variant analysis
-perl ${APPLY_FILTERS_DIR}/apply_filters.pl
+# perl ${APPLY_FILTERS_DIR}/apply_filters.pl
+${MDI_DIR}/bin/hf3_tools apply_filters | 
+NEED TO HANDLE THE OUTPUT

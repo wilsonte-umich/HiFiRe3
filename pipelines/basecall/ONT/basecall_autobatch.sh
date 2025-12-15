@@ -42,7 +42,8 @@ do_batch_copy () {
         BATCH_OUTPUT_FILE2=$UBAM_DIR/${BATCH_PREFIX}_$COPY_OUT_I.unaligned.bam
         if [[ ! -f $BATCH_OUTPUT_FILE2 || "$FORCE_BASECALLING" == "true" ]]; then
             samtools view --with-header $COPY_OUT_DIR/out/*.bam | 
-            perl $MODULES_DIR/ONT/trim.pl | 
+            # perl $MODULES_DIR/ONT/trim.pl | 
+            ${MDI_DIR}/bin/hf3_tools trim_ont | 
             samtools view --bam --output $BATCH_OUTPUT_FILE2 -
             # mv -f $COPY_OUT_DIR/out/*.bam $UBAM_DIR
         fi

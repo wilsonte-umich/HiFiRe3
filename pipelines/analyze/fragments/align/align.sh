@@ -115,7 +115,8 @@ minimap2 \
     ${MINIMAP2_INDEX_WRK} - 2>${MINIMAP_LOG_FILE} |
 
 # process reads to determine if variants are present according to the reference genome
-perl ${ACTION_DIR}/align/flag_variant_events.pl |
+# perl ${ACTION_DIR}/align/flag_variant_events.pl |
+${MDI_DIR}/bin/hf3_tools analyze_alignments |
 samtools view -b -@ ${SAMTOOLS_CPU} > ${NAME_BAM_FILE}
 checkPipe
 

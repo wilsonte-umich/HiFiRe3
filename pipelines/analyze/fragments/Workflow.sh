@@ -31,6 +31,8 @@ runWorkflowStep 2 extract_endpoints locate/extract_endpoints.sh
 # creates a table of filtering sites for tolerance matching, etc.
 runWorkflowStep 3 tabulate_endpoints locate/tabulate_endpoints.sh
 
+exit 1
+
 # create binary lookup files to speed matching of sample endpoints to filtering sites
 #   at sample level if EXPECTING_ENDPOINT_RE_SITES==TRUE
 #   at genome level if only REJECTING_JUNCTION_RE_SITES==TRUE
