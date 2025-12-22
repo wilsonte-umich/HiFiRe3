@@ -8,8 +8,11 @@
 //! input:
 //!     unaligned SAM stream, specifically, a Dorado-compatible output stream, on STDIN
 //! output:
-//!     updated SAM stream on STDOUT, with new tag:
-//!         tl:Z: = adapter trim lengths in format `<5' trim>,<3' trim>`
+//!     updated SAM stream on STDOUT, with:
+//!         - SEQ and QUAL fields trimmed to remove adapters, when found
+//!         - all prior tags removed, except retaining ML:B:C:, MM:Z:, qs:f:, ch:i:, rn:i:, and fn:Z:
+//!         - new tag added: tl:Z: = adapter trim lengths in format `<5' trim>,<3' trim>`
+//!         - QUAL field quantized to 8 levels to reduce BAM file size
 //! notes:
 //!     this script processes unaligned ONT reads, i.e., never reverse complemented, so first bases correspond to the 5' adapter
 //!     all reads are expected to have 5' adapters, but some may be low quality bases, truncated, or chimeras split by Dorado
@@ -22,7 +25,7 @@ use std::fs::read_to_string;
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
 use mdi::RecordStreamer;
-use genomex::sam::SamRecord;
+use genomex::sam::{SamRecord, SamQual};
 use genomex::sequence::{rc_acgt_str, Aligner, ForceQryTerminus};
 use crate::formats::hf_tags::{TRIM_LENGTHS, StageTags};
 
@@ -53,7 +56,6 @@ pub_key_constants!(
 const MIN_SCORE:       i32   = 10;
 const SEARCH_SPACE_5:  usize = 60; // search spaces empirically determined from actual reads
 const SEARCH_SPACE_3:  usize = 20; // wide enough to be sensitive, narrow enough to be fast and specific
-const PHRED_OFFSET:    u8 = 33;
 
 // main ONT trim function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {
@@ -199,10 +201,10 @@ fn record_parser(
     }
 
     // quantize ONT quality scores to reduce BAM file size
-    unsafe { quantize_qual_scores(&mut aln.qual.qual); }
+    unsafe { SamQual::quantize_qual_scores(&mut aln.qual.qual); }
 
     // remove unneeded tags to reduce BAM file size
-    aln.tags.retain(&StageTags::BaseCalling.tag_added_by_stage()); // same as StageTags::BaseCalling.tags_after_stage()
+    aln.tags.retain(&StageTags::BaseCalling.tag_added_by_stage()); 
 
     // add the tl:Z: tag indicating trim lengths
     aln.tags.tags.push(format!(
@@ -279,23 +281,4 @@ fn find_adapter(
     // return final results
     (score >= MIN_SCORE, trim_len)
 
-}
-
-// quantize ONT quality scores to reduce BAM file size
-// use 8-level quantization with level as per:
-//      https://academic.oup.com/bioinformaticsadvances/article/2/1/vbac054/6661371
-unsafe fn quantize_qual_scores(qual_str: &mut str) {
-    for byte in qual_str.as_bytes_mut().iter_mut() {
-        let x: u8 = match byte.saturating_sub(PHRED_OFFSET) {
-            0..=6 => 5,
-            7..=11 => 10,
-            12..=16 => 15,
-            17..=21 => 20,
-            22..=26 => 25,
-            27..=31 => 30,
-            32..=36 => 35,
-            _ => 40,
-        };
-        *byte = x + PHRED_OFFSET; // safe because we are converting from ASCII to ASCII
-    }
 }

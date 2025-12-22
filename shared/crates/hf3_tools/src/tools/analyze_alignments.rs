@@ -54,18 +54,18 @@ mod endpoint_extraction;
 
 // dependencies
 use std::error::Error;
-use genomex::sam::junction::JunctionType;
 use mdi::pub_key_constants;
-use mdi::workflow::{Workflow, Config, Counters, COUNTER_SEPARATOR};
+use mdi::workflow::{Workflow, Config, Counters};
 use mdi::RecordStreamer;
 use genomex::sam::{SamRecord, flag};
-use genomex::genome::{Chroms, TargetRegion, TargetRegions};
+use genomex::genome::{Chroms, TargetRegions};
+use genomex::sam::nullable::*;
 use crate::formats::hf_tags::*;
-use endpoint_extraction::Endpoints;
-use alignment_quality_filters::AlnFailure;
-use traversal_delta::Traversal;
-use chimeric_read_splitter::ChimeraSplitter;
 use crate::junctions::JxnFailureFlag;
+use alignment_quality_filters::{AlnFailure, N_ALNS_BY_REASON, AVG_BASE_QUAL};
+use traversal_delta::Traversal;
+use chimeric_read_splitter::{ChimeraSplitter, ADAPTER_SCORES, N_CHIMERIC};
+use endpoint_extraction::{Endpoints, N_ENDS, N_HIGH_QUAL, N_ENDPOINTS};
 
 // Tool structure, for passing data workers to record processing functions.
 struct Tool {
@@ -76,7 +76,7 @@ struct Tool {
     splitter:      ChimeraSplitter,
     endpoints:     Endpoints,
     incoming_tags: Vec<&'static str>,
-    stage_tags:    Vec<&'static str>,
+    has_base_accuracy: bool,
 }
 
 // constants
@@ -86,11 +86,7 @@ pub_key_constants!(
     SEQUENCING_PLATFORM
     IS_END_TO_END_READ
     READ_PAIR_TYPE
-    REJECTING_JUNCTION_RE_SITES
-    READ_LENGTH_TYPE
-    // MIN_MAPQ
-    // CLIP_TOLERANCE
-    // HAS_BASE_ACCURACY
+    HAS_BASE_ACCURACY
     // derived configuration values
     IS_END_TO_END_PLATFORM
     IS_PAIRED_READS
@@ -100,43 +96,28 @@ pub_key_constants!(
     N_READS
     N_ALNS
     N_BLOCKS
-    N_BY_GENOME
-    N_BY_OUTCOME
     N_READS_OUT
     N_READS_SV
     N_TOTAL_JXNS
+    N_BY_GENOME
+    N_READS_BY_OUTCOME
     N_JXNS_BY_REASON
     // read outcomes
-    USABLE_READ 
+    UNMAPPED_READ
     NONCANONICAL_CHROM 
     IS_OFF_TARGET 
+    USABLE_READ 
     // jxn failure keys
-    // JXN_FAIL_NONE // checked by chimera splitter
-    JXN_FAIL_TRAVERSAL_DELTA // checked here
+    JXN_FAIL_NONE
+    JXN_FAIL_TRAVERSAL_DELTA
     JXN_FAIL_NONCANONICAL
-    // JXN_FAIL_FOLDBACK_INV
-    // JXN_FAIL_ONT_FOLLOW_ON
-    // JXN_FAIL_HAS_ADAPTER
-    // JXN_FAIL_SITE_MATCH // not used yet, check later
-
-    // N_JXNS
-    // N_BLOCKS
-    // N_BAD_TRAVERSAL
+    JXN_FAIL_FOLDBACK_INV
+    JXN_FAIL_ONT_FOLLOW_ON
+    JXN_FAIL_HAS_ADAPTER
+    JXN_FAIL_SITE_MATCH // not used yet, check later
+    JXN_FAIL_STEM_LENGTH
+    JXN_FAIL_UPSTREAM
 );
-
-//     ALN_FAIL_NONE            => 0,
-//     ALN_FAIL_MAPQ            => 1,
-//     ALN_FAIL_DIVERGENCE      => 2,
-//     ALN_FAIL_FLANK_LEN       => 4,
-//     ALN_FAIL_AVG_BASE_QUAL   => 8,
-//     # -------------
-//     JXN_FAIL_NONE            => 0,
-//     JXN_FAIL_TRAVERSAL_DELTA => 1,
-//     JXN_FAIL_NONCANONICAL    => 2,
-//     JXN_FAIL_SITE_MATCH      => 4,
-//     JXN_FAIL_FOLDBACK_INV    => 8,
-//     JXN_FAIL_ONT_FOLLOW_ON   => 16, 
-//     JXN_FAIL_HAS_ADAPTER     => 32,
 
 // tool function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {
@@ -144,7 +125,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_string_env(&[SEQUENCING_PLATFORM, READ_PAIR_TYPE]);
-    cfg.set_bool_env(&[IS_END_TO_END_READ, REJECTING_JUNCTION_RE_SITES]);
+    cfg.set_bool_env(&[IS_END_TO_END_READ, HAS_BASE_ACCURACY]);
 
     // set derived config values
     cfg.set_bool( IS_END_TO_END_PLATFORM, *cfg.get_bool(IS_END_TO_END_READ));
@@ -153,19 +134,18 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
 
     // initialize counters
     let mut ctrs = Counters::new(TOOL, &[
-        (N_SEQS,  "sequences, i.e., single reads or read pairs"),
-        (N_READS, "reads"),
-        (N_ALNS,  "alignments"),
-        (COUNTER_SEPARATOR, ""),
-        (N_READS_OUT,  "reads were fully processed"),
+        (N_SEQS,       "input sequences, i.e., single reads or read pairs"),
+        (N_READS,      "input reads"),
+        (N_ALNS,       "input alignments"),
+        (N_READS_OUT,  "fully processed on-target reads"),
         (N_READS_SV,   "fully processed reads with putative structural variants"),
-        (N_TOTAL_JXNS, "fully processed reads with putative structural variants"),
+        (N_TOTAL_JXNS, "junction in fully processed reads"),
         (N_BLOCKS,     "alignment blocks"),
     ]);
     ctrs.add_keyed_counters(&[
-        (N_BY_GENOME,      "number of reads by genome"),
-        (N_BY_OUTCOME,     "number of reads by outcome"),
-        (N_JXNS_BY_REASON, "junction failure counts by reason")
+        (N_READS_BY_OUTCOME, "number of reads by outcome"),
+        (N_BY_GENOME,        "number of reads by genome (canonical chroms only)"),
+        (N_JXNS_BY_REASON,   "junction failure counts by reason")
     ]);
 
     // initialize the tool
@@ -181,114 +161,149 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
         splitter:      ChimeraSplitter::new(&mut w),
         endpoints:     Endpoints::new(&mut w),
         incoming_tags: StageTags::Alignment.tags_after_stage(),
-        stage_tags:    StageTags::AlignmentAnalysis.tag_added_by_stage(),
+        has_base_accuracy: *w.cfg.get_bool(HAS_BASE_ACCURACY),
     };
 
-    // process groups of SAM records for each read in a stream
-    w.log.print("processing reads from SAM records");
+    // initialize the record streamer
     let mut rs = RecordStreamer::new();
     rs
-        .comment(b'@')
+        .comment(b'@') // pass SAM header lines
         .no_trim()
-        .flexible()
-        .group_by_in_place_serial(|alns: &mut Vec<SamRecord>| record_parser(
-            alns, 
-            &mut w,
-            &mut tool,
-        ), &["qname"]);
+        .flexible();   // to support variable numbers of tags
+
+    // process groups of SAM records for each read in a stream
+    // use different record_parsers for single vs. paired-end reads
+    w.log.print("processing reads from SAM records");
+    if *w.cfg.get_bool(IS_PAIRED_READS) {
+        rs.group_by_in_place_serial(
+            |alns: &mut [SamRecord]| parse_paired_end(alns, &mut w, &mut tool), 
+            &["qname"]
+        );
+    } else {
+        rs.group_by_in_place_serial(
+            |alns: &mut [SamRecord]| parse_single_read(alns, &mut w, &mut tool), 
+            &["qname"]
+        );
+    }; 
+
+    // write the aggregated endpoint counts
+    tool.endpoints.write(&mut w, &tool.chroms)?;
 
     // report counter values
-    Endpoints::write(&mut w, &mut tool)?;
-    w.ctrs.print_all();
+    w.ctrs.print_grouped(&[
+        &[N_SEQS, N_READS, N_ALNS],
+        &[N_READS_BY_OUTCOME],
+        &[N_BY_GENOME],
+        &[N_READS_OUT, N_READS_SV, N_TOTAL_JXNS, N_BLOCKS, N_CHIMERIC],
+        &[N_ALNS_BY_REASON],
+        &[AVG_BASE_QUAL],
+        &[N_JXNS_BY_REASON],
+        &[ADAPTER_SCORES],
+        &[N_ENDS, N_HIGH_QUAL, N_ENDPOINTS],
+    ]);
     Ok(())
 }
 
-// process all alignments for one (paired) read
-fn record_parser(
-    alns: &mut Vec<SamRecord>, 
+// process all alignments for a paired-end read pair
+fn parse_paired_end(
+    alns: &mut [SamRecord], 
+    w: &mut Workflow,
+    tool: &mut Tool,
+) -> Result<Vec<usize>, Box<dyn Error>> {
+
+    // short-circuit merged read pairs by treating them as single reads
+    // regardless of how many alignments the merged read has
+    if alns[0].get_tag_value(FASTP_MERGE).is_some(){
+        return parse_single_read(alns, w, tool);
+    }
+    w.ctrs.increment(N_SEQS);
+
+    // adjust QNAMEs to indicate unmerged read number, i.e., to be unique per paired read
+    // from here forward, unmerged paired reads are treated as fixed-length single reads
+    // junctions in anomalous gaps are unverifiable and not considered for rare SV analysis
+    let mut n_read1: usize  = 0;
+    for aln in alns.iter_mut() {
+        let read_n: usize = if aln.check_flag_all(flag::IS_PAIRED + flag::SECOND_IN_PAIR) { 2 } else { 1 };
+        if read_n == 1 { n_read1 += 1; }
+        aln.qname = format!("{}/{}", aln.qname, read_n);
+    }
+
+    // sort unmerged paired reads by read number then by query start position
+    alns.sort_by_key(|aln| {(
+        if aln.qname.ends_with("/2") { 2 } else { 1 }, 
+        aln.get_query_start0()
+    )});
+    
+    // process each read's 5'-3' sorted alignments
+    let paired_outer_node = alns[n_read1].pack_signed_node_aln(5, &tool.chroms);
+    process_read(1, &mut alns[0..n_read1], w, tool, true, paired_outer_node)?;
+    let paired_outer_node = alns[0].pack_signed_node_aln(5, &tool.chroms);
+    process_read(2, &mut alns[n_read1..], w, tool, true, paired_outer_node)?;
+    
+    // print all alignments for both paired reads, regardless of outcome
+    Ok((0..alns.len()).collect())
+}
+
+// process all alignments for a single read or merged read pair
+fn parse_single_read(
+    alns: &mut [SamRecord], 
     w: &mut Workflow,
     tool: &mut Tool,
 ) -> Result<Vec<usize>, Box<dyn Error>> {
     w.ctrs.increment(N_SEQS);
 
-    // remove unneeded alignment tags
-    // calculate the number of reference and read bases in each alignment
-    // split alignment by read number and assess pairing status
-    let mut read1_alns: Vec<&mut SamRecord> = Vec::new();
-    let mut read2_alns: Vec<&mut SamRecord> = Vec::new();
-    for aln in alns.iter_mut() {
-        aln.tags.retain(&tool.incoming_tags);
-        aln.tags.tags.push(format!("{}{}", N_READ_BASES, aln.get_aligned_size()));
-        aln.tags.tags.push(format!("{}{}", N_REF_BASES,  aln.get_ref_span()));
-        if aln.check_flag_all(flag::IS_PAIRED + flag::SECOND_IN_PAIR) {
-            read2_alns.push(aln);
-        } else {
-            read1_alns.push(aln);
-        }
-    }
-    let is_unmerged_pair: bool = !read2_alns.is_empty();
-
-    // sort alignments by query start position
-    // must do upstream of paired_node5 assignment
-    read1_alns.sort_by_key(|aln| aln.get_query_start0());
-    if is_unmerged_pair {
-        read2_alns.sort_by_key(|aln| aln.get_query_start0());
+    // sort multiple alignments by query start position
+    let n_alns = alns.len();
+    if n_alns > 1 {
+        alns.sort_by_key(|aln| aln.get_query_start0());
     }
 
-    // process each read's alignments
-    let paired_node5 = if is_unmerged_pair { &get_paired_node5(tool, read2_alns[0]) } else { "" };
-    process_read(1, &mut read1_alns, w, tool, is_unmerged_pair, paired_node5)?;
-    if is_unmerged_pair {
-        let paired_node5 = &get_paired_node5(tool, read1_alns[0]);
-        process_read(2, &mut read2_alns, w, tool, is_unmerged_pair, paired_node5)?;
-    }
+    // process the 5'-3' sorted alignments
+    process_read(1, alns, w, tool, false, 0)?;
 
-    // SAM record processed successfully ready for printing to STDOUT
-    Ok((0..alns.len()).collect())
-}
-
-// get the 5' alignment node of the paired read
-fn get_paired_node5(tool: &Tool, aln: &SamRecord) -> String {
-    if aln.check_flag_any(flag::UNMAPPED) || !tool.chroms.is_canonical(&aln.rname) { 
-        return "*".to_string();
-    }
-    let (pos1, strand) = if aln.check_flag_any(flag::REVERSE) { 
-        (aln.get_end1(), '-') 
-    } else { 
-        (aln.pos1, '+') 
-    };
-    format!("{}:{}{}", aln.rname, pos1, strand)
+    // print all alignments for the read, regardless of outcome
+    Ok((0..n_alns).collect())
 }
 
 // process the alignments for one read (of a pair)
 fn process_read(
     read_n: usize, 
-    alns: &mut Vec<&mut SamRecord>, 
+    alns: &mut [SamRecord], 
     w: &mut Workflow,
     tool: &mut Tool,
     is_unmerged_pair: bool,
-    paired_node5: &str,
+    paired_outer_node: isize,
 ) -> Result<(), Box<dyn Error>> {
     w.ctrs.increment(N_READS);
+    let n_alns = alns.len();
     w.ctrs.add_to(N_ALNS, alns.len());
 
-    // adjust QNAMEs to indicate unmerged read number, i.e., to be unique per paired read
-    // from here forward, unmerged paired reads are treated as fixed-length single reads
-    // junctions in anomalous gaps are unverifiable and not considered for rare SV analysis
+    // remove unneeded alignment tags, mate information
     // pass the paired 5' read end for proper outer node assignment
-    if is_unmerged_pair {
-        for aln in alns.iter_mut() {
-            aln.qname = format!("{}/{}", aln.qname, read_n);
-            aln.tags.tags.push(format!("{}{}", UNMERGED_NODE5, paired_node5));
-        }
+    for aln in alns.iter_mut() {
+        aln.set_to_null(&[RNEXT, PNEXT, TLEN]);
+        aln.tags.retain(&tool.incoming_tags);
+        if is_unmerged_pair { aln.tags.tags.push(format!("{}{}", PAIRED_OUTER_NODE, paired_outer_node)); }
     }
 
-    // stop processing reads further whose 5' alignment is not on a canonical chromosome
+    // stop processing unmapped reads
+    if alns[0].check_flag_any(flag::UNMAPPED) { 
+        alns[0].set_tag_value(INSERT_SIZE, &alns[0].seq.len()); // set insert size for unmapped reads
+        alns[0].set_to_null(&[SEQ, QUAL]); // then drop the sequence and quality
+        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, UNMAPPED_READ);
+        return Ok(()); 
+    }
+
+    // stop processing reads further when the 5' alignment is not on a canonical chromosome
     // they are either concretely or effectively unmapped
-    if alns[0].check_flag_any(flag::UNMAPPED) || !tool.chroms.is_canonical(&alns[0].rname) { 
-        alns[0].seq       = "*".to_string();
-        alns[0].qual.qual = "*".to_string();
-        w.ctrs.increment_keyed(N_BY_OUTCOME, NONCANONICAL_CHROM);
+    // regard them as off-target, so set tag READ_IS_OFF_TARGET
+    if !tool.chroms.is_canonical(&alns[0].rname) { 
+        for aln in alns.iter_mut() { 
+            aln.set_to_null(&[SEQ, QUAL]); 
+            aln.tags.drop(&[DIFFERENCE_STRING]);
+            aln.set_tag_value(READ_IS_OFF_TARGET, &1);
+        }
+        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, NONCANONICAL_CHROM);
         return Ok(()); 
     }
 
@@ -297,24 +312,29 @@ fn process_read(
 
     // determine the target status of the read, which is always "on target" for non-targeted libraries
     let is_on_target = tool.targets.set_aln_target_classes(
-        alns, w, TARGET_CLASS, IS_ON_TARGET
+        alns, w, TARGET_CLASS, READ_IS_OFF_TARGET
     );
 
     // stop processing off-target reads, we have all required counts and they won't be used for variant calling
     if !is_on_target {
-        alns[0].seq       = "*".to_string();
-        alns[0].qual.qual = "*".to_string();
-        w.ctrs.increment_keyed(N_BY_OUTCOME, IS_OFF_TARGET);
+        for aln in alns.iter_mut() { 
+            aln.set_to_null(&[SEQ, QUAL]); 
+            aln.tags.drop(&[DIFFERENCE_STRING]) // READ_IS_OFF_TARGET was set by set_aln_target_classes
+        }
+        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, IS_OFF_TARGET);
         return Ok(());
     }
 
-    // add alignment-level metadata
-    // assess alignment-level quality filtering (not a jxn rejection yet, but used to filter SVs downstream)
-    let n_alns = alns.len();
+    // assess alignment-level quality filtering on the first alignment
+    // not a jxn rejection yet, but used to filter SVs downstream
+    let aln5_i = 0_usize;
     let read_has_jxn = n_alns > 1;
-    tool.aln_failure.set_aln_failure_flag(w, alns[0], read_has_jxn);
     let mut block_n = 1;
-    alns[0].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
+    tool.aln_failure.set_aln_failure_flag(w, &mut alns[aln5_i], read_has_jxn);
+
+    // continue assessing alignment and junction-level quality filtering
+    // for all alignements beyond the first
+    // record junction information on the alignment 5'-proximal to the junction
     if read_has_jxn {
         w.ctrs.increment(N_READS_SV);
         w.ctrs.add_to(N_TOTAL_JXNS, n_alns - 1);
@@ -323,10 +343,10 @@ fn process_read(
         // fail all junctions within a failed path
         // once a junction fails, it stays failed even if it passes a different pair of alignments
         let mut failed_traversal_delta = vec![false; n_alns];
-        for aln2_i in 1..n_alns {
-            for aln1_i in 0..aln2_i {
-                if tool.traversal.failed_delta(alns[aln1_i], alns[aln2_i]) {
-                    for fail_i in (aln1_i + 1)..=aln2_i {
+        for aln3_i in 1..n_alns {
+            for aln5_i in 0..aln3_i {
+                if tool.traversal.failed_delta(&alns[aln5_i], &alns[aln3_i]) {
+                    for fail_i in (aln5_i + 1)..=aln3_i {
                         failed_traversal_delta[fail_i] = true;
                     }
                 }
@@ -335,55 +355,58 @@ fn process_read(
 
         // set block_n based on failed_traversal_delta
         // check junctions for traversal delta failure and other criteria
-        for aln2_i in 1..n_alns {
-            tool.aln_failure.set_aln_failure_flag(w, alns[aln2_i], read_has_jxn);
-
-            let jxn = SamRecord::get_junction_metadata(alns[aln2_i - 1], alns[aln2_i]);
-
-            if failed_traversal_delta[aln2_i] {
+        for aln3_i in 1..n_alns {
+            let aln5_i = aln3_i - 1;
+            tool.aln_failure.set_aln_failure_flag(w, &mut alns[aln3_i], read_has_jxn);
+            let jxn = SamRecord::get_junction(&alns[aln5_i], &alns[aln3_i], &tool.chroms);
+            let jxn_failure_flag = if failed_traversal_delta[aln3_i] {
                 w.ctrs.increment_keyed(N_JXNS_BY_REASON, JXN_FAIL_TRAVERSAL_DELTA);
-                alns[aln2_i].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
-                alns[aln2_i - 1].tags.tags.push(format!("{}{}", JXN_FAILURE_FLAG_TMP, JxnFailureFlag::TraversalDelta as u8));
+                alns[aln3_i].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
+                JxnFailureFlag::TraversalDelta
             } else {
                 block_n += 1; // increment alignment blockN on every non-failed junction
-                alns[aln2_i].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
-                let jxn_failure_flag = if 
-                    !tool.chroms.is_canonical(&alns[aln2_i - 1].rname) || 
-                    !tool.chroms.is_canonical(&alns[aln2_i].rname) 
+                alns[aln3_i].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
+                if 
+                    !tool.chroms.is_canonical(&alns[aln5_i].rname) || 
+                    !tool.chroms.is_canonical(&alns[aln3_i].rname) 
                 {
                     // check non-canonical chromosome junctions here to avoid mutable borrow issues
                     w.ctrs.increment_keyed(N_JXNS_BY_REASON, JXN_FAIL_NONCANONICAL);
                     JxnFailureFlag::Noncanonical
                 } else {
                     // check other junction failure reasons (get_jxn_failure_flag handles N_JXNS_BY_REASON counter increments)
-                    tool.splitter.get_jxn_failure_flag(w, alns[aln2_i - 1], alns[aln2_i], &jxn)
-                };
-                alns[aln2_i - 1].tags.tags.push(format!("{}{}", JXN_FAILURE_FLAG_TMP, jxn_failure_flag as u8));
+                    tool.splitter.get_jxn_failure_flag(w, alns, aln5_i, aln3_i, &jxn) 
+                }
+            };
+            alns[aln5_i].tags.tags.push(format!("{}{}", JUNCTION, jxn.serialize()));
+            if jxn_failure_flag != JxnFailureFlag::None {
+                alns[aln5_i].tags.tags.push(format!("{}{}", JXN_FAILURE_FLAG_INIT, jxn_failure_flag as u8));
             }
-            alns[aln2_i - 1].tags.tags.push(format!("{}{}", JXN_TYPE,   jxn.jxn_type as u8));
-            alns[aln2_i - 1].tags.tags.push(format!("{}{}", ALN_OFFSET, jxn.alignment_offset));
-            alns[aln2_i - 1].tags.tags.push(format!("{}{}", JXN_BASES,  jxn.jxn_bases));
         }
     
-    // drop SEQ and QUAL on invariant junctions to save disk space
-    // TODO: retain these if rare SNV analysis is intended downstream?
+        // now that junctions are described, drop SEQ and QUAL on all alignments except the 5' alignment
+        for aln3_i in 1..n_alns {
+            alns[aln3_i].set_to_null(&[SEQ, QUAL]);
+        }
+
+    // to save disk space
+    //  - drop SEQ and QUAL on reads with no junctions
+    //  - drop cs tag unless platform HAS_BASE_ACCURACY, so has short tags that may be used for SNV calling
     } else {
-        alns[0].seq       = "*".to_string();
-        alns[0].qual.qual = "*".to_string();
+        alns[aln5_i].set_to_null(&[SEQ, QUAL]);
+        if !tool.has_base_accuracy {
+            alns[aln5_i].tags.drop(&[DIFFERENCE_STRING])
+        }
     }
 
-    // fill in null junction metadata on the 3' most aln, from JXN_FAILURE_FLAG_TMP to JXN_BASES
-    let i_3 = n_alns - 1;
-    alns[i_3].tags.tags.push(format!("{}{}", JXN_FAILURE_FLAG_TMP, JxnFailureFlag::None as u8));
-    alns[i_3].tags.tags.push(format!("{}{}", JXN_TYPE,   JunctionType::Proper as u8));
-    alns[i_3].tags.tags.push(format!("{}{}", ALN_OFFSET, 0));
-    alns[i_3].tags.tags.push(format!("{}{}", JXN_BASES,  "*"));
-
     // extract endpoints as possible RE sites
-    Endpoints::extract(read_n, alns, w, tool, is_unmerged_pair)?;
+    tool.endpoints.extract(read_n, alns, w, &tool.chroms, is_unmerged_pair)?;
 
-    // increment usable read counter and return
+    // increment usable read counter
+    w.ctrs.add_to(N_BLOCKS, block_n);
     w.ctrs.increment(N_READS_OUT);
-    w.ctrs.increment_keyed(N_BY_OUTCOME, USABLE_READ);
+    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, USABLE_READ);
+
+    // done
     Ok(())
 }

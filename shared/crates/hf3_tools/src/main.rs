@@ -34,14 +34,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         // RE site-aware trimming for ONT reads
         "trim_ont" => tools::trim_ont::stream(),
 
+        // compression and reformatting of ONT POD5 files
+        "reformat_ont" => tools::reformat_ont::stream(),
+
         /*--------------------------------------------------------------
         analyze fragments
         ------------------------------------------------------------- */
         // sort and examine reads in the output stream from minimap2
         "analyze_alignments" => tools::analyze_alignments::stream(),
 
-        // extract RE site positions from read 5' (and 3') ends
-        "extract_endpoints" => tools::extract_endpoints::stream(),
+        // sort and examine reads in the output stream from minimap2
+        "analyze_inserts" => tools::analyze_inserts::stream(),
 
         // // // create binary lookup files from extracted RE site positions
         // // "create_index" => tools::create_index::stream(),

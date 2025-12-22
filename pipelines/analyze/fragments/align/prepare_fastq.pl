@@ -59,8 +59,7 @@ if($READ_FILE_TYPE eq "unaligned.bam" or $READ_FILE_TYPE eq "bam"){
     } else {
         $keepQnameTags = 1;
         foreach my $ubamFile(split(" ", $READ_1_FILES)){
-            # TODO: include more tags?  MM, ML etc.
-            open my $inH, "-|", "samtools view $ubamFile | samtools fastq -T ch,tl -  2>/dev/null" 
+            open my $inH, "-|", "samtools view $ubamFile | samtools fastq -T ML,MM,qs,ch,rn,fn,tl,pc -  2>/dev/null" 
                 or throwError("could not open $ubamFile: $!");
             runSingleReads($inH);
             close $inH;

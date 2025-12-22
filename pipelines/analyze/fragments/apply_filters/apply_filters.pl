@@ -513,29 +513,28 @@ sub processOutputRead {
         $alns[-1][SEQ_SITE_INDEX1_2] or @{$alns[-1]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[-1]);
 
         # get outer nodes based on RE site positions
-        my $pairedSitePos1;
-        if($pairedAln5){
-            $pairedSitePos1 = (findClosestSite( # may not have assigned site position to other read yet for first read of unmerged pair
-                $$pairedAln5[S_RNAME], 
-                ($$pairedAln5[S_FLAG] & _REVERSE) ? getEnd($$pairedAln5[S_POS1], $$pairedAln5[S_CIGAR]) : $$pairedAln5[S_POS1],
-            ))[1] or return FAILED_SITE_LOOKUP;
-        }
         $node5 = parseSignedNode( # reads always define their own 5' outer node
             $alns[0], 
             $alns[0][SITE_POS1_1], # using site positions enables fuzzy endpoint matching when comparing reads
             BOTTOM_STRAND, TOP_STRAND
         );
-        $node3 = $pairedAln5 ? 
-            parseSignedNode(
+        if($pairedAln5){
+            my $pairedSitePos1 = (findClosestSite( # may not have assigned site position to other read yet for first read of unmerged pair
+                $$pairedAln5[S_RNAME], 
+                ($$pairedAln5[S_FLAG] & _REVERSE) ? getEnd($$pairedAln5[S_POS1], $$pairedAln5[S_CIGAR]) : $$pairedAln5[S_POS1],
+            ))[1] or return FAILED_SITE_LOOKUP;
+            $node3 = parseSignedNode(
                 $pairedAln5, 
                 $pairedSitePos1,
                 TOP_STRAND, BOTTOM_STRAND # invert the strand orientation of paired 5' ends to match the behavior of single or merged reads
-            ) : 
-            parseSignedNode(
+            );
+        } else {
+            $node3 = parseSignedNode(
                 $alns[-1], 
                 $alns[-1][SEQ_SITE_POS1_2],  # using projected 3' ends allows best deduplication of partially sequenced RE fragments
                 BOTTOM_STRAND, TOP_STRAND
-            );
+            );            
+        }
 
     # get outer nodes based on alignment positions
     } else {

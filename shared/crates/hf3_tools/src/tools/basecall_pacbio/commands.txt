@@ -1,0 +1,5 @@
+
+to explore the line separation of fwd and rev ccs in bam
+
+$ samtools view m21026_251212_225317.hifi_reads.bc2002.bam | awk '{print $1"\t"NR}' | sed -e 's/\/fwd//' -e 's/\/rev//' | head -n 1000000 | sort -k1,1 | bedtools groupby -g 1 -c 2 -o collapse | sed 's/,/\t/' | awk 'BEGIN{OFS="\t"}{print $1,($3==""?"------":abs($3-$2)),$2,$3}' | head -n 1000 | sort -k2,2nr > $LINE_NUMB
+ERS

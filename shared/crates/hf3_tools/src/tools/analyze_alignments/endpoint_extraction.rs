@@ -8,7 +8,8 @@ use mdi::pub_key_constants;
 use mdi::workflow::Workflow;
 use mdi::OutputFile;
 use genomex::sam::{SamRecord, flag};
-use super::Tool;
+use genomex::genome::Chroms;
+use crate::formats::hf_tags::TRIM_LENGTHS;
 
 // constants
 pub_key_constants!{
@@ -16,10 +17,6 @@ pub_key_constants!{
     EXPECTING_ENDPOINT_RE_SITES
     MIN_MAPQ
     CLIP_TOLERANCE
-    // derived values
-    IS_END_TO_END_READ
-    IS_PAIRED_READS
-    IS_ONT
     // counter keys
     N_ENDS
     N_HIGH_QUAL
@@ -36,6 +33,11 @@ const REVERSE: u8 = 1;
 /// Endpoint structure for collecting and printing putative RE site positions.
 pub struct Endpoints {
     collecting: bool,
+    min_mapq: u8,
+    clip_tolerance: usize,
+    is_ont: bool,
+    is_end_to_end_platform: bool,
+    is_paired_reads: bool,
     counter: HashMap<(usize, usize), usize>, // (chrom_index, site_pos1) -> count
     file: OutputFile,
 }
@@ -46,11 +48,11 @@ impl Endpoints {
     pub fn new(w: &mut Workflow) -> Endpoints {
         w.cfg.set_u8_env(&[MIN_MAPQ]);
         w.cfg.set_usize_env(&[CLIP_TOLERANCE]);
-        w.cfg.set_usize_env(&[EXPECTING_ENDPOINT_RE_SITES]);
+        w.cfg.set_bool_env(&[EXPECTING_ENDPOINT_RE_SITES]);
         let collecting = *w.cfg.get_bool(EXPECTING_ENDPOINT_RE_SITES);
         if collecting {
             w.ctrs.add_counters(&[
-                (N_ENDS,      "read endpoints processed"),
+                (N_ENDS, "read endpoints processed"),
                 (N_HIGH_QUAL, format!(
                     "candidate endpoints with MAPQ >= {} and clip <= {}", 
                     w.cfg.get_u8(MIN_MAPQ), w.cfg.get_usize(CLIP_TOLERANCE)).as_str()
@@ -60,6 +62,11 @@ impl Endpoints {
         }
         Endpoints {
             collecting,
+            min_mapq: *w.cfg.get_u8(MIN_MAPQ),
+            clip_tolerance: *w.cfg.get_usize(CLIP_TOLERANCE),
+            is_ont: *w.cfg.get_bool(super::IS_ONT),
+            is_end_to_end_platform: *w.cfg.get_bool(super::IS_END_TO_END_PLATFORM),
+            is_paired_reads: *w.cfg.get_bool(super::IS_PAIRED_READS),
             counter: HashMap::new(), // (chrom_index, site_pos1) -> count, incompatible with mdi::keyed_counters
             file: OutputFile::open_env(&mut w.cfg, OBSERVED_ENDPOINTS_FILE),
         }
@@ -67,17 +74,18 @@ impl Endpoints {
 
     /// Process the alignments for one read (of a pair).
     pub fn extract(
+        &mut self,
         read_n: usize, 
-        alns: &Vec<&mut SamRecord>, 
+        alns: &mut [SamRecord], 
         w: &mut Workflow,
-        tool: &mut Tool,
+        chroms: &Chroms,
         is_unmerged_pair: bool,
     ) -> Result<(), Box<dyn Error>> {
-        if !tool.endpoints.collecting { return Ok(()); }
+        if !self.collecting { return Ok(()); }
 
         // get ONT adapter trims
-        let trims: Vec<usize> = if *w.cfg.get_bool(IS_ONT) {
-            if let Some(tl) = alns[0].get_tag_value("tl") {
+        let trims: Vec<usize> = if self.is_ont {
+            if let Some(tl) = alns[0].get_tag_value(TRIM_LENGTHS) {
                 tl.split(',').map(|x| x.parse().unwrap()).collect()
             } else {
                 vec![0, 0]
@@ -87,38 +95,41 @@ impl Endpoints {
         };
 
         // always attempt to process the 5' end of all reads
-        Self::process_endpoint(alns[0], &trims, 5, w, tool)?;
+        self.process_endpoint(&alns[0], &trims, 5, w, chroms)?;
+
+        // the 3' end of paired reads is irrelevant
         if read_n == 2 { return Ok(()); }
 
         // attempt to process read 3' ends if informative, i.e., inferred to be from end-to-end read
         // NOT necessarily on the same chromosome or part of the same contig as the 5' end
-        if *w.cfg.get_bool(IS_END_TO_END_READ) ||    // PacBio or other platforms that guarantee end-to-end reads
+        if self.is_end_to_end_platform || // PacBio or other platforms that guarantee end-to-end reads
             (
-                *w.cfg.get_bool(IS_ONT) &&           // complete ONT reads, must be trimmed at 3' end to be confident end-to-end
+                self.is_ont && // complete ONT reads, must be trimmed at 3' end to be confident end-to-end
                 trims[TRIM3] > 0
             ) ||
             (
-                *w.cfg.get_bool(IS_PAIRED_READS) &&  // merged paired reads
-                !is_unmerged_pair
+                self.is_paired_reads &&  // merged paired reads
+                !is_unmerged_pair        // the two ends of unmerged pairs both captured as 5' ends above
             ){
-            Self::process_endpoint(alns[alns.len() - 1], &trims, 3, w, tool)?;
+            self.process_endpoint(&alns[alns.len() - 1], &trims, 3, w, chroms)?;
         }
         Ok(())
     }
 
     // check an informative endpoint for sufficient alignment quality
     fn process_endpoint(
+        &mut self,
         aln: &SamRecord, 
         trims: &Vec<usize>, 
         end: u8, 
         w: &mut Workflow,
-        tool: &mut Tool,
+        chroms: &Chroms,
     ) -> Result<(), Box<dyn Error>> {
         w.ctrs.increment(N_ENDS);
 
         // check for an informative endpoint with sufficient alignment quality
         // implicitly rejects unmapped with MAPQ=0
-        if !tool.chroms.is_canonical(&aln.rname) || aln.mapq < *w.cfg.get_u8(MIN_MAPQ) { 
+        if !chroms.is_canonical(&aln.rname) || aln.mapq < self.min_mapq { 
             return Ok(()); 
         }
         let strand = if aln.check_flag_any(flag::REVERSE) { REVERSE } else { FORWARD };
@@ -129,7 +140,7 @@ impl Endpoints {
         } else { 
             aln.get_clip_left()
         };
-        if clip_len > *w.cfg.get_usize(CLIP_TOLERANCE) { 
+        if clip_len > self.clip_tolerance { 
             return Ok(()); 
         }
         w.ctrs.increment(N_HIGH_QUAL);
@@ -156,33 +167,30 @@ impl Endpoints {
 
         // use a typical trim value to adjust clips on ONT trim failures, to account for adapter bases still present
         // only applicable to 5' ends here, untrimmed 3' ends were filtered above as uninformative
-        if *w.cfg.get_bool(IS_ONT) && end == 5 && trims[TRIM5] == 0 {
+        if self.is_ont && end == 5 && trims[TRIM5] == 0 {
             site_pos1 = (site_pos1 as i32 - clip_dir * ONT_ADAPTER_LEN5) as usize;
         }
 
         // keep a tally of all genome positions nominated as RE sites
-        *tool.endpoints.counter.entry((tool.chroms.index[&aln.rname], site_pos1)).or_insert(0) += 1;
+        *self.counter.entry((chroms.index[&aln.rname], site_pos1)).or_insert(0) += 1;
         Ok(())
     }
 
     /// Report all unique observed endpoint positions with counts.
-    pub fn write(
-        w: &mut Workflow,
-        tool: &mut Tool,
-    ) -> Result<(), Box<dyn Error>> {
-        if !tool.endpoints.collecting { return Ok(()); }
+    pub fn write(&mut self, w: &mut Workflow, chroms: &Chroms) -> Result<(), Box<dyn Error>> {
+        if !self.collecting { return Ok(()); }
         w.log.print("printing endpoint tallies");
-        let mut sorted_keys: Vec<(usize, usize)> = tool.endpoints.counter.keys().cloned().collect();
+        let mut sorted_keys: Vec<(usize, usize)> = self.counter.keys().cloned().collect();
         sorted_keys.sort_unstable();
         for (chrom_index, site_pos1) in sorted_keys.iter() {
             w.ctrs.increment(N_ENDPOINTS);
-            tool.endpoints.file.write_record(vec!(
-                tool.chroms.rev_index[chrom_index].clone(),
-                site_pos1.to_string(),
-                tool.endpoints.counter[&(*chrom_index, *site_pos1)].to_string()
+            self.file.write_record(vec!(
+                &chroms.rev_index[chrom_index],
+                &site_pos1.to_string(),
+                &self.counter[&(*chrom_index, *site_pos1)].to_string()
             ));
         }
-        tool.endpoints.file.close();
+        self.file.close();
         Ok(())
     }
 }

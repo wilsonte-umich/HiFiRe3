@@ -2,65 +2,48 @@
 /// various stages of HiFiRe3 data analysis.
 /// 
 /// Not all tags are necessarily present on all reads, as some tags
-/// are only relevant to specific data types (e.g., ONT vs PacBio).
+/// are only relevant to specific data types (e.g., ONT vs PacBio)
+/// or read configurations.
 /// 
 /// See file hifire3_sam_tags.csv for extended tag descriptions.
 
-// dependencies
-use std::{collections::HashMap, vec};
+// dependencies;
 
 // constants
 // map tag keys to SAM tag prefixes
 // Basecalling (these tags are generated entirely outside of HiFiRe3 pipelines)
-pub const BASE_MODS: &str               = "ML:B:C:"; // Dorado or PacBio 
+pub const BASE_MODS: &str               = "ML:B:C,"; // Dorado or PacBio SAM modification tags; only if available
 pub const BASE_MOD_PROBS: &str          = "MM:Z:";
-pub const MEAN_BASE_QUAL: &str          = "qs:f:"; // Dorado
-pub const CHANNEL: &str                 = "ch:i:";
-pub const POD5_READ_NUMBER: &str        = "rn:i:";
+pub const CHANNEL: &str                 = "ch:i:"; // Dorado tags; only on ONT reads
+pub const POD5_READ_NUMBER: &str        = "rn:i:"; // POD5 lookup tags; only in unaligned BAM
 pub const POD5_FILE: &str               = "fn:Z:";
-// Trimming
-pub const TRIM_LENGTHS: &str            = "tl:Z:"; // hf3_tools trim_ont
-// Consensus
-pub const PACBIO_CONSENSUS: &str        = "pc:Z:"; // hf3_tools make_pacbio_consensus
-// Alignment
-pub const FASTP_MERGE: &str             = "fm:Z:"; // fastp in analyze fragments align
-pub const ALN_SCORE: &str               = "AS:i:"; // minimap2 in analyze fragments align
-pub const MISMATCH_DELETION: &str       = "MD:Z:";
-pub const DIFFERENCE_STRING: &str       = "cs:Z:";
+// Trimming, added by hf3_tools trim_ont
+pub const TRIM_LENGTHS: &str            = "tl:Z:"; // serialized encoding of 5',3' ONT trim lengths; only on ONT reads
+// Consensus, added by hf3_tools make_pacbio_consensus
+pub const PACBIO_CONSENSUS: &str        = "pc:Z:"; // pending; only on PacBio pbFree "unleaded" reads
+// Alignment, added by fastp and minimap2
+pub const FASTP_MERGE: &str             = "fm:Z:"; // serialized encoding of read1,read2 retained bases; only on merged read pairs
+pub const ALN_SCORE: &str               = "AS:i:"; // minimap2 tags 
 pub const DIVERGENCE: &str              = "de:f:";
-// AlignmentAnalysis
-pub const N_READ_BASES: &str            = "nd:i:"; // hf3_tools analyze_alignments
-pub const N_REF_BASES: &str             = "nf:i:";
-pub const UNMERGED_NODE5: &str          = "po:Z:";
-pub const TARGET_CLASS: &str            = "tc:i:";
-pub const IS_ON_TARGET: &str            = "to:i:";
-pub const ALN_FAILURE_FLAG: &str        = "af:i:";
-pub const BLOCK_N: &str                 = "bn:i:";
-pub const JXN_FAILURE_FLAG_TMP: &str    = "jx:i:";
-pub const JXN_TYPE: &str                = "jt:i:";
-pub const ALN_OFFSET: &str              = "ao:i:";
-pub const JXN_BASES: &str               = "jb:Z:";
-// InsertAnalysis
-pub const SITE_INDEX1_1: &str           = "si:i:"; // hf3_tools analyze_inserts
-pub const SITE_POS1_1: &str             = "sp:i:";
-pub const SITE_DIST_1: &str             = "sd:i:";
-pub const SITE_INDEX1_2: &str           = "xi:i:";
-pub const SITE_POS1_2: &str             = "xp:i:";
-pub const SITE_DIST_2: &str             = "xd:i:";
-pub const SEQ_SITE_INDEX1_2: &str       = "qi:i:";
-pub const SEQ_SITE_POS1_2: &str         = "qp:i:";
-pub const IS_END_TO_END_READ: &str      = "re:i:";
-pub const IS_END_TO_END_INSERT: &str    = "ie:i:";
-pub const NODE_5: &str                  = "df:i:";
-pub const NODE_3: &str                  = "dl:i:";
-pub const INSERT_SIZE: &str             = "iz:i:";
-pub const IS_ALLOWED_SIZE: &str         = "az:i:";
-pub const STEM5_LENGTH: &str            = "ul:i:";
-pub const STEM3_LENGTH: &str            = "vl:i:";
-pub const PASSED_STEM5: &str            = "up:i:";
-pub const PASSED_STEM3: &str            = "vp:i:";
-pub const JXN_FAILURE_FLAG: &str        = "jf:i:";
-pub const READ_HAS_JXN: &str            = "rj:i:";
+pub const DIFFERENCE_STRING: &str       = "cs:Z:"; // only retained when needed for variant calling
+// pub const MISMATCH_DELETION: &str       = "MD:Z:"; // not written by minimap2 as used in hf3_tools, optin --MD not set
+// AlignmentAnalysis, added by hf3_tools analyze_alignments
+pub const PAIRED_OUTER_NODE: &str       = "po:Z:"; // signed 64-bit encoding of the paired read 5' outer node; only on unmerged read pairs
+pub const TARGET_CLASS: &str            = "tc:i:"; // bit-encoded target region metadata as region_i1 << 3 | target_class; only on targeted libraries
+pub const READ_IS_OFF_TARGET: &str      = "to:A:"; // flag indicating that the read is considered to be off-target; on-target/untargeted if absent
+pub const ALN_FAILURE_FLAG: &str        = "af:i:"; // bit-encoded flag based on MAQ and divergence; zero/passed if absent
+pub const BLOCK_N: &str                 = "bn:i:"; // number of the traversal block of this alignment; block 1 if absent
+pub const JUNCTION: &str                = "jx:Z:"; // serialized encoding of junction metadata; only on alignments followed by another alignment
+pub const JXN_FAILURE_FLAG_INIT: &str   = "ji:i:"; // bit-encoded flag based on all junction filters to this point; zero/passed if absent
+// InsertAnalysis, added by hf3_tools analyze_inserts
+pub const JXN_FAILURE_FLAG: &str        = "jf:i:"; // bit-encoded flag based on all junction filters; zero/passed if absent
+pub const IS_END_TO_END: &str           = "ee:i:"; // bit-encoded flag 000000IR whether the parent read (R) and insert (I) is end-to-end; on all on-target reads
+pub const OUTER_NODES: &str             = "on:Z:"; // paired signed 64-bit encoding of 5',3' outer nodes; on all on-target reads
+pub const CLOSEST_SITES: &str           = "sc:B:i,"; // distances to closest 5',3',projected sites, each as signed-index1,site_pos1,signed-dist; only if matching sites
+pub const INSERT_SIZE: &str             = "iz:i:"; // signed integer insert size; positive = passed 1N to 2N filter; only on sized libraries
+pub const STEM_LENGTH5: &str            = "ul:i:"; // signed integer 5' stem length; positive = passed <1N filter; only on sized libraries
+pub const STEM_LENGTH3: &str            = "vl:i:"; // signed integer 3' stem length; positive = passed <1N filter; only on sized libraries
+pub const READ_HAS_PASSED_JXN: &str     = "rj:A:"; // flag that the parent read has at least one passed junction; false if absent
 
 /// StageTags enumerate the analysis states at which SAM tags are
 /// added, or may be retained, in HiFiRe3 data processing stages.
@@ -80,9 +63,8 @@ impl StageTags {
             Self::BaseCalling => vec![
                 BASE_MODS,
                 BASE_MOD_PROBS,
-                MEAN_BASE_QUAL,
                 CHANNEL,
-                POD5_READ_NUMBER,
+                POD5_READ_NUMBER, // POD5 lookup tags only in unaligned BAM
                 POD5_FILE,
             ],
             Self::Trimming => vec![
@@ -94,44 +76,28 @@ impl StageTags {
             Self::Alignment => vec![
                 FASTP_MERGE,
                 ALN_SCORE,
-                MISMATCH_DELETION,
-                DIFFERENCE_STRING,
                 DIVERGENCE,
+                DIFFERENCE_STRING,
+                // MISMATCH_DELETION,
             ],
             Self::AlignmentAnalysis => vec![
-                N_READ_BASES,
-                N_REF_BASES,
-                UNMERGED_NODE5,
+                PAIRED_OUTER_NODE,
                 TARGET_CLASS,
-                IS_ON_TARGET,
+                READ_IS_OFF_TARGET,
                 ALN_FAILURE_FLAG,
                 BLOCK_N,
-                JXN_FAILURE_FLAG_TMP,
-                JXN_TYPE,
-                ALN_OFFSET,
-                JXN_BASES,
+                JUNCTION,
+                JXN_FAILURE_FLAG_INIT,
             ],
             Self::InsertAnalysis => vec![
-                SITE_INDEX1_1,
-                SITE_POS1_1,
-                SITE_DIST_1,
-                SITE_INDEX1_2,
-                SITE_POS1_2,
-                SITE_DIST_2,
-                SEQ_SITE_INDEX1_2,
-                SEQ_SITE_POS1_2,
-                IS_END_TO_END_READ,
-                IS_END_TO_END_INSERT,
-                NODE_5,
-                NODE_3,
-                INSERT_SIZE,
-                IS_ALLOWED_SIZE,
-                STEM5_LENGTH,
-                STEM3_LENGTH,
-                PASSED_STEM5,
-                PASSED_STEM3,
                 JXN_FAILURE_FLAG,
-                READ_HAS_JXN,
+                IS_END_TO_END,
+                OUTER_NODES,
+                CLOSEST_SITES,
+                INSERT_SIZE,
+                STEM_LENGTH5,
+                STEM_LENGTH3,
+                READ_HAS_PASSED_JXN,
             ],
         }
     }
@@ -140,7 +106,11 @@ impl StageTags {
     /// stage has completed, depending on the type of read data being analyzed.
     pub fn tags_after_stage(self) -> Vec<&'static str> {
         match self {
-            Self::BaseCalling => Self::BaseCalling.tag_added_by_stage(),
+            Self::BaseCalling => vec![
+                BASE_MODS,
+                BASE_MOD_PROBS,
+                CHANNEL, // deliberately drop POD5 lookup tags from alignment BAM
+            ],
             Self::Trimming => {
                 let mut tags = Self::BaseCalling.tag_added_by_stage();
                 tags.extend(Self::Trimming.tag_added_by_stage());
@@ -152,7 +122,8 @@ impl StageTags {
                 tags
             },
             Self::Alignment => {
-                let mut tags = Self::Trimming.tags_after_stage();
+                let mut tags = Self::BaseCalling.tags_after_stage();
+                tags.extend(Self::Trimming.tag_added_by_stage());
                 tags.extend(Self::Consensus.tag_added_by_stage()); // Trimming and Consensus tags won't both be present
                 tags.extend(Self::Alignment.tag_added_by_stage());
                 tags
@@ -170,26 +141,3 @@ impl StageTags {
         }
     }
 }
-
-// pub struct TagStore {
-//     pub tag_map: HashMap<&'static str, bool>,
-// }
-// impl TagStore {
-
-//     /// Initialize a TagStore for storing and updating tag values prior to final printing.
-//     pub fn new(state: TagState) -> TagStore {
-//         let tags = state.tag_at_state();
-//         let mut tag_map: HashMap<&'static str, bool> = HashMap::new();
-//         for tag in tags {
-//             tag_map.insert(tag, true);
-//         }
-//         TagStore{
-//             tag_map,
-//         }
-//     }
-
-//     /// Check if a tag is to be retained.
-//     pub fn is_retained(&self, tag: &str) -> bool {
-//         self.tag_map.contains_key(tag)
-//     }
-// }

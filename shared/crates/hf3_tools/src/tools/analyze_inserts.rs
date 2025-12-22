@@ -27,17 +27,20 @@
 // modules
 mod site_matching;
 mod insert_sizes;
+mod outer_nodes;
 
 // dependencies
 use std::error::Error;
 use mdi::pub_key_constants;
-use mdi::workflow::{Workflow, Config, Counters, COUNTER_SEPARATOR};
+use mdi::workflow::{Workflow, Config, Counters};
 use mdi::RecordStreamer;
 use genomex::sam::{SamRecord, flag};
 use genomex::genome::Chroms;
 use crate::formats::hf_tags::*;
+use crate::junctions::JxnFailureFlag;
 use insert_sizes::InsertSizer;
-use site_matching::SiteMatcher;
+use outer_nodes::OuterNodes;
+use site_matching::{SiteMatcher, SiteMatches, SiteMatch, N_SITES, N_MATCHES_BY_OUTCOME};
 
 // Tool structure, for passing data workers to record processing functions.
 struct Tool {
@@ -45,7 +48,13 @@ struct Tool {
     site_matcher: SiteMatcher,
     insert_sizer: InsertSizer,
     incoming_tags: Vec<&'static str>,
-    stage_tags:    Vec<&'static str>,
+    expecting_endpoint_re_sites: bool,
+    rejecting_junction_re_sites: bool,
+    is_end_to_end_platform: bool,
+    is_paired_reads: bool,
+    is_ont: bool,
+    clip_tolerance: usize,
+    accept_endpoint_distance: usize,
 }
 
 // constants 
@@ -55,69 +64,42 @@ pub_key_constants!(
     SEQUENCING_PLATFORM
     IS_END_TO_END_READ
     READ_PAIR_TYPE
-    REJECTING_JUNCTION_RE_SITES
-    READ_LENGTH_TYPE
+    EXPECTING_ENDPOINT_RE_SITES
+    REJECTING_JUNCTION_RE_SITES // can be true if EXPECTING_ENDPOINT_RE_SITES is false
+    CLIP_TOLERANCE // RE site matching tolerances and thresholds
+    ACCEPT_ENDPOINT_DISTANCE
     // derived configuration values
     IS_END_TO_END_PLATFORM
     IS_PAIRED_READS
     IS_ONT
-    SIZE_PLOT_BIN_SIZE
-
-    // IS_END_TO_END_PLATFORM
-    // IS_PAIRED_READS
-    // IS_ONT
-    // IS_SIZE_SELECTED
-    // MAX_ALLOWED_SIZE
-    // SIZE_PLOT_BIN_SIZE
-
     // counter keys
-    N_SEQS
-    N_READS
+    N_READS_IN
     N_ALNS
-    N_JXNS_REJECTED
-
-    // N_ALNS
-    // N_EVENTS
-    // N_READS_OUT
-    // N_READS_SV
-    // N_JXNS
-    // N_BLOCKS
-    // N_BAD_TRAVERSAL
-
-    N_DISCARDED
-    N_BY_READ_OUTCOME
+    N_READS_BY_OUTCOME
+    N_JXNS_BY_REASON
+    N_JXNS_BY_FAILURE_FLAG
+    // read outcomes
+    FAIL_UNMAPPED
+    FAIL_OFF_TARGET
+    FAIL_SITE_LOOKUP
+    FAIL_CLIP_TOLERANCE
+    FAIL_SITE_DISTANCE
+    KEEP_WITH_PASSED_JXN
+    KEEP_ALL_FAILED_JXNS
+    KEEP_NO_JXNS
+    // jxn failure keys
+    JXN_FAIL_NONE
+    JXN_FAIL_TRAVERSAL_DELTA // checked upstream
+    JXN_FAIL_NONCANONICAL
+    JXN_FAIL_FOLDBACK_INV
+    JXN_FAIL_ONT_FOLLOW_ON
+    JXN_FAIL_HAS_ADAPTER
+    JXN_FAIL_SITE_MATCH // checked here
+    JXN_FAIL_STEM_LENGTH
+    JXN_FAIL_UPSTREAM
 );
-
-    // // read outcomes
-    // KEPT_SEQUENCE 
-    // NONCANONICAL_CHROM 
-    // FAILED_SITE_LOOKUP
-    // TELOMERIC_FRAGMENT 
-    // CLIP_TOO_LARGE 
-    // DISTANCE_TOO_LARGE
-    // UNTRIMMED_ONT_ADAPTER
-    // IS_OFF_TARGET 
-
-    // discard reasons
-    // KEPT_SEQUENCE           => "valid on-target reads passed to fragment analysis",
-    // NONCANONICAL_CHROM      => "reads had their 5' alignment on a non-canonical chromosome",
-    // FAILED_SITE_LOOKUP      => "reads failed site lookup",
-    // TELOMERIC_FRAGMENT      => "reads were telomeric fragments",
-    // CLIP_TOO_LARGE          => "reads had a clip that was too large",
-    // DISTANCE_TOO_LARGE      => "reads had an outer site distance that was too large",
-    // UNTRIMMED_ONT_ADAPTER   => "ONT reads lacked a 5' adapter trim",
-    // IS_OFF_TARGET           => "reads had 5' (ONT) or all (other platforms) off-target alignment(s)",
-
-    // read junction statuses
-const HAS_PASSED_JXN: &str  = "at least one passed junction";
-const ALL_FAILED_JXNS: &str = "all failed junctions";
-const HAS_NO_JXNS: &str     = "no junctions";
-// read length types
-const READ_LEN_PROPER: &str       = "nonSV.actual";
-const PROJ_LEN_PROPER: &str       = "nonSV.projected";
-const READ_LEN_CHIMERIC: &str     = "SV.chimeric"; // cannot assess projected size of structural variant reads
-const READ_LEN_NON_CHIMERIC: &str = "SV.passed";   // these include all SV reads, not just translocations
-
+const TRIM5: usize = 0;
+const TRIM3: usize = 1;
 
 // tool function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {
@@ -125,37 +107,24 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_string_env(&[SEQUENCING_PLATFORM, READ_PAIR_TYPE]);
-    cfg.set_bool_env(&[IS_END_TO_END_READ, REJECTING_JUNCTION_RE_SITES]);
+    cfg.set_bool_env(&[IS_END_TO_END_READ, EXPECTING_ENDPOINT_RE_SITES, REJECTING_JUNCTION_RE_SITES]);
+    cfg.set_usize_env(&[CLIP_TOLERANCE, ACCEPT_ENDPOINT_DISTANCE]);
 
     // set derived config values
     cfg.set_bool( IS_END_TO_END_PLATFORM, *cfg.get_bool(IS_END_TO_END_READ));
     cfg.set_bool( IS_PAIRED_READS,        cfg.equals_string(READ_PAIR_TYPE, "paired"));
     cfg.set_bool( IS_ONT,                 cfg.equals_string(SEQUENCING_PLATFORM, "ONT"));
-    cfg.set_usize(SIZE_PLOT_BIN_SIZE, if cfg.equals_string(READ_LENGTH_TYPE, "short") { 10 } else { 250 });
 
     // initialize counters
     let mut ctrs = Counters::new(TOOL, &[
-        (N_SEQS,      "sequences, i.e., single reads or read pairs"),
-        (N_READS,     "reads"),
-        (N_ALNS,      "alignments"),
+        (N_READS_IN, "input reads = single reads, merged pairs, or individual unmerged reads"),
+        (N_ALNS,     "input alignments"),
     ]);
     ctrs.add_keyed_counters(&[
-        // (N_BY_GENOME, "reads by genome"),
-        (N_JXNS_REJECTED, "junction failure counts by reason")
+        (N_READS_BY_OUTCOME,     "number of reads by outcome"),
+        (N_JXNS_BY_REASON,       "junction failure counts by reason (non-exclusive)"),
+        (N_JXNS_BY_FAILURE_FLAG, "junction outcome counts by failure flag"),
     ]);
-
-    // // initialize counters
-    // let mut ctrs = Counters::new(TOOL, vec![
-    //     (COUNTER_SEPARATOR, "")
-    //     (N_ALNS,            "input alignments"),
-    //     (N_EVENTS,          "input events (single-end reads or read pairs)"),
-    //     (N_READS_OUT,       "output reads (after splitting unmerged read pairs"),
-    //     (COUNTER_SEPARATOR, "")
-
-    //     (N_READS_SV,        "analyzed reads with >1 alignment"),
-    //     (N_JXNS,            "junctions in analyzed SV reads)"),
-    // ]);
-
 
     // initialize the tool
     let mut w = Workflow::new(TOOL, cfg, ctrs);
@@ -164,10 +133,16 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     // build tool support resources, i.e. data workers
     let mut tool = Tool {
         chroms: Chroms::new(&mut w.cfg),
-        site_matcher: SiteMatcher::new(&mut w),
         insert_sizer: InsertSizer::new(&mut w),
+        site_matcher: SiteMatcher::new(&mut w),
         incoming_tags: StageTags::AlignmentAnalysis.tags_after_stage(),
-        stage_tags:    StageTags::InsertAnalysis.tag_added_by_stage(),
+        expecting_endpoint_re_sites: *w.cfg.get_bool(EXPECTING_ENDPOINT_RE_SITES),
+        rejecting_junction_re_sites: *w.cfg.get_bool(REJECTING_JUNCTION_RE_SITES),
+        is_end_to_end_platform:      *w.cfg.get_bool(IS_END_TO_END_PLATFORM),
+        is_ont:                      *w.cfg.get_bool(IS_ONT),
+        is_paired_reads:             *w.cfg.get_bool(IS_PAIRED_READS),
+        clip_tolerance:              *w.cfg.get_usize(CLIP_TOLERANCE),
+        accept_endpoint_distance:    *w.cfg.get_usize(ACCEPT_ENDPOINT_DISTANCE),
     };
 
     // process groups of SAM records for each read in a stream
@@ -177,207 +152,238 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
         .comment(b'@')
         .no_trim()
         .flexible()
-        .group_by_in_place_serial(|alns: &mut Vec<SamRecord>| record_parser(
+        .group_by_in_place_serial(|alns: &mut [SamRecord]| record_parser(
             alns, 
             &mut w,
             &mut tool,
         ), &["qname"]); // suffixed by /1 or /2 for unmerged paired reads
 
+    // print insert sizes and stem lengths summary for plotting
+    tool.insert_sizer.print_insert_sizes(&mut w.cfg);
+
     // report counter values
-    w.ctrs.print_all();
+    let (n_sites, n_matches_by_outcome) = if tool.site_matcher.is_matching_sites { 
+        (vec![N_SITES], vec![N_MATCHES_BY_OUTCOME]) 
+    } else { 
+        (vec![], vec![] )
+    };
+    w.ctrs.print_grouped(&[
+        &[N_READS_IN, N_ALNS],
+        &[N_READS_BY_OUTCOME],
+        &n_sites,
+        &n_matches_by_outcome,
+        &[N_JXNS_BY_REASON],
+        &[N_JXNS_BY_FAILURE_FLAG],
+    ]);
     Ok(())
 }
 
 // process all alignments for one read (paired reads are handled separately)
 fn record_parser(
-    alns: &mut Vec<SamRecord>, 
+    alns: &mut [SamRecord], 
     w: &mut Workflow,
     tool: &mut Tool,
 ) -> Result<Vec<usize>, Box<dyn Error>> {
-    w.ctrs.increment(N_SEQS);
+    let n_alns = alns.len();
+    let print_all_alns = Ok((0..n_alns).collect());
+    w.ctrs.increment(N_READS_IN);
+    w.ctrs.add_to(N_ALNS, n_alns);
 
-//     # check the ends of all alignments for RE site matches
-//     # discard sequences if outer ends do not match within tolerance
-//     # adjust outer site positions for clips
-//     # reject sequences if, for a required outer endpoint:
-//     #   outer clip is more than CLIP_TOLERANCE bp in length
-//     #   clip-adjusted endpoint position is more than ACCEPT_ENDPOINT_DISTANCE bp away from closest RE site
-//     #        *       *       *     proper sitePos1 values
-//     #   ----|5-----3/5-----3|----  as nodes are numbered for alignments
-//     #   ----|3-----5/3-----5|----
-//     my ($isEndToEndRead, @trims);
-//     my $tl = $alns[0][SAM_TAGS] =~ m/\ttl:Z:(\S+)/ ? $1 : "0,0";
-//     foreach my $i(0..$#alns){
-//         if($alns[$i][S_FLAG] & _REVERSE){ # outer endpoints are site matched even when EXPECTING_ENDPOINT_RE_SITES is FALSE if REJECTING_JUNCTION_RE_SITES is TRUE
-//             @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = $REJECTING_JUNCTION_RE_SITES ? (
-//                 findClosestSite($alns[$i][S_RNAME], getEnd($alns[$i][S_POS1], $alns[$i][S_CIGAR]) + 1 - $correction5),
-//                 findClosestSite($alns[$i][S_RNAME], $alns[$i][S_POS1] - $correction5)
-//             ) : @nullSites;
-//         } else {
-//             @{$alns[$i]}[SITE_INDEX1_1..SITE_DIST_2] = $REJECTING_JUNCTION_RE_SITES ? ( 
-//                 findClosestSite($alns[$i][S_RNAME], $alns[$i][S_POS1]),
-//                 findClosestSite($alns[$i][S_RNAME], getEnd($alns[$i][S_POS1], $alns[$i][S_CIGAR]) + 1)
-//             ) : @nullSites;
-//         }
-//         if($i == 0){ # read 5' end
-//             if($REJECTING_JUNCTION_RE_SITES){
-//                 $alns[$i][SITE_INDEX1_1] or return FAILED_SITE_LOOKUP;
+    // reset tags in case this is a re-application of analyze_inserts to NAME_BAM_FILE
+    alns.iter_mut().for_each(|aln| aln.tags.retain(&tool.incoming_tags));
 
-//                 # reject telomeric fragments, i.e., that would cross past the first or last RE site on chrom
-//                 if($alns[$i][S_FLAG] & _REVERSE){
-//                     abs($alns[$i][SITE_INDEX1_1]) >  1 or return TELOMERIC_FRAGMENT;
-//                 } else {
-//                     abs($alns[$i][SITE_INDEX1_1]) <  ${$chromData{$alns[$i][S_RNAME]}}[nSites_] or return TELOMERIC_FRAGMENT;
-//                 }
-//             }
+    // stop processing unmapped reads
+    if alns[0].check_flag_any(flag::UNMAPPED) { 
+        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_UNMAPPED);
+        return print_all_alns;
+    }
 
-//             # get ONT adapter trims once per read
-//             @trims = split(",", $tl);
+    // stop processing off-target reads, they will never call variants
+    if alns[0].get_tag_value(READ_IS_OFF_TARGET).is_some() { 
+        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_OFF_TARGET);
+        return print_all_alns;
+    }
 
-//             # perform initial end-to-end status determination
-//             $isEndToEndRead = (
-//                 $isEndToEndPlatform or 
-//                 ($isONT and $trims[TRIM3]) or # TODO: also check from 3' adapter trim on Aviti_1x300 and Ultima, i.e., add tl tag to those platforms
-//                 ($isPairedReadPlatform and !$isUnmergedPair)
-//             ) ? TRUE : FALSE;
-//             # check 5' query end, always required to match a RE site
-//             my $clip5 = 
-//                 ($isONT and !$trims[TRIM5]) ?
-//                 0 : # when ONT untrimmed, clip would include the adapter...
-//                 (($alns[$i][S_FLAG] & _REVERSE) ? getRightClip($alns[$i][S_CIGAR]) : getLeftClip($alns[$i][S_CIGAR]));
-//             $clip5 > $CLIP_TOLERANCE and return CLIP_TOO_LARGE;
-//             if($EXPECTING_ENDPOINT_RE_SITES){
-//                 my $dist5 = abs( ($alns[$i][S_FLAG] & _REVERSE) ? $alns[$i][SITE_DIST_1] + $clip5 : $alns[$i][SITE_DIST_1] - $clip5 );
-//                 $dist5 > $ACCEPT_ENDPOINT_DISTANCE and return DISTANCE_TOO_LARGE;
-//             }
-//         }
-//         if($i == $#alns){ # read 3' end
-//             !$REJECTING_JUNCTION_RE_SITES or $alns[$i][SITE_INDEX1_2] or return FAILED_SITE_LOOKUP;
+    // determine if this is an unmerged read pair
+    let paired_outer_node = if tool.is_paired_reads {
+        alns[0].get_tag_value_parsed::<isize>(PAIRED_OUTER_NODE)
+    } else {
+        None
+    };
+    let is_unmerged_pair = paired_outer_node.is_some();
 
-//             # aln3 is guaranteed by 'locate' to be between 1 and nSitesChrom
+    // collect read outer adapter trims (0,0 for all except ONT trimmed reads)
+    let trims = if let Some(tl_tag) = alns[0].get_tag_value(TRIM_LENGTHS) {
+        tl_tag.split(',').map(|x| x.parse::<usize>().unwrap()).collect::<Vec<_>>()
+    } else {
+        vec![0, 0]
+    };
 
-//             # 3' query end if an end-to-end sequence
-//             # 3' ends on incomplete platforms/sequences are not _required_ to match an RE, but they may be found to do so below
-//             my $clip3 = 
-//                 ($isONT and !$trims[TRIM3]) ?
-//                 0 :
-//                 (($alns[$i][S_FLAG] & _REVERSE) ? getLeftClip($alns[$i][S_CIGAR]) : getRightClip($alns[$i][S_CIGAR]));
-//             my $dist3 = abs( ($alns[$i][S_FLAG] & _REVERSE) ? $alns[$i][SITE_DIST_2] - $clip3 : $alns[$i][SITE_DIST_2] + $clip3 );
-//             if($isEndToEndRead){
-//                 $clip3 > $CLIP_TOLERANCE and return CLIP_TOO_LARGE;
-//                 $EXPECTING_ENDPOINT_RE_SITES and $dist3 > $ACCEPT_ENDPOINT_DISTANCE and return DISTANCE_TOO_LARGE;
-//             }
+    // check the ends of all alignments for RE site matches, when applicable
+    // adjust outer site positions for clips
+    // stop processing sequences, i.e., single/merged reads or read pairs as suspect if a required outer endpoint:
+    //  - outer clip is more than CLIP_TOLERANCE bp in length
+    //  - clip-adjusted endpoint position is more than ACCEPT_ENDPOINT_DISTANCE bp away from closest RE site
+    //        *       *       *     proper sitePos1 values
+    //   ----|5-----3/5-----3|----  as nodes are numbered for alignments
+    //   ----|3-----5/3-----5|----
+    let mut is_end_to_end_read = false;
+    let mut aln_sites: Vec<SiteMatches> = Vec::with_capacity(n_alns);
+    for i in 0..n_alns {
+        let (site5, site3) = tool.site_matcher.match_aln_sites(&alns[i], w);
+        // we expect the RE site lookup to succeed even if the ends don't match RE sites
+        // don't process reads further if any end of any alignment fails to match an RE site
+        if tool.rejecting_junction_re_sites && 
+           (site5.index1 == 0 || site3.index1 == 0) {
+            w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_LOOKUP);
+            return print_all_alns;
+        }
+        if i == 0 { // read 5' end
+            // perform initial end-to-end status determination
+            is_end_to_end_read = 
+                 tool.is_end_to_end_platform || 
+                (tool.is_ont && trims[TRIM3] > 0) || 
+                (tool.is_paired_reads && is_unmerged_pair);
+            // check 5' query end, always required to match a RE site if ligFree
+            let is_reverse = alns[i].check_flag_any(flag::REVERSE);
+            let clip5 = if tool.is_ont && trims[TRIM5] == 0 {
+                0 // when ONT untrimmed, clip would include the adapter...
+            } else if is_reverse {
+                alns[i].get_clip_right()
+            } else {
+                alns[i].get_clip_left()
+            };
+            if clip5 > tool.clip_tolerance {
+                w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_CLIP_TOLERANCE);
+                return print_all_alns;
+            }
+            if tool.expecting_endpoint_re_sites {
+                let dist5 = if is_reverse {
+                    site5.distance + clip5 as isize
+                } else {
+                    site5.distance - clip5 as isize
+                };
+                if dist5.abs() as usize > tool.accept_endpoint_distance {
+                    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_DISTANCE);
+                    return print_all_alns;
+                }
+            }
+        }
+        if i == n_alns - 1 { // read 3' end
+            // 3' query end if an end-to-end sequence
+            // 3' ends on incomplete platforms/sequences are not _required_ to match an RE, but they may be found to do so below
+            let is_reverse = alns[i].check_flag_any(flag::REVERSE);
+            let clip3 = if tool.is_ont && trims[TRIM3] == 0 {
+                0 // when ONT untrimmed, clip might include the adapter...
+            } else if is_reverse {
+                alns[i].get_clip_left()
+            } else {
+                alns[i].get_clip_right()
+            };
+            let dist3 = if is_reverse {
+                site3.distance - clip3 as isize
+            } else {
+                site3.distance + clip3 as isize
+            };
+            if is_end_to_end_read {
+                if clip3 > tool.clip_tolerance {
+                    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_CLIP_TOLERANCE);
+                    return print_all_alns;
+                }
+                if tool.expecting_endpoint_re_sites && dist3.abs() as usize > tool.accept_endpoint_distance {
+                    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_DISTANCE);
+                    return print_all_alns;
+                }
+            // promote incomplete sequences to end-to-end status if they got to the fragment end
+            } else if tool.expecting_endpoint_re_sites && 
+                      !is_unmerged_pair && 
+                      dist3.abs() as usize <= tool.accept_endpoint_distance {
+                is_end_to_end_read = true;
+            }
+        }
+        aln_sites.push(SiteMatches{site5, site3, proj3: SiteMatch::new()});
+    }
+    let is_end_to_end_insert = is_end_to_end_read || tool.is_paired_reads;
 
-//             # promote incomplete sequences to end-to-end status if they got to the fragment end
-//             $EXPECTING_ENDPOINT_RE_SITES and $dist3 <= $ACCEPT_ENDPOINT_DISTANCE and !$isUnmergedPair and $isEndToEndRead = TRUE;
-//         }
-//     }
-//     my $inEndToEndInsert = ($isEndToEndRead or $isPairedReadPlatform) ? TRUE : FALSE;
+    // collect initial 3' site projections when we already know them from end-to-end, non-SV reads
+    let read_has_jxn = n_alns > 1;
+    if is_end_to_end_read && !read_has_jxn {
+        aln_sites[0].proj3 = aln_sites[0].site3.clone();
+        aln_sites[0].proj3.index1 = aln_sites[0].proj3.index1.abs();
+        aln_sites[0].proj3.distance = 0;
+    }
 
-//     # collect initial 3' site projections of each alignment
-//     my $readHasJxn = @alns > 1 ? TRUE : FALSE;
-//     foreach my $aln(@alns){
-//         @$aln[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = ($isEndToEndRead and !$readHasJxn) ?
-//             @{$alns[-1]}[SITE_INDEX1_2..SITE_POS1_2] :
-//             (0,0);
-//         $$aln[SEQ_SITE_INDEX1_2] = abs($$aln[SEQ_SITE_INDEX1_2]);
-//     }
+    // collect outermost nodes for deduplication downstream
+    // this process continues making RE site projections as needed
+    let outer_nodes = OuterNodes::get_outer_nodes(
+        alns,
+        &mut aln_sites,
+        is_unmerged_pair,
+        paired_outer_node,
+        tool,
+        w,
+    );
 
-//     # determine if the 5'-most alignment still needs to be projected
-//     my ($node5, $node3);
-//     if($EXPECTING_ENDPOINT_RE_SITES){
-//         $alns[ 0][SEQ_SITE_INDEX1_2] or @{$alns[ 0]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[0]);
+    // assess the insert sizes and stem lengths of all alignments
+    let insert_sizes = tool.insert_sizer.assess_insert_sizes(
+        alns,
+        is_unmerged_pair,
+        paired_outer_node,
+        &trims,
+        is_end_to_end_read,
+        &tool.chroms,
+    );
 
-//         # determine if the 3'-most alignment still needs to be projected
-//         # here projection is more limited and simply bumps to the next RE site on any haplotype
-//         $alns[-1][SEQ_SITE_INDEX1_2] or @{$alns[-1]}[SEQ_SITE_INDEX1_2..SEQ_SITE_POS1_2] = getProjection($alns[-1]);
+    // collect the distributions of insert sizes of on-target reads
+    let read_has_passed_jxn = if read_has_jxn {
+        let mut any_jxn_passed = false;
+        let mut jxn_failure_flag: u8 = 0;
+        for aln3_i in 1..n_alns {
+            let aln5_i = aln3_i - 1;
+            jxn_failure_flag = alns[aln5_i].get_tag_value_parsed::<u8>(JXN_FAILURE_FLAG_INIT).unwrap_or(0);
+            if jxn_failure_flag != 0 {
+                w.ctrs.increment_keyed(N_JXNS_BY_REASON, JXN_FAIL_UPSTREAM);
+            }
+            jxn_failure_flag |= tool.site_matcher.check_jxn(&aln_sites, aln5_i, aln3_i, w) as u8;
+            jxn_failure_flag |= tool.insert_sizer.check_jxn(&insert_sizes, aln5_i, aln3_i, w) as u8;
+            if jxn_failure_flag != JxnFailureFlag::None as u8 {
+                alns[aln5_i].set_tag_value(JXN_FAILURE_FLAG, &jxn_failure_flag);
+            }
+            w.ctrs.increment_keyed(N_JXNS_BY_FAILURE_FLAG, &jxn_failure_flag.to_string());
+            any_jxn_passed = any_jxn_passed || jxn_failure_flag == 0;
+        }
+        tool.insert_sizer.record_sv_sizes(&insert_sizes, &alns, jxn_failure_flag, &tool.chroms);
+        if any_jxn_passed {
+            w.ctrs.increment_keyed(N_READS_BY_OUTCOME, KEEP_WITH_PASSED_JXN);
+        } else {
+            w.ctrs.increment_keyed(N_READS_BY_OUTCOME, KEEP_ALL_FAILED_JXNS);
+        }
+        any_jxn_passed
+    } else {
+        tool.insert_sizer.record_non_sv_sizes(&insert_sizes, &aln_sites);
+        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, KEEP_NO_JXNS);
+        false
+    };
 
-//         # get outer nodes based on RE site positions
-//         my $pairedSitePos1;
-//         if($pairedAln5){
-//             $pairedSitePos1 = (findClosestSite( # may not have assigned site position to other read yet for first read of unmerged pair
-//                 $$pairedAln5[S_RNAME], 
-//                 ($$pairedAln5[S_FLAG] & _REVERSE) ? getEnd($$pairedAln5[S_POS1], $$pairedAln5[S_CIGAR]) : $$pairedAln5[S_POS1],
-//             ))[1] or return FAILED_SITE_LOOKUP;
-//         }
-//         $node5 = parseSignedNode( # reads always define their own 5' outer node
-//             $alns[0], 
-//             $alns[0][SITE_POS1_1], # using site positions enables fuzzy endpoint matching when comparing reads
-//             BOTTOM_STRAND, TOP_STRAND
-//         );
-//         $node3 = $pairedAln5 ? 
-//             parseSignedNode(
-//                 $pairedAln5, 
-//                 $pairedSitePos1,
-//                 TOP_STRAND, BOTTOM_STRAND # invert the strand orientation of paired 5' ends to match the behavior of single or merged reads
-//             ) : 
-//             parseSignedNode(
-//                 $alns[-1], 
-//                 $alns[-1][SEQ_SITE_POS1_2],  # using projected 3' ends allows best deduplication of partially sequenced RE fragments
-//                 BOTTOM_STRAND, TOP_STRAND
-//             );
+    // read and insert-level properties repeat the same on all alignments
+    let end_to_end_tag = ((is_end_to_end_insert as u8) << 1) | (is_end_to_end_read as u8);
+    let outer_nodes = outer_nodes.to_sam_tag();
+    for i in 0..n_alns {
+        alns[i].set_tag_value(IS_END_TO_END, &end_to_end_tag);
+        alns[i].set_tag_value(OUTER_NODES,   &outer_nodes);
+        if tool.site_matcher.is_matching_sites {
+            alns[i].set_tag_value(CLOSEST_SITES, &aln_sites[i].to_tag());
+        }
+        if tool.insert_sizer.is_size_selected {
+            alns[i].set_tag_value(INSERT_SIZE,   &insert_sizes.insert_size);
+            alns[i].set_tag_value(STEM_LENGTH5,  &insert_sizes.stem_lengths[i].stem5);
+            alns[i].set_tag_value(STEM_LENGTH3,  &insert_sizes.stem_lengths[i].stem3);
+        }
+        if read_has_passed_jxn {
+            alns[i].set_tag_value(READ_HAS_PASSED_JXN, &1);
+        }
+    }
 
-//     # get outer nodes based on alignment positions
-//     } else {
-//         $node5 =  parseSignedNode(
-//             $alns[0], 
-//             ($alns[0][S_FLAG] & _REVERSE) ? getEnd($alns[0][S_POS1], $alns[0][S_CIGAR]) : $alns[0][S_POS1], 
-//             BOTTOM_STRAND, TOP_STRAND
-//         );
-//         $node3 = $pairedAln5 ? 
-//             parseSignedNode(
-//                 $pairedAln5, 
-//                 ($$pairedAln5[S_FLAG] & _REVERSE) ? getEnd($$pairedAln5[S_POS1], $$pairedAln5[S_CIGAR]) : $$pairedAln5[S_POS1],
-//                 TOP_STRAND, BOTTOM_STRAND
-//             ) : 
-//             parseSignedNode( # this unprojectable non-RE node position may not be the end of the insert if a single read is not end-to-end
-//                 $alns[-1], 
-//                 ($alns[-1][S_FLAG] & _REVERSE) ? $alns[-1][S_POS1] : getEnd($alns[-1][S_POS1], $alns[-1][S_CIGAR]), 
-//                 BOTTOM_STRAND, TOP_STRAND
-//             )
-//     }
-
-//     # collect next chunk of read-level metadata for passing into each alignment
-//     my $ch = $alns[0][SAM_TAGS] =~ m/\tch:i:(\d+)/ ? $1 : 0;
-//     my $readLen = length($alns[0][S_SEQ]);
-//     my $insertSize = $isUnmergedPair ? -$node3 - $node5 : $readLen;
-//     $isUnmergedPair and (
-//         $eventHasJxn or 
-//         $insertSize < 0 or
-//         $insertSize > $PLATFORM_MAX_INSERT_SIZE or 
-//         $alns[0][S_RNAME] ne $$pairedAln5[S_RNAME]
-//     ) and $insertSize = 0; # when read carries any type of SV, whether sequenced or not, we cannot infer the true insert size
-//     my $readStart0 = getQueryStart0($alns[ 0][S_FLAG], $alns[ 0][S_CIGAR]);
-//     my $readEnd1   = getQueryEnd1(  $alns[-1][S_FLAG], $alns[-1][S_CIGAR], $readLen); # may not be the end of the insert
-//     my $isAllowedSize = (!$isSizeSelected or ($insertSize >= $minAllowedSize and $insertSize <= $maxAllowedSize)) ? TRUE : FALSE;
-//     foreach my $aln(@alns){
-//         @$aln[IS_END_TO_END_READ..IS_ALLOWED_SIZE] = (
-//             $isEndToEndRead, 
-//             $inEndToEndInsert,
-//             $node5, # like other read and insert-level properties, these repeat the same on all alignments
-//             $node3, 
-//             $ch, 
-//             $tl, 
-//             $insertSize, 
-//             $isAllowedSize
-//         );
-//     }
-
-
-//     # collect the distributions of insert sizes of on-target reads
-//     my $sizeBin = int($insertSize / $sizePlotBinSize) * $sizePlotBinSize;
-//     if($readHasJxn){ # disregard multi-junction reads when assessing insert sizes
-//         @alns == 2 and $sizeBin and recordVariantSizes($sizeBin, @alns); 
-//         $readOutcomes{$anyJxnPassed ? $hasPassedJxn : $allFailedJxns}++;
-//     } else {
-//         $sizeBin and $insertSizeCounts{$READ_LEN_PROPER}{$sizeBin}++;
-//         my $projLen = $EXPECTING_ENDPOINT_RE_SITES ? 
-//             abs($alns[0][SEQ_SITE_POS1_2] - $alns[0][SITE_POS1_1]) + 1 :
-//             $insertSize;
-//         $projLen and $insertSizeCounts{$PROJ_LEN_PROPER}{int($projLen / $sizePlotBinSize) * $sizePlotBinSize}++;
-//         $readOutcomes{$hasNoJxns}++;
-//     }
-
-    // return the value appropriate for the streamer to indicate which records to print to STDOUT
-    Ok((0..alns.len()).collect())
+    // print all alignments for the read, regardless of outcome
+    print_all_alns
 }

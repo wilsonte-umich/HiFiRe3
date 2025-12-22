@@ -3,16 +3,13 @@ use warnings;
 
 # change the fastp merged tag to BAM format tag fm:Z: for passing through minimap2 as fastq
 # count reads and bases to assess what fastp filtering and merging did to prepare_fastq.pl output
-# final QNAME output tag format is:
-#   QNAME [any previous tags] fm:Z:mergeLevel:nRead1:nRead2
+# final output tag format in the FASTQ name line is:
+#   QNAME [any previous tags] fm:Z:nRead1,nRead2
 # where:
 #     fm indicates "fastp merge"
-#     mergeLevel, 
-#         2 for fastp-merged reads (highest priority on sorting)
-#         0 for single, unmerged, or orphaned reads
-#             mergeLevel may later be adjusted to 1 if subjected to downstream alignment-guided merging
-#     nRead1, the number of read1 bases present in a final merged read (0 for single, unmerged or orphan reads)
-#     nRead2, the number of read2 bases present in a final merged read
+#     nRead1, the number of read1 bases present in the final merged read
+#     nRead2, the number of read2 bases present in the final merged read
+# the tag is not added to unmerged reads and will be missing from the eventual BAM file
 
 # initialize reporting
 our $action = "adjust_merge_tags";
@@ -34,7 +31,6 @@ use constant {
 };
 
 # run the interleaved pairs
-my $nullMergeTag = "fm:Z:0:0:0";
 my $lineN = 0;
 my ($prevQName, $readN) = ("");
 while(my $line = <STDIN>){
@@ -45,12 +41,11 @@ while(my $line = <STDIN>){
 
         # QNAME [tags] merged_150_15 means that 150bp are from read1, and 15bp are from read2
         if(@f > 1 and $f[-1] =~ m/merged_(\d+)_(\d+)/){ 
-            $line = join(" ", @f[0..$#f-1], join(":", "fm:Z", 2, $1, $2))."\n";
+            $line = join(" ", @f[0..$#f-1], "fm:Z:$1,$2")."\n";
             $nMergedReads++;
 
         # a single or unmerged read
         } else {
-            $line = join(" ", @f, $nullMergeTag)."\n";
             $nUnmergedReads++;
             $prevQName eq $f[0] or $nUnmergedEvents++;
         }

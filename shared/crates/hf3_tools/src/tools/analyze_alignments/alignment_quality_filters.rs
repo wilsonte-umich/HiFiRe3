@@ -23,9 +23,8 @@ pub_key_constants!{
     MAX_DIVERGENCE
     MIN_FLANK_LEN
     MIN_AVG_BASE_QUAL
-    HAS_BASE_ACCURACY
     // counters
-    N_ALNS_REJECTED
+    N_ALNS_BY_REASON
     AVG_BASE_QUAL
     // alignment failure keys
     ALN_FAIL_NONE
@@ -39,7 +38,7 @@ const AVG_BASE_QUAL_BIN_SIZE: usize = 5;
 // alignment failure flags
 #[repr(usize)]
 pub enum AlnFailureFlag {
-    None        = 0,
+    // None        = 0, // implied by absence of alignment failure tag
     Mapq        = 1,
     Divergence  = 2,
     FlankLen    = 4,
@@ -62,19 +61,18 @@ impl AlnFailure {
         w.cfg.set_u8_env(&[MIN_MAPQ]);
         w.cfg.set_f64_env(&[MAX_DIVERGENCE, MIN_AVG_BASE_QUAL]);
         w.cfg.set_usize_env(&[MIN_FLANK_LEN]);
-        w.cfg.set_bool_env(&[HAS_BASE_ACCURACY]);
         w.ctrs.add_keyed_counters(&[
-            (N_ALNS_REJECTED, "alignments failure counts by reason")
+            (N_ALNS_BY_REASON, "alignments failure counts by reason")
         ]);
         w.ctrs.add_indexed_counters(&[
-            (AVG_BASE_QUAL, "alignment average base quality bin counts (multiply by 5 to get QUAL)"),
+            (AVG_BASE_QUAL, "qual_bin", 10, "SV alignment average base quality bin counts (multiply by 5 to get QUAL)"),
         ]);
         AlnFailure{
             min_mapq:          *w.cfg.get_u8(MIN_MAPQ),
             max_divergence:    *w.cfg.get_f64(MAX_DIVERGENCE),
             min_flank_len:     *w.cfg.get_usize(MIN_FLANK_LEN),
             min_avg_base_qual: *w.cfg.get_f64(MIN_AVG_BASE_QUAL),
-            has_base_accuracy: *w.cfg.get_bool(HAS_BASE_ACCURACY),
+            has_base_accuracy: *w.cfg.get_bool(super::HAS_BASE_ACCURACY),
         }
     }
 
@@ -87,13 +85,13 @@ impl AlnFailure {
 
         // criteria enforced on all alignments, even single, non-SV alignments
         if aln.mapq < self.min_mapq {
-            w.ctrs.increment_keyed(N_ALNS_REJECTED, ALN_FAIL_MAPQ);
+            w.ctrs.increment_keyed(N_ALNS_BY_REASON, ALN_FAIL_MAPQ);
             aln.tags.tags.push(format!("{}{}", ALN_FAILURE_FLAG, AlnFailureFlag::Mapq as u8));
             return false;
         }
         let de = aln.get_tag_value_parsed("de").unwrap_or(0.0);
         if de > self.max_divergence {
-            w.ctrs.increment_keyed(N_ALNS_REJECTED, ALN_FAIL_DIVERGENCE);
+            w.ctrs.increment_keyed(N_ALNS_BY_REASON, ALN_FAIL_DIVERGENCE);
             aln.tags.tags.push(format!("{}{}", ALN_FAILURE_FLAG, AlnFailureFlag::Divergence as u8));
             return false;
         }
@@ -101,7 +99,7 @@ impl AlnFailure {
         // criteria only enforced when reads have SV junctions, i.e., multiple alignments
         if read_has_jxn {
             if aln.get_ref_span() < self.min_flank_len {
-                w.ctrs.increment_keyed(N_ALNS_REJECTED, ALN_FAIL_FLANK_LEN);
+                w.ctrs.increment_keyed(N_ALNS_BY_REASON, ALN_FAIL_FLANK_LEN);
                 aln.tags.tags.push(format!("{}{}", ALN_FAILURE_FLAG, AlnFailureFlag::FlankLen as u8));
                 return false;
             }
@@ -110,7 +108,7 @@ impl AlnFailure {
                 let base_qual_bin_i = (avg_base_qual / AVG_BASE_QUAL_BIN_SIZE as f64).round() as usize;
                 w.ctrs.increment_indexed(AVG_BASE_QUAL, base_qual_bin_i);
                 if avg_base_qual < self.min_avg_base_qual {
-                    w.ctrs.increment_keyed(N_ALNS_REJECTED, ALN_FAIL_AVG_BASE_QUAL);
+                    w.ctrs.increment_keyed(N_ALNS_BY_REASON, ALN_FAIL_AVG_BASE_QUAL);
                     aln.tags.tags.push(format!("{}{}", ALN_FAILURE_FLAG, AlnFailureFlag::AvgBaseQual as u8));
                     return false;
                 }
@@ -118,8 +116,7 @@ impl AlnFailure {
         }
 
         // alignment passed all criteria
-        w.ctrs.increment_keyed(N_ALNS_REJECTED, ALN_FAIL_NONE);
-        aln.tags.tags.push(format!("{}{}", ALN_FAILURE_FLAG, AlnFailureFlag::None as u8));
+        w.ctrs.increment_keyed(N_ALNS_BY_REASON, ALN_FAIL_NONE);
         true
     }
 

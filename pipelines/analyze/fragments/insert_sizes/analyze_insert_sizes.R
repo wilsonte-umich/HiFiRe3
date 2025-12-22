@@ -213,6 +213,8 @@ message("modeling artifact insert size distributions")
 minM2MSize <- 10
 nSamples <- 5e4
 message("  sampling insert sizes")
+
+if (!("nonSV.projected" %in% names(insertSizeCounts))) insertSizeCounts[, nonSV.projected := nonSV.actual ]
 x2xSizes <- insertSizeCounts[sizeBin > minM2MSize, .(sizeBin, nonSV.projected)]
 I <- 1:nrow(x2xSizes)
 sampleI_1 <- sample(I, nSamples, replace = TRUE, prob = x2xSizes$nonSV.projected)
