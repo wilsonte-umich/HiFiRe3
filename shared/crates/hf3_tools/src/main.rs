@@ -34,23 +34,29 @@ fn main() -> Result<(), Box<dyn Error>> {
         // RE site-aware trimming for ONT reads
         "trim_ont" => tools::trim_ont::stream(),
 
-        // compression and reformatting of ONT POD5 files
+        // compression and reformatting of legacy ONT POD5 files
         "reformat_ont" => tools::reformat_ont::stream(),
+
+        /*--------------------------------------------------------------
+        basecall PacBio
+        ------------------------------------------------------------- */
+        // merge fwd and rev PacBio reads into pbFree "unleaded" reads
+        "basecall_pacbio" => tools::basecall_pacbio::stream(),
 
         /*--------------------------------------------------------------
         analyze fragments
         ------------------------------------------------------------- */
-        // sort and examine reads in the output stream from minimap2
+        // sort (per read) and examine read alignments in the output stream from minimap2
         "analyze_alignments" => tools::analyze_alignments::stream(),
 
-        // sort and examine reads in the output stream from minimap2
+        // assess inserts based on RE site matching and insert sizing/stem lengths
         "analyze_inserts" => tools::analyze_inserts::stream(),
 
-        // // // create binary lookup files from extracted RE site positions
-        // // "create_index" => tools::create_index::stream(),
-
-        // // apply various alignment and SV quality filters and error correction mechanisms to create SITE_SAM
-        // "apply_filters" => tools::apply_filters::stream(),
+        /*--------------------------------------------------------------
+        analyze SVs
+        ------------------------------------------------------------- */
+        // analyze reads for evidence of shared SV junctions
+        "analyze_svs" => tools::analyze_svs::stream(),
 
         /*--------------------------------------------------------------
         unrecognized pipeline action tool

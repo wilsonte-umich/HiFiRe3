@@ -67,8 +67,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
 
     // initialize the aligner
     let max_len = SEARCH_SPACE_5 * 2;
-    let mut aligner = Aligner::new(max_len, max_len);
-    aligner.suppress_alignment_map();
+    let mut aligner = Aligner::new(max_len, max_len).suppress_alignment_map();
 
     // run ONT trimming on each SAM record in a stream
     let mut rs = RecordStreamer::new();

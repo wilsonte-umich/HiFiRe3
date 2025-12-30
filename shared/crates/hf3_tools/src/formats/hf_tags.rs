@@ -17,6 +17,11 @@ pub const BASE_MOD_PROBS: &str          = "MM:Z:";
 pub const CHANNEL: &str                 = "ch:i:"; // Dorado tags; only on ONT reads
 pub const POD5_READ_NUMBER: &str        = "rn:i:"; // POD5 lookup tags; only in unaligned BAM
 pub const POD5_FILE: &str               = "fn:Z:";
+pub const PACBIO_FAIL: &str             = "ff:i:"; // PacBio tags
+pub const INTER_PULSE_DURATION: &str    = "ip:B:C,";
+pub const PULSE_WIDTH: &str             = "pw:B:C,";
+pub const PACBIO_EFF_COVERAGE: &str     = "ec:f:";
+pub const STRAND_DIFFERENCES: &str      = "dd:Z:";
 // Trimming, added by hf3_tools trim_ont
 pub const TRIM_LENGTHS: &str            = "tl:Z:"; // serialized encoding of 5',3' ONT trim lengths; only on ONT reads
 // Consensus, added by hf3_tools make_pacbio_consensus

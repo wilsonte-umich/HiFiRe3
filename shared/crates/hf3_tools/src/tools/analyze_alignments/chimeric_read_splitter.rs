@@ -56,10 +56,10 @@ impl ChimeraSplitter {
         let has_adapters = !adapter_core.is_empty();
         let min_adapter_length = *w.cfg.get_usize(MIN_ADAPTER_LENGTH);
         let max_adapter_length = *w.cfg.get_usize(MAX_ADAPTER_LENGTH);
-        let mut aligner = Aligner::new(
+        let aligner = Aligner::new(
             adapter_core.len().max(min_adapter_length), 
             max_adapter_length
-        );
+        ).suppress_alignment_map();
         w.ctrs.add_counters(&[
             (N_CHIMERIC, "chimeric reads identified by junction analysis"),
         ]);
@@ -68,7 +68,6 @@ impl ChimeraSplitter {
                 (ADAPTER_SCORES, "sw_score", adapter_core.len(), "Smith-Waterman alignment scores for adapter vs. inserted bases"),
             ]);
         }
-        aligner.suppress_alignment_map();
         ChimeraSplitter{
             is_ont: *w.cfg.get_bool(super::IS_ONT), // must be set upstream
             insertion_window_size: insertion_window_size as isize,
