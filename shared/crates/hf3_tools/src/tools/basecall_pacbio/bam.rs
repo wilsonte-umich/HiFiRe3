@@ -26,11 +26,22 @@ pub (super) fn get_tag_f32(strand: &BamRecord, tag: &'static str) -> f32 {
         _ => panic!("{tag} tag is not Float"),
     }
 }
-/// Parse the value of a specified 'XX:B:C,' tag from a BAM record as Vec<u8>.
-/// The tags is expected to be present; otherwise this function panics.
-pub (super) fn get_tag_u8_vec(strand: &BamRecord, tag: &'static str) -> Vec<u8> {
-    match get_tag_value(strand, tag) {
-        Aux::ArrayU8    (v) => v.iter().collect(),
-        _ => panic!("{tag} tag is not ArrayU8"),
+// /// Parse the value of a specified 'XX:B:C,' tag from a BAM record as Vec<u8>.
+// /// The tags is expected to be present; otherwise this function panics.
+// pub (super) fn get_tag_u8_vec(strand: &BamRecord, tag: &'static str) -> Vec<u8> {
+//     match get_tag_value(strand, tag) {
+//         Aux::ArrayU8    (v) => v.iter().collect(),
+//         _ => panic!("{tag} tag is not ArrayU8"),
+//     }
+// }
+/// Parse the value of a specified 'XX:B:C,' tag from a BAM record as Option<Vec<u8>>.
+/// Return None if the tag is not present.
+pub (super) fn get_tag_u8_vec_opt(strand: &BamRecord, tag: &'static str) -> Option<Vec<u8>> {
+    if let Some(v) = strand.aux(tag.as_bytes()).ok() {
+        return match v {
+            Aux::ArrayU8(v) => Some(v.iter().collect()),
+            _ => panic!("{tag} tag is not ArrayU8"),
+        }
     }
+    None
 }
