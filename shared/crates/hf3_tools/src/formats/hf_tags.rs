@@ -21,11 +21,13 @@ pub const PACBIO_FAIL: &str             = "ff:i:"; // PacBio tags
 pub const INTER_PULSE_DURATION: &str    = "ip:B:C,";
 pub const PULSE_WIDTH: &str             = "pw:B:C,";
 pub const PACBIO_EFF_COVERAGE: &str     = "ec:f:";
-pub const STRAND_DIFFERENCES: &str      = "dd:Z:";
 // Trimming, added by hf3_tools trim_ont
 pub const TRIM_LENGTHS: &str            = "tl:Z:"; // serialized encoding of 5',3' ONT trim lengths; only on ONT reads
-// Consensus, added by hf3_tools make_pacbio_consensus
-pub const PACBIO_CONSENSUS: &str        = "pc:Z:"; // pending; only on PacBio pbFree "unleaded" reads
+// Consensus, added by hf3_tools basecall_pacbio
+// pub const PACBIO_EFF_COVERAGE: &str     = "ec:f:"; // already defined above, but modified during consensus building
+pub const STRAND_DIFFERENCES: &str      = "dd:Z:";
+pub const SUBSTITUTION_KINETICS: &str   = "sk:B:S,";
+pub const STRAND_DIFFERENCE_TYPES: &str = "dt:i:";
 // Alignment, added by fastp and minimap2
 pub const FASTP_MERGE: &str             = "fm:Z:"; // serialized encoding of read1,read2 retained bases; only on merged read pairs
 pub const ALN_SCORE: &str               = "AS:i:"; // minimap2 tags 
@@ -71,12 +73,16 @@ impl StageTags {
                 CHANNEL,
                 POD5_READ_NUMBER, // POD5 lookup tags only in unaligned BAM
                 POD5_FILE,
+                PACBIO_EFF_COVERAGE,
             ],
             Self::Trimming => vec![
                 TRIM_LENGTHS,
             ],
             Self::Consensus => vec![
-                PACBIO_CONSENSUS,
+                // PACBIO_EFF_COVERAGE,
+                STRAND_DIFFERENCES,
+                SUBSTITUTION_KINETICS,
+                STRAND_DIFFERENCE_TYPES,
             ],
             Self::Alignment => vec![
                 FASTP_MERGE,

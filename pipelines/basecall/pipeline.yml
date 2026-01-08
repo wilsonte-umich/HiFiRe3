@@ -9,25 +9,24 @@ actions:
         condaFamilies:
             - base
             - main
-        optionFamilies:
-            - library-properties
     PacBio:
         order: 1
         optionFamilies:
             - pacbio
         resources:
             required:
-                total-ram: 64G
+                total-ram: 32G
             recommended: 
                 n-cpu: 8
-                ram-per-cpu: 8G
+                ram-per-cpu: 4G
         job-manager:
             recommended:
-                time-limit: 48:00:00
-        description: "derive a read consensus from two PacBio pipeline-derived strand consensuses"
+                time-limit: 24:00:00
+        description: "derive a read consensus from PacBio strand consensuses generated in by-strand mode"
     ONT:
         order: 2
         optionFamilies:
+            - library-properties
             - restriction-enzyme # used to assist adapter trimming
             - pod5
             - dorado

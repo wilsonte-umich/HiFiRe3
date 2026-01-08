@@ -1,12 +1,24 @@
 ---
 # options that set the path to the input PacBio strand-specific files for final basecalling
 options:
-    pacbio-dir: 
+    hifi-bam-file: 
         order: 1
-        short: i
+        short: H
         type: string
         required: true
         default: null
-        directory:
-            must-exist: true
-        description: "directory with one or more stranded *.bam files from a single PacBio run"
+        description: "path to a PacBio BAM file with hifi reads generated in by-strand mode"
+    fail-bam-file: 
+        order: 2
+        short: F
+        type: string
+        required: true
+        default: null
+        description: "path to a PacBio BAM file with fail reads generated in by-strand mode"
+    force-basecalling: 
+        order: 3
+        short: X
+        type: boolean
+        required: false
+        default: false
+        description: "force basecalling of all reads, ignoring any existing ubam files"

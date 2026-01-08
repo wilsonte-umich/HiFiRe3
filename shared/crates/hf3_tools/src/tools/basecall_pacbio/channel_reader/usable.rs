@@ -4,7 +4,7 @@
 // dependencies
 use rust_htslib::bam::Record as BamRecord;
 use crate::formats::hf_tags::{PACBIO_FAIL, PACBIO_EFF_COVERAGE};
-use super::bam;
+use crate::tools::basecall_pacbio::{bam, MIN_READ_LEN, MAX_READ_LEN};
 
 /// CcsFailBits enumerates the failure reasons for PacBio CCS reads
 /// as found in the "ff:i:" tag in ccs bam files (even hifi files)
@@ -27,19 +27,24 @@ enum CcsFailBits {
 // 0x40	CCS reads that have one or more adapters close to either end.
 
 // constants
-pub const UNUSABLE_BITS: u8 = 
+const UNUSABLE_BITS: u8 = 
     CcsFailBits::ControlRead      as u8 |
     CcsFailBits::NoCcsRead        as u8 |
     CcsFailBits::ChimericAdapter  as u8 |
     CcsFailBits::MiscalledAdapter as u8 |
     CcsFailBits::CloseAdapter     as u8;
-const MIN_EFFECTIVE_COVERAGE: f32 = 3.0; // TODO: expose as options?
-pub (super) const MAX_READ_LEN: usize = 25000;
+const MIN_EFFECTIVE_COVERAGE: f32 = 3.0; // expose as options?
 
 /// Determine whether a by-strand read is usable for merging based on its PacBio tags.
-pub (super) fn is_usable(strand: &BamRecord) -> (bool, f32) {
-    let ec = bam::get_tag_f32(strand, PACBIO_EFF_COVERAGE);
-    if strand.seq().len() > MAX_READ_LEN { return (false, ec); }
-    let ff = bam::get_tag_u8(strand, PACBIO_FAIL);
-    ( (ff & UNUSABLE_BITS == 0) && ec >= MIN_EFFECTIVE_COVERAGE, ec )
+pub (super) fn is_usable(strand: &BamRecord) -> (bool, u8, f32) {
+    let ff  = bam::get_tag_u8(strand, PACBIO_FAIL);
+    let ec = bam::get_tag_f32_default(strand, PACBIO_EFF_COVERAGE);
+    let read_len = strand.seq().len();
+    let is_usable = {
+        read_len >= MIN_READ_LEN && 
+        read_len <= MAX_READ_LEN &&
+        (ff & UNUSABLE_BITS == 0) &&
+        ec >= MIN_EFFECTIVE_COVERAGE
+    };
+    (is_usable, ff, ec)
 }
