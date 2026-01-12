@@ -1,4 +1,4 @@
-﻿enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,HiFiRe3_compatible,initial_priority,comments
+enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,HiFiRe3_compatible,initial_priority,comments
 BamHI,0,GGATCC,GGATCC,1,5,TRUE,6,FALSE,6,FALSE,NA,20000,50000,276,0.6,37,CutSmart,0/0,FALSE,FALSE,FALSE,5,increased binding of the enzyme to the DNA
 BglII,0,AGATCT,AGATCT,1,5,FALSE,6,FALSE,6,FALSE,NA,10000,10000,280,2.8,37,NEBuffer r3.1,0/0,FALSE,FALSE,FALSE,5,
 EcoRI,0,GAATTC,GAATTC,1,4,TRUE,6,FALSE,6,TRUE,blocked,20000,50000,276,0.6,37,CutSmart,65/20,FALSE,FALSE,FALSE,5,

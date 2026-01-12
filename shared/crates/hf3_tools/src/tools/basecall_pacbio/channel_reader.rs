@@ -83,7 +83,10 @@ pub fn stream_bam_files(
 
     // scan the fail and hifi BAM files on order to build a cache of by-strand reads
     // merge strands when both are encountered and usable
-    for bam_file_key in &[FAIL_BAM_FILE, HIFI_BAM_FILE] {
+
+    // for bam_file_key in &[FAIL_BAM_FILE, HIFI_BAM_FILE] {
+    for bam_file_key in &[HIFI_BAM_FILE] {
+
         let bam_file = cfg.get_string(bam_file_key);
         let bam_file_name = Path::new(&bam_file).file_name().unwrap().to_str().unwrap();
         eprintln!("processing {}", bam_file_name);

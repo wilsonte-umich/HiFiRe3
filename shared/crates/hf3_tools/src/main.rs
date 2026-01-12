@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         basecall PacBio
         ------------------------------------------------------------- */
         // merge fwd and rev PacBio reads into pbFree "unleaded" reads
-        "basecall_pacbio" => tools::basecall_pacbio::stream(),
+        // "basecall_pacbio" => tools::basecall_pacbio::stream(),
 
         /*--------------------------------------------------------------
         analyze fragments
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         analyze SVs
         ------------------------------------------------------------- */
         // analyze reads for evidence of shared SV junctions
-        "analyze_svs" => tools::analyze_svs::stream(),
+        // "analyze_svs" => tools::analyze_svs::stream(),
 
         /*--------------------------------------------------------------
         unrecognized pipeline action tool

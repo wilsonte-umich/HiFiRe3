@@ -116,7 +116,7 @@ minimap2 \
 
 # process reads to determine if variants are present according to the reference genome
 # perl ${ACTION_DIR}/align/flag_variant_events.pl |
-${MDI_DIR}/bin/hf3_tools analyze_alignments |
+${SUITE_BIN_DIR}/hf3_tools analyze_alignments |
 samtools view -b -@ ${SAMTOOLS_CPU} -o ${NAME_BAM_FILE} -
 checkPipe
 

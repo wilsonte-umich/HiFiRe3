@@ -11,7 +11,7 @@ if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ] && [ "$CREATING_SAMPLE_SITE_FILES
     echo "creating sample-level site lookup files"
     # perl ${ACTION_DIR}/locate/create_index.pl |
     zcat $FILTERING_SITES_FILE | 
-    ${MDI_DIR}/bin/hf3_tools create_index | 
+    ${SUITE_BIN_DIR}/hf3_tools create_index | 
     $BGZIP $FILTERING_SITES_BGZ
     checkPipe
 

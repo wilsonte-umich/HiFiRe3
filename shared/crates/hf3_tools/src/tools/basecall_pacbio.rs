@@ -19,6 +19,8 @@ mod channel_kinetics;
 // dependencies
 use std::error::Error;
 use crossbeam::channel::bounded;
+use minimap2::{Aligner as Minimap2};
+use faimm::IndexedFasta;
 use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, record::Aux, Header, Format};
 use mdi::pub_key_constants;
 use mdi::workflow::{Config, Counters};
@@ -70,10 +72,13 @@ pub_key_constants!(
     N_CPU
     HIFI_BAM_FILE // here for header copying
     READ_BAM_FILE // the output BAM file for merged reads
+    MINIMAP2_INDEX_WRK
+    GENOME_FASTA
     // counter keys
     N_READS
     N_READS_BY_OUTCOME
     N_STRAND_DIFFERENCE_TYPES
+    N_READS_BY_MINIMAP2
     // merge outcomes
     UNUSABLE_READ
 );
@@ -87,7 +92,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_usize_env(&[N_CPU]);
-    cfg.set_string_env(&[HIFI_BAM_FILE, READ_BAM_FILE]);
+    cfg.set_string_env(&[HIFI_BAM_FILE, READ_BAM_FILE, GENOME_FASTA, MINIMAP2_INDEX_WRK]);
 
     // initialize counters
     let mut ctrs = Counters::new(TOOL, &[
@@ -96,7 +101,21 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     ctrs.add_keyed_counters(&[
         (N_READS_BY_OUTCOME, "number of reads by strand merging outcome"),
         (N_STRAND_DIFFERENCE_TYPES, "number of merged reads by strand difference type"),
+        (N_READS_BY_MINIMAP2, "number of reads by minimap2 strand alignment outcome"),
     ]);
+
+    // instantiate shared minimap2 aligner
+    let mm2_index = cfg.get_string(MINIMAP2_INDEX_WRK).to_string();
+    let minimap2 = Minimap2::builder()
+        .map_hifi()
+        .with_index(mm2_index, None)
+        // .with_cigar()
+        .expect("Failed to build minimap2 index");
+
+    // instantiate the FAI sequence fetcher
+    let genome_fasta = cfg.get_string(GENOME_FASTA).to_string();
+    let fa = IndexedFasta::from_file(&genome_fasta)
+        .expect("Error opening genome FASTA file");
 
     // read the header from HIFI_BAM_FILE to use for the output
     let hifi_path = cfg.get_string(HIFI_BAM_FILE).to_string();
@@ -133,11 +152,13 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
             let rx_strand_pair  = rx_strand_pair.clone();
             let tx_kinetics = tx_kinetics.clone();
             let tx_merge_result  = tx_merge_result.clone();
-            scope.spawn(move |_| {
+            scope.spawn(|_| {
                 channel_worker::merge_strand_pairs(
                     rx_strand_pair, 
                     tx_kinetics,
-                    tx_merge_result
+                    tx_merge_result,
+                    &minimap2,
+                    &fa,
                 ).unwrap();
             });
         }

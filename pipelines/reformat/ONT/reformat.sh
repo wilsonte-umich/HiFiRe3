@@ -22,7 +22,7 @@ for UBAM_FILE in $READ_1_FILES; do
     # run the reformatting
     echo "      reformatting and compressing"
     samtools view -@ ${N_CPU} --with-header ${BU_FILE} |
-    ${MDI_DIR}/bin/hf3_tools reformat_ont |
+    ${SUITE_BIN_DIR}/hf3_tools reformat_ont |
     samtools view -@ ${N_CPU} -b -o ${UBAM_FILE} -
 
     # delete the backup (pending)

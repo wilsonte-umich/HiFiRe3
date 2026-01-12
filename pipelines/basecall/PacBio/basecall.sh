@@ -7,5 +7,13 @@ if [[ -f "${READ_BAM_FILE}" && "${FORCE_BASECALLING}" != "true" ]]; then
     echo "Set flag --force-basecalling to re-run basecalling."
     exit 0
 fi
-$SUITE_BIN_DIR/hf3_tools basecall_pacbio
+
+# as needed, create and save the appropriate minimap2 genome alignment index
+export GENOME_FASTA_WRK=${GENOME_FASTA}
+export ALIGNMENT_MODE_WRK="map-hifi"
+export CREATE_MM2_INDEX_MESSAGE="continuing with basecalling"
+source ${MODULES_DIR}/align/create_mm2_index.sh # sets variable ${MINIMAP2_INDEX_WRK}
+
+# run basecalling
+${SUITE_BIN_DIR}/hf3_tools basecall_pacbio
 checkPipe

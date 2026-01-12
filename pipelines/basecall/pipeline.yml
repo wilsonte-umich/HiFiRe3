@@ -13,6 +13,7 @@ actions:
         order: 1
         optionFamilies:
             - pacbio
+            - genome
         resources:
             required:
                 total-ram: 32G

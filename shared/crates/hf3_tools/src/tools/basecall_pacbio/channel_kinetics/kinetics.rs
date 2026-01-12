@@ -28,13 +28,12 @@ impl CodecV1 {
 // In other words, we use the first 64 codepoints to encode frame counts at single frame resolution, the next 64 to encode the frame counts at two-frame resolution, and so on. Durations exceeding 952 frames are capped at 952. Durations not enumerated in “Frames” above are rounded to the nearest enumerated duration then encoded. For example, a duration of 194 frames would round to 196 and then be encoded as codepoint 129
 
 /// StrandMetadata structure for statifying strand kinetics values
-/// by duplex and reference base status at a central query base.
+/// by duplex and reference base status at a central index base.
 #[derive(Hash, Eq, PartialEq)]
 pub struct StrandMetadata {
-    pub base_context:    [u8; 3], // 3-base context around the query base
-    pub is_heteroduplex: bool,    // only is_heteroduplex is set on initial basecalling; is_ref fields set after alignment
-    pub one_is_ref:      bool,    // whether one of the strands is the reference base
-    pub this_is_ref:     bool,    // whether this strand is the reference base
+    pub base_context:    [u8; 3], // 3-base context around the index base
+    pub is_heteroduplex: bool,    // false for benchmarking on homoduplex strands
+    pub is_ref:          bool,    // whether this strand is the reference base; true for homoduplex benchmarking
 }
 
 /// FrameCounts structure for storing the pulse values 
@@ -51,11 +50,12 @@ pub fn push(
     strand: &BufferedStrand,
     offset: usize,
     is_heteroduplex: bool,
+    is_ref: bool,
     tx_kinetics: &Sender<KineticsInstance>,
 ) -> (String, Vec<u16>) {
 
     // ignore identity bases at the ends of the read 
-    if offset == 0 || offset + 1 >= strand.seq.len() {
+    if offset < 1 || offset >= strand.seq.len() - 1 {
         return ("NNN".to_string(), vec![0, 0, 0]); // dummy value, never expeced to be used in caller
     }
 
@@ -78,8 +78,7 @@ pub fn push(
     let strand_metadata = StrandMetadata {
         base_context: base_context.as_bytes().try_into().unwrap(),
         is_heteroduplex,
-        one_is_ref:   false,
-        this_is_ref:  false,
+        is_ref,
     };
 
     // assemble the decoded FrameCounts

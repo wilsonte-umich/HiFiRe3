@@ -9,7 +9,7 @@
 //! output:
 //!     updated SAM stream on STDOUT, with:
 //!         - SEQ and QUAL length unchanged, i.e., no trimming performed by this tool
-//!         - all prior tags removed, except retaining ML:B:C:, MM:Z:, qs:f:, ch:i:, rn:i:, and fn:Z:
+//!         - all prior tags removed, except retaining ML, MM, ch, rn, fn
 //!         - new tag added: tl:Z: = adapter trim lengths in format `<5' trim>,<3' trim>`
 //!         - QUAL field quantized to 8 levels to reduce BAM file size
 

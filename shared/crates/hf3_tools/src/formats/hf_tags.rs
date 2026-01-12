@@ -73,6 +73,9 @@ impl StageTags {
                 CHANNEL,
                 POD5_READ_NUMBER, // POD5 lookup tags only in unaligned BAM
                 POD5_FILE,
+                PACBIO_FAIL,
+                INTER_PULSE_DURATION,
+                PULSE_WIDTH,
                 PACBIO_EFF_COVERAGE,
             ],
             Self::Trimming => vec![
@@ -121,6 +124,8 @@ impl StageTags {
                 BASE_MODS,
                 BASE_MOD_PROBS,
                 CHANNEL, // deliberately drop POD5 lookup tags from alignment BAM
+                PACBIO_FAIL, // ip and pw tags dropped by basecall ONT
+                PACBIO_EFF_COVERAGE,
             ],
             Self::Trimming => {
                 let mut tags = Self::BaseCalling.tag_added_by_stage();

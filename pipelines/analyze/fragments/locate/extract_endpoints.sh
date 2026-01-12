@@ -8,7 +8,7 @@ if [ "$EXPECTING_ENDPOINT_RE_SITES" = "TRUE" ] && [ "$CREATING_SAMPLE_SITE_FILES
 
     # perl ${ACTION_DIR}/locate/extract_endpoints.pl | 
     samtools view $NAME_BAM_FILE | 
-    ${MDI_DIR}/bin/hf3_tools extract_endpoints | 
+    ${SUITE_BIN_DIR}/hf3_tools extract_endpoints | 
     pigz -c --processes ${N_CPU} > ${OBSERVED_ENDPOINTS_FILE}
     checkPipe
     echo "done"
