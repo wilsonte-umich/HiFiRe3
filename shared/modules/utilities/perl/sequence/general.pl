@@ -173,14 +173,14 @@ sub getN50 {
 # a READ_SV_PENALTY_FRACTION of 0.2 means a 150 bp read SV would offset 3 mismatches (150 * 0.2 = 30 = 3 * 10)
 #----------------------------------------------------------------------------------
 # minimap2 in standard long-read modes has a match score of 2 and a mismatch penalty of 4, for a net penalty of 6
-sub getCompositeReadAlnScore {
-    my ($alns) = @_;
-    my $scoreSum = 0;
-    foreach my $aln(@$alns){
-        $scoreSum += (($$aln[TAGS] and $$aln[TAGS] =~ m/AS:i:(\S+)/) ? $1 : 0);
-    }
-    $scoreSum - (@$alns - 1) * READ_SV_PENALTY_FRACTION * length($$alns[0][SEQ]);
-}
+# sub getCompositeReadAlnScore {
+#     my ($alns) = @_;
+#     my $scoreSum = 0;
+#     foreach my $aln(@$alns){
+#         $scoreSum += (($$aln[TAGS] and $$aln[TAGS] =~ m/\tAS:i:(\S+)/) ? $1 : 0);
+#     }
+#     $scoreSum - (@$alns - 1) * READ_SV_PENALTY_FRACTION * length($$alns[0][SEQ]);
+# }
 
 # get the minimum max-insert-size from config and options
 sub getMaxInsertSize {

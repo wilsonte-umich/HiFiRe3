@@ -20,6 +20,7 @@ resetCountFile();
 
 # environment variables
 fillEnvVar(\our $DEDUPLICATE_READS, 'DEDUPLICATE_READS');
+fillEnvVar(\our $DATA_NAME, 'DATA_NAME');
 
 # constants
 use constant {
@@ -78,7 +79,7 @@ use constant {
     UJXN_IS_EXCLUDED_2        => 39,
     UJXN_BKPT_COVERAGE_1      => 40, # added by this script
     UJXN_BKPT_COVERAGE_2      => 41,
-    CMP_N_SAMPLES             => 42, # initialized to null values by this script
+    CMP_N_SAMPLES             => 42,
     CMP_SAMPLES               => 43,
 };
 
@@ -103,5 +104,5 @@ while (my $intsct = <STDIN>){
 # output unique junctions with all final metadata columns
 for my $jxn(@jxns){
     $jxn or next;
-    print join("\t", @$jxn, 0, ","), "\n";
+    print join("\t", @$jxn, 1, ",$DATA_NAME,"), "\n";
 }

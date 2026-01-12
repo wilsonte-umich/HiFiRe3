@@ -1,4 +1,4 @@
-﻿enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,HiFiRe3_compatible,initial_priority,comments
+enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,HiFiRe3_compatible,initial_priority,comments
 DraI,0,TTTAAA,TTTAAA,3,5,FALSE,6,FALSE,6,FALSE,NA,20000,10000,309,3.1,37,CutSmart,65/20,FALSE,FALSE,TRUE,5,
 PvuII,0,CAGCTG,CAGCTG,3,5,TRUE,6,FALSE,6,FALSE,NA,100000,25000,287,1.1,37,CutSmart,0/0,FALSE,TRUE,TRUE,5,
 ScaI,0,AGTACT,AGTACT,3,5,TRUE,6,FALSE,6,FALSE,NA,100000,5000,309,6.2,37,CutSmart,80/20,FALSE,FALSE,TRUE,5,

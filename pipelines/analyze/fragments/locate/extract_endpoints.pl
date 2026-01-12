@@ -4,9 +4,10 @@ use warnings;
 # action:
 #     extract all sequence endpoints expected to match RE sites, i.e.:
 #       5' endpoints of all sequences, i.e., reads
-#       3' endpoints from 3'-adapter-trimmed single-reads, i.e., molecules sequenced end-to-end in one read
-#           *>>>>>>>>>>>o------  (truncated/untrimmed single-read (e.g., ONT), 3' end not used)
-#           *>>>>>>>>>>>>>>>>>>* (3'-adapter-trimmed ONT; PacBio)
+#       3' endpoints from 3'-adapter-trimmed single-reads or merged read pairs, i.e., molecules sequenced end-to-end
+#           *>>>>>>>>>>>o------  (truncated/untrimmed single-read, 3' end not used)
+#           *>>>>>>>>>>>>>>>>>>* (merged read pair, 3'-adapter-trimmed ONT or other end-to-end single read)
+#           *>>>>>>------<<<<<<* (unmerged paired reads)
 #     where "endpoint" means the outermost bases of the sequenced event, ignoring internal supplementary alignments
 #           *aln1//aln2//aln3* (aln2 is ignored by this script)
 # expects:
@@ -25,10 +26,11 @@ use warnings;
 #           ====+--|*         small clips more likely reflect base differences in contiguous alignments, large clips may represent SV junctions
 #       nObserved is the count of all unique endpoints that nominated chrom,sitePos1
 #     ordered by chrom, but not by sitePos1 (since will be reordered anyway by tabulate_endpoints.R)
+#     all sitePos1 are for blunt REs, since read endpoint analysis only applies to ligation libraries
 
 # initialize reporting
 our $action = "extract_endpoints";
-my ($nAlns, $nSequences, $nEndpoints, $nHighQual, $nPositions) = (0) x 10;
+my ($nAlns, $nSequences, $nReads, $nEndpoints, $nHighQual, $nPositions) = (0) x 10;
 
 # load dependencies
 my $perlUtilDir = "$ENV{MODULES_DIR}/utilities/perl";
@@ -97,30 +99,40 @@ use constant {
     #-------------
     TRIM5 => 0, 
     TRIM3 => 1,
+    #-------------
+    EVENT   => 0,
+    READ1   => 1,
+    READ2   => 2,
 };
 
 # run all reads in all input PAF files
 print STDERR "extracting sequence endpoints\n";
-my ($prevQName, @alns, @counts) = (0);
+my ($prevQName, @alns, $readN, @counts) = (0);
 $| = 1;
 open my $inH, "-|", "samtools view $NAME_BAM_FILE" or die "$action error: could not open $NAME_BAM_FILE: $!\n";
 while(my $aln = <$inH>){
     $nAlns++;
     my @aln = split("\t", $aln, SPLIT_TO_TAGS);
+    $aln[TAGS] = "\t".$aln[TAGS]; # facilitate regex searches
     if($prevQName and $prevQName ne $aln[QNAME]){
         $nSequences++;
-        processRead();
+        foreach my $readN (READ1..READ2) { 
+            $alns[$readN] and processRead($readN) 
+        }
         @alns = ();
     }
     $aln[QSTART0] = getQueryStart0(@aln[FLAG, CIGAR]);
-    push @alns, \@aln;
+    $readN = ($aln[FLAG] & _IS_PAIRED and $aln[FLAG] & _SECOND_IN_PAIR) ? READ2 : READ1;
+    push @{$alns[$readN]}, \@aln;
     $prevQName = $aln[QNAME];
 }
 close $inH;
 
 # process the last sequence
 $nSequences++;
-processRead();
+foreach my $readN (READ1..READ2) { 
+    $alns[$readN] and processRead($readN) 
+}
 
 # report all unique observed positions with counts
 foreach my $chrom(@canonicalChroms){
@@ -135,26 +147,33 @@ foreach my $chrom(@canonicalChroms){
 # report tallies
 printCount(commify($nAlns),      'nAlns',      'alignments');
 printCount(commify($nSequences), 'nSequences', 'sequences, i.e., reads');
+printCount(commify($nReads),     'nReads',     'reads');
 printCount(commify($nEndpoints), 'nEndpoints', 'informative endpoints');
 printCount(commify($nHighQual),  'nHighQual',  "candidate endpoints with MAPQ >= $MIN_MAPQ and clip <= $CLIP_TOLERANCE");
 printCount(commify($nPositions), 'nPositions', "genome positions nominated as RE sites");
 
 # process a read over one or two outermost alignments
 sub processRead {
+    my ($readN) = @_;
+    $nReads++;
 
-    # always attempt to process the 5' end of all reads
-    my @alns_ = sort { $$a[QSTART0] <=> $$b[QSTART0] } @alns;
+    # sort alignments by query start position
+    my @alns_ = sort { $$a[QSTART0] <=> $$b[QSTART0] } @{$alns[$readN]};
 
     # get ONT adapter trims
     my @trims = (0, 0);
-    $isONT and $alns_[0][TAGS] =~ /tl:Z:(\d+),(\d+)/ and @trims = ($1, $2);
+    $isONT and $alns_[0][TAGS] =~ /\ttl:Z:(\d+),(\d+)/ and @trims = ($1, $2);
+
+    # always attempt to process the 5' end of all reads
     processEndpoint($alns_[0], \@trims, 5);
 
     # attempt to process read 3' ends if informative, i.e., inferred to be from end-to-end read
     # NOT necessarily on the same chromosome or part of the same contig as the 5' end
+    $readN == READ2 and return;
     if(
-        $IS_END_TO_END_READ or     # PacBio or other platforms that guarantee end-to-end reads
-        ($isONT and $trims[TRIM3]) # complete ONT reads, must be trimmed at 3' end to be confident end-to-end
+        $IS_END_TO_END_READ or        # PacBio or other platforms that guarantee end-to-end reads
+        ($isONT and $trims[TRIM3]) or # complete ONT reads, must be trimmed at 3' end to be confident end-to-end
+        $alns_[0][TAGS] =~ /\tfm:Z:2/ # merged paired reads
     ){
         processEndpoint($alns_[$#alns_], \@trims, 3);
     }

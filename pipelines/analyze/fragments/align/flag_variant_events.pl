@@ -52,15 +52,21 @@ use constant {
     _DUPLICATE      => 1024,
     _SUPPLEMENTAL   => 2048,
     #-------------
-    ALN_HAS_SNV       => 1, # variant flag bits
-    READ_HAS_SNV      => 2,
-    READ_HAS_SV       => 4,
-    READ_HAS_VARIANT  => 8,
+    EVENT   => 0,
+    READ1   => 1,
+    READ2   => 2,
+    #-------------
+    ALN_HAS_SNV         => 1, # variant flag bits
+    READ_HAS_SNV        => 2,
+    READ_HAS_SV         => 4,
+    EVENT_HAS_SNV       => 8,
+    EVENT_HAS_SV        => 16,
+    EVENT_HAS_VARIANT   => 32,
 };
 
 # parse input SAM
-my $readHasSNV = 0;
-my (@alns, $prevQName);
+my @hasSNV = (0, 0, 0);
+my (@alns, @hasSV, $prevQName);
 while(my $aln = <STDIN>){
 
     # pass header lines as is
@@ -74,19 +80,21 @@ while(my $aln = <STDIN>){
     my @aln = split("\t", $aln, SPLIT_TO_TAGS);
     if($prevQName and $prevQName ne $aln[QNAME]){
         processQName();
-        $readHasSNV = 0;
+        @hasSNV = (0, 0, 0);
         @alns = ();
     }
-    if($HAS_BASE_ACCURACY and                          # i.e., not working on ONT reads
-       $aln[TAGS] and $aln[TAGS] =~ m/cs:Z:(\S+)/ and  # i.e., read is mapped
-       $1 !~ m/^:\d+$/                                 # alignment is not perfect (ignoring terminal clips)
+    my $readN = ($aln[FLAG] & _IS_PAIRED and $aln[FLAG] & _SECOND_IN_PAIR) ? READ2 : READ1;
+    if($HAS_BASE_ACCURACY and                               # i.e., not working on ONT reads
+       $aln[TAGS] and "\t$aln[TAGS]" =~ m/\tcs:Z:(\S+)/ and # i.e., read is mapped
+       $1 !~ m/^:\d+$/                                      # alignment is not perfect (ignoring terminal clips)
     ){
-        $aln[HAS_SNV] = ALN_HAS_SNV;
-        $readHasSNV   = READ_HAS_SNV;
+        $aln[HAS_SNV]   = ALN_HAS_SNV; # or indel...
+        $hasSNV[$readN] = READ_HAS_SNV;
+        $hasSNV[EVENT]  = EVENT_HAS_SNV;
     } else {
         $aln[HAS_SNV]  = 0;
     }
-    push @alns, \@aln;
+    push @{$alns[$readN]}, \@aln;
     $prevQName = $aln[QNAME];
 }
 processQName(); 
@@ -94,17 +102,23 @@ processQName();
 # process QNAME alignment groups
 sub processQName {
 
-    # assess SVs based on number of alignments per read
-    my $readHasSV = @alns > 1 ? READ_HAS_SV : 0;
-    my $readHasVariant = ($readHasSNV or $readHasSV) ? READ_HAS_VARIANT : 0;
-    my $readFlag = $readHasSNV + $readHasSV + $readHasVariant;
+    # assess SVs; SVs in paired read gaps are NOT recorded
+    @hasSV = (0, 0, 0);
+                     @{$alns[READ1]} > 1 and $hasSV[READ1] = READ_HAS_SV; 
+    $alns[READ2] and @{$alns[READ2]} > 1 and $hasSV[READ2] = READ_HAS_SV;
+    ($hasSV[READ1] or $hasSV[READ2]) and $hasSV[EVENT] = EVENT_HAS_SV;
+    my $eventHasVariant = ($hasSNV[EVENT] or $hasSV[EVENT]) ? EVENT_HAS_VARIANT : 0;
+    my $eventFlag = $hasSNV[EVENT] + $hasSV[EVENT] + $eventHasVariant;
 
     # print all SAM to STDOUT
-    foreach my $aln(@alns){
-        print join("\t",
-            @$aln[QNAME..TAGS],
-            "hv:i:".($$aln[HAS_SNV] + $readFlag)
-        ), "\n";
+    foreach my $readN(READ1, READ2){
+        $alns[$readN] or next;
+        foreach my $aln(@{$alns[$readN]}){
+            print join("\t",
+                @$aln[QNAME..TAGS],
+                "hv:i:".($$aln[HAS_SNV] + $hasSNV[$readN] + $hasSV[$readN] + $eventFlag)
+            ), "\n";
+        }
     }
 }
 

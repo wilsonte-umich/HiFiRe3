@@ -24,11 +24,25 @@ map { require "$perlUtilDir/$_.pl" } qw(workflow numeric);
 map { require "$perlUtilDir/genome/$_.pl" } qw(chroms);
 
 # environment variables
-fillEnvVar(\our $GENOME_FASTA,              'GENOME_FASTA');
+fillEnvVar(\our $GENOME_FASTA,               'GENOME_FASTA');
+fillEnvVar(\our $EXPECTING_ENDPOINT_RE_SITES,'EXPECTING_ENDPOINT_RE_SITES');
+# sample-level input and output files
 fillEnvVar(\our $FILTERING_SITES_FILE,      'FILTERING_SITES_FILE');
 fillEnvVar(\our $SITE_CHROM_DATA_FILE,      'SITE_CHROM_DATA_FILE');
 fillEnvVar(\our $CLOSEST_SITE_BINARY_FILE,  'CLOSEST_SITE_BINARY_FILE');
 fillEnvVar(\our $SITE_DATA_BINARY_FILE,     'SITE_DATA_BINARY_FILE');
+# genome-level input and output files
+fillEnvVar(\our $GENOME_FILTERING_SITES_FILE,      'GENOME_FILTERING_SITES_FILE');
+fillEnvVar(\our $GENOME_SITE_CHROM_DATA_FILE,      'GENOME_SITE_CHROM_DATA_FILE');
+fillEnvVar(\our $GENOME_CLOSEST_SITE_BINARY_FILE,  'GENOME_CLOSEST_SITE_BINARY_FILE');
+fillEnvVar(\our $GENOME_SITE_DATA_BINARY_FILE,     'GENOME_SITE_DATA_BINARY_FILE');
+my $expectingEndpointReSites = $EXPECTING_ENDPOINT_RE_SITES eq "TRUE" ? 1 : 0;
+unless($expectingEndpointReSites){ # $REJECTING_JUNCTION_RE_SITES is always true if this script was called
+    $FILTERING_SITES_FILE     = $GENOME_FILTERING_SITES_FILE;
+    $SITE_CHROM_DATA_FILE     = $GENOME_SITE_CHROM_DATA_FILE;
+    $CLOSEST_SITE_BINARY_FILE = $GENOME_CLOSEST_SITE_BINARY_FILE;
+    $SITE_DATA_BINARY_FILE    = $GENOME_SITE_DATA_BINARY_FILE;
+}
 
 # initialize the genome
 use vars qw(%chromIndex %revChromIndex @canonicalChroms);
@@ -44,8 +58,8 @@ use constant {
     #-----------------
     CHROM       => 0, # filtering sites table columns
     SITE_POS1   => 1,
-    IN_SILICO   => 2,
-    N_OBSERVED  => 3,
+    # IN_SILICO   => 2,
+    # N_OBSERVED  => 3,
     #-----------------
     CLOSEST_SITE_PACKING   => "l", # signed integer (siteIndex1)
     BYTES_PER_CLOSEST_SITE => 4,
@@ -73,8 +87,10 @@ close $faiH;
 print STDERR "  loading filtering sites\n";
 my (%sitePos1, %nSites, $chr, $chrIdx1);
 open my $sitesH, "-|", "zcat $FILTERING_SITES_FILE" or die "could not open: $!\n";
-my $header = <$sitesH>; # chrom,sitePos1[,inSilico,nObserved]
-while (my $line = <$sitesH>){ 
+if($expectingEndpointReSites){
+    my $header = <$sitesH>; # FILTERING_SITES_FILE has a header line, GENOME_FILTERING_SITES_FILE==GENOME_SITES_GZ does not
+}
+while (my $line = <$sitesH>){ # chrom,sitePos1[,inSilico,nObserved]
     chomp $line;
     my @site = split("\t", $line);
     ($chr, $chrIdx1) = ($site[CHROM], $chromIndex{$site[CHROM]});

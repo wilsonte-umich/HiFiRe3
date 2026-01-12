@@ -1,0 +1,260 @@
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pipline: prepare_genome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hf3 status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+updating /path/to/jobFiles/genome/.prepare_genome.yml.data/prepare_genome.yml.status
+updated	12/2/2025 13:48:11
+qType	slurm
+submitted	12/2/2025 11:43:16	XXXXX
+job_name                              array  job_ID     exit_status  start_time  wall_time  maxvmem
+prepare_genome_hs1 ---------------------     37088126   0    Tue 12/02/25 11:43  00:27:23   2.245G 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hf3 report
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+====================================================================================================
+job: 37088126
+----------------------------------------------------------------------------------------------------
+/path/to/jobFiles/genome/.prepare_genome.yml.data/log/slurm/prepare_genome_hs1.o37088126
+----------------------------------------------------------------------------------------------------
+
+---
+job-manager:
+    host: gl3026.arc-ts.umich.edu
+    started: Tue 12/02/25 11:43
+---
+pipeline: HiFiRe3/prepare:main
+description: "Perform one-time preparative actions on genomes prior to data analysis"
+execute: genome
+thread: default
+nTasks: 1
+genome:
+    prepare-genome:
+        genome:         hs1
+        genomes-dir:    /path/to/mdi/resources/genomes
+    digestion:
+        min-priority-level: 4
+    output:
+        output-dir:     /path/to/jobFiles/genome/_prepare_hs1
+        data-name:      hs1
+    push:
+        push-server:    null
+        push-dir:       /srv/data
+        push-user:      ubuntu
+        push-key:       ~/.ssh/mdi-push-key.pem
+    version:
+        version:        latest
+    resources:
+        runtime:        auto
+        n-cpu:          1
+        n-gpu:          0
+        ram-per-cpu:    8G
+        tmp-dir:        /tmp
+        tmp-dir-large:  /scratch/XXXXX_root/XXXXX/shared_data/tmp
+    job-manager:
+        email:          nobody@nowhere.edu
+        account:        XXXXX
+        time-limit:     4:00:00
+        partition:      standard
+        exclusive:      false
+    workflow:
+        force:          false
+        rollback:       0
+        quiet:          false
+    help:
+        help:           false
+        dry-run:        true
+    conda:
+        prefix: /path/to/mdi/environments/hf3Main 
+        channels:
+            - conda-forge
+            - bioconda
+            - defaults
+        dependencies:
+            - pigz=2.8
+            - samtools=1.22
+            - minimap2=2.30
+            - bedtools=2.31
+            - fastp=1.0
+            - r-base=4.4
+            - r-essentials=4.4
+            - r-r.utils=2.13
+            - blast=2.17
+...
+rolling back to pipeline step 0
+
+
+executing: prepare genome, step 1 = download (2025-12-02 11:43:29)
+
+downloading resource files for reference genome hs1
+  downloading genome fasta
+    from: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.fa.gz
+    to:   /path/to/mdi/resources/genomes/hs1/hs1.fa.gz
+2025-12-02 11:43:49 URL:https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.fa.gz [974842401/974842401] -> "/path/to/mdi/resources/genomes/hs1/hs1.fa.gz" [1]
+  unzipping genome fasta
+  downloading hg38 analysis set
+    from: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/analysisSet/hg38.analysisSet.fa.gz
+    to:   /path/to/mdi/resources/genomes/hs1/hg38.fa.gz
+2025-12-02 11:44:43 URL:https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/analysisSet/hg38.analysisSet.fa.gz [949157663/949157663] -> "/path/to/mdi/resources/genomes/hs1/hg38.fa.gz" [1]
+  unzipping hg38 analysis set
+  indexing analysis set
+  extracting chrEBV
+  appending chrEBV
+  indexing genome fasta
+  touching genome gaps (hs1/CHM13 has no gaps!)
+  downloading genome GTF
+    from: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/hs1.ncbiRefSeq.gtf.gz
+    to:   /path/to/mdi/resources/genomes/hs1/annotations/hs1.ncbiRefSeq.gtf.gz
+2025-12-02 11:45:43 URL:https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/hs1.ncbiRefSeq.gtf.gz [39269180/39269180] -> "/path/to/mdi/resources/genomes/hs1/annotations/hs1.ncbiRefSeq.gtf.gz" [1]
+  converting GTF to genes BED
+
+done
+
+executing: prepare genome, step 2 = digest (2025-12-02 11:46:07)
+using restriction enyzmes:
+  DraI
+  PvuII
+  ScaI
+  SspI
+  StuI
+  SwaI
+  XmnI
+  EcoRV
+  HincII
+  MslI
+  NruI
+  PshAI
+  SmaI
+  AluI
+  HaeIII
+  Hpy166II
+  RsaI
+  BamHI
+  BglII
+  EcoRI
+  HinDIII
+  NcoI
+  SpeI
+  XbaI
+  XhoI
+  NotI
+performing in silico digestions:
+  chr1
+  chr2
+  chr3
+  chr4
+  chr5
+  chr6
+  chr7
+  chrX
+  chr9
+  chr8
+  chr11
+  chr10
+  chr12
+  chr13
+  chr14
+  chr15
+  chr16
+  chr17
+  chr18
+  chr20
+  chrY
+  chr19
+  chr22
+  chr21
+  chrM
+  chrEBV
+total site counts in 3,117,463,893 genome bp
+	DraI_TTTAAA	3,463,271
+	PvuII_CAGCTG	1,070,606
+	ScaI_AGTACT	549,333
+	SspI_AATATT	2,403,069
+	StuI_AGGCCT	963,384
+	SwaI_ATTTAAAT	225,852
+	XmnI_GAANNNNTTC	1,172,448
+	EcoRV_GATATC	455,837
+	HincII_GTYRAC	1,124,138
+	MslI_CAYNNNNRTG	3,312,011
+	NruI_TCGCGA	15,555
+	PshAI_GACNNNNGTC	285,545
+	SmaI_CCCGGG	395,963
+	AluI_AGCT	13,085,530
+	HaeIII_GGCC	7,038,834
+	Hpy166II_GTNNAC	5,943,558
+	RsaI_GTAC	5,135,027
+	BamHI_GGATCC	353,822
+	BglII_AGATCT	781,589
+	EcoRI_GAATTC	889,675
+	HinDIII_AAGCTT	856,540
+	NcoI_CCATGG	783,115
+	SpeI_ACTAGT	407,571
+	XbaI_TCTAGA	860,206
+	XhoI_CTCGAG	131,589
+	NotI_GCGGCCGC	12,179
+
+executing: prepare genome, step 3 = assemble (2025-12-02 12:09:01)
+initializing
+gathering restriction enzymes
+parsing restriction fragments
+	DraI_TTTAAA
+	PvuII_CAGCTG
+	ScaI_AGTACT
+	SspI_AATATT
+	StuI_AGGCCT
+	SwaI_ATTTAAAT
+	XmnI_GAANNNNTTC
+	EcoRV_GATATC
+	HincII_GTYRAC
+	MslI_CAYNNNNRTG
+	NruI_TCGCGA
+	PshAI_GACNNNNGTC
+	SmaI_CCCGGG
+	AluI_AGCT
+	HaeIII_GGCC
+	Hpy166II_GTNNAC
+	RsaI_GTAC
+	BamHI_GGATCC
+	BglII_AGATCT
+	EcoRI_GAATTC
+	HinDIII_AAGCTT
+	NcoI_CCATGG
+	SpeI_ACTAGT
+	XbaI_TCTAGA
+	XhoI_CTCGAG
+	NotI_GCGGCCGC
+summarizing fragments
+saving results for app
+
+writing Stage 2 package file for prepare genome
+/path/to/jobFiles/genome/_prepare_hs1/hs1/hs1.prepare.genome.mdi.package.zip
+  adding: package.yml (deflated 63%)
+  adding: hs1.prepare.status (deflated 36%)
+  adding: hs1.prepare.concatenatedLogs (stored 0%)
+  adding: hs1.RE_site_summaries.rds (stored 0%)
+  adding: hs1.RE_distributions.rds (deflated 10%)
+data package created successfully
+
+
+---
+job-manager:
+    exit_status: 0
+    walltime: 27:23.86
+    seconds: 1643.86
+    maxvmem: 2244764K
+    swaps: 0
+---
+job-manager:
+    ended: Tue 12/02/25 12:10
+...
+====================================================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hf3 ls
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/path/to/jobFiles/genome/_prepare_hs1/hs1/
+total 8.0M
+drwxrwsr-x 3 XXXXX path-XXXXX-turbo   21 Sep 13 09:05 ..
+drwxrwsr-x 3 XXXXX path-XXXXX-turbo   60 Dec  2 11:43 prepare
+-rw-rw-r-- 1 XXXXX path-XXXXX-turbo 6.9M Dec  2 12:10 hs1.prepare.genome.mdi.package.zip
+drwxrwsr-x 3 XXXXX path-XXXXX-turbo   77 Dec  2 12:10 .

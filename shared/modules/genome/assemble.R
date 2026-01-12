@@ -15,6 +15,7 @@ checkEnvVars(list(
         'GENOME_REMAPS_DIR',
         'GENOME',
         'BLUNT_RE_TABLE',
+        'OVERHANG5_RE_TABLE',
         'RE_SUMMARIES_RDS',
         'RE_DISTRIBUTIONS_RDS',
         'RE_FRAGMENTS_RDS'
@@ -37,7 +38,10 @@ options(warn = 2)
 #-------------------------------------------------------------------------------------
 message("gathering restriction enzymes")
 # enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length,degenerate,effective_length,CpG_sensitive,CpG_level,units_ul,units,cost,cents_unit,temperature,buffer,heat_inactivation,star_activity,one_hour_limit,HiFiRe3_compatible,initial_priority,comments
-res <- fread(env$BLUNT_RE_TABLE)[CpG_priority >= env$MIN_PRIORITY_LEVEL]
+res <- rbind(
+    fread(env$BLUNT_RE_TABLE)[    CpG_priority >= env$MIN_PRIORITY_LEVEL],
+    fread(env$OVERHANG5_RE_TABLE)[CpG_priority >= env$MIN_PRIORITY_LEVEL]
+)
 res[, reKey := paste(gsub("\\s", "", enzyme), toupper(cut_site), sep = "_")]
 #=====================================================================================
 
@@ -46,7 +50,7 @@ res[, reKey := paste(gsub("\\s", "", enzyme), toupper(cut_site), sep = "_")]
 #-------------------------------------------------------------------------------------
 message("parsing restriction fragments")
 frags <- sapply(res$reKey, function(reKey_){
-    message(paste("", "", reKey_, sep = "\t"))
+    message(paste("", reKey_, sep = "\t"))
     filePrefix <- paste(env$GENOME, "digest", reKey_, sep = ".")
     sitesFile <- paste(filePrefix, "txt.gz", sep = ".")
     sitesFile <- file.path(env$GENOME_REMAPS_DIR, sitesFile)
@@ -112,7 +116,7 @@ for(percent in c(1,2.5,5,10,50,90,95,97.5,99)){
         N50(lengths_[[reKey_]], fraction)
     })
 }
-for(minFragSize_kb in c(0.145, 1:15)){
+for(minFragSize_kb in c(seq(150, 350, 25) / 1000, 1:15)){
     minFragSize <- minFragSize_kb * 1000
     maxFragSize <- minFragSize * 2
     siteSummary[[paste("molarFrac", minFragSize, maxFragSize, sep = "_")]] <- sapply(res$reKey, function(reKey_){

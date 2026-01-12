@@ -22,7 +22,7 @@
 
 # set derivative environment variables and file paths
 export PIPELINE_SHARED_DIR=${PIPELINE_DIR}/shared
-source ${PIPELINE_SHARED_DIR}/Workflow.sh
+source ${PIPELINE_SHARED_DIR}/workflow.sh
 export TMP_PILEUP_DIR=$TMP_DIR_WRK_SMALL
 
 # index RE fragments for unique SNV/indel combinations

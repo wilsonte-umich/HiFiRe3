@@ -1,0 +1,22 @@
+[package]
+name = "hf3_tools"
+version = "0.1.0"
+rust-version = "1.81"
+edition = "2021"
+authors = ["Thomas E. Wilson"]
+
+[dependencies]
+crossbeam = "0.8.4"
+csv = "1.4"
+rust-htslib = "0.51"
+faimm = "0.5"
+minimap2 = "0.1.28"
+flate2 = "1.1"
+
+# mdi = { git = "https://github.com/MiDataInt/mdi-pipelines-framework/tree/main/crates/mdi" }
+# mdi = { git = "https://github.com/wilsonte-umich/mdi-pipelines-framework/tree/main/crates/mdi" }
+mdi = { path = "/nfs/turbo/path-wilsonte-turbo/mdi/wilsontelab/HiFiRe3/mdi/frameworks/developer-forks/mdi-pipelines-framework/crates/mdi" }
+
+# mdi = { git = "https://github.com/wilsontelab/genomex-mdi-tools/tree/main/shared/crates/genomex" }
+# mdi = { git = "https://github.com/wilsonte-umich/genomex-mdi-tools/tree/main/shared/crates/genomex" }
+genomex = { path = "/nfs/turbo/path-wilsonte-turbo/mdi/wilsontelab/HiFiRe3/mdi/suites/developer-forks/genomex-mdi-tools/shared/crates/genomex" }

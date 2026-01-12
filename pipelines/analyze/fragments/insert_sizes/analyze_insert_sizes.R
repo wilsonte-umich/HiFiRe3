@@ -18,6 +18,7 @@ rUtilDir <- file.path(env$MODULES_DIR, 'utilities', 'R')
 source(file.path(rUtilDir, 'workflow.R'))
 checkEnvVars(list(
     string = c(
+        'READ_LENGTH_TYPE',
         'UNFILTERED_INSERT_SIZES_FILE',
         'FILTERED_INSERT_SIZES_FILE',
         'FILTERED_STEM_LENGTHS_FILE',
@@ -45,9 +46,9 @@ env$ENOUGH_READS <- 50
 #=====================================================================================
 # derive minAllowedSize and maxAllowedSize from MIN_SELECTED_SIZE or MIN_ALLOWED_SIZE
 #-------------------------------------------------------------------------------------
-if(env$MIN_SELECTED_SIZE == 0 && env$MIN_ALLOWED_SIZE == 0){
-  stop("either --min-selected-size or --min-allowed-size must be provided\n")
-}
+isShortRead <- env$READ_LENGTH_TYPE == "short"
+sizePlotBinSize <- if(isShortRead) 10 else 250
+isSizeSelected <- env$MIN_SELECTED_SIZE > 0 || env$MIN_ALLOWED_SIZE > 0
 minAllowedSize <- if (env$MIN_ALLOWED_SIZE > 0) {
     env$MIN_ALLOWED_SIZE
 } else {
@@ -74,10 +75,12 @@ insertSizeTypes <- list(
 )
 
 message("loading insert sizes")
-insertSizeCounts <- rbind(
+insertSizeCounts <- if(file.exists(env$UNFILTERED_INSERT_SIZES_FILE)) rbind(
     fread(env$UNFILTERED_INSERT_SIZES_FILE), # all pre-alignment reads, includes on- and off-target ("unfiltered")
     fread(env$FILTERED_INSERT_SIZES_FILE)    # filtered upstream to on-target only (insertSizeTypes other than "unfiltered")
-)
+) else {
+    fread(env$FILTERED_INSERT_SIZES_FILE)
+}
 setnames(insertSizeCounts, insertSizeCols)
 if(env$TARGETS_BED != "NA") insertSizeCounts <- insertSizeCounts[type != "unfiltered" | sizeBin > 1500] # don't tally unfiltered off-target fragments
 insertSizeCounts <- dcast(
@@ -112,12 +115,33 @@ compressInteger <- Vectorize(function(x){
         paste0(signif(x / 1e9, 3), "B")
     }
 })
+getMaxX <- function(){
+    if(isSizeSelected){
+        minAllowedSize * 4
+    } else if(isShortRead){
+        1000
+    } else {
+        50000
+    }
+}
+addVLines <- function(xScaleFactor){
+    abline(h = 0)
+    if(isShortRead){
+        abline(v = seq(50, 1000, 50), col = "grey80")
+    } else {
+        abline(v = 1:100, col = "grey80")
+    }
+    if(isSizeSelected){
+        abline(v = c(minAllowedSize, maxAllowedSize) / xScaleFactor, col = "black")
+    }
+}
 plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x2xFreqs = NULL){
     pngFile <- paste(env$PLOT_PREFIX, level, type, "png", sep = ".")
     png(filename = pngFile,
         width = 3, height = 3, units = "in", pointsize = 8,
         bg = "white", res = 600, type = "cairo")
-    maxX <- minAllowedSize * 4
+    xScaleFactor <- if(isShortRead) 1 else 1000
+    maxX <- getMaxX()
     insertSizeFreqs <- insertSizeFreqs[, ..insertSizeTypeNames]
     maxY  <- max(unlist(insertSizeFreqs))
     qMaxY <- quantile(unlist(insertSizeFreqs), probs = 0.975) * 1.2
@@ -125,18 +149,16 @@ plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x
     plot(
         x = NA,
         y = NA,
-        xlab = "Insert Size (kb)",
+        xlab = if(isShortRead) "Insert Size (bp)" else "Insert Size (kb)",
         ylab = "Frequency",
-        xlim = c(0, maxX) / 1000,
+        xlim = c(0, maxX) / xScaleFactor,
         ylim = c(0, maxY) * 1.05,
         main = paste(env$DATA_NAME, level, type)
     )
-    abline(h = 0)
-    abline(v = 1:100, col = "grey80")
-    abline(v = c(minAllowedSize, maxAllowedSize) / 1000, col = "black")
+    addVLines(xScaleFactor)
     for(type in insertSizeTypeNames){
         points(
-            x = insertSizeCounts$sizeBin / 1000,
+            x = insertSizeCounts$sizeBin / xScaleFactor,
             y = insertSizeFreqs[[type]],
             col = insertSizeTypes[[type]],
             pch = 19,
@@ -145,13 +167,13 @@ plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x
     }
     if(!is.null(x2xFreqs)){
         lines(
-            x = x2xSizes$sizeBin / 1000,
+            x = x2xSizes$sizeBin / xScaleFactor,
             y = x2xFreqs$e2e,
             col = insertSizeTypes[["trans.intra.chimeric"]],
             lwd = 2
         )
         lines(
-            x = x2xSizes$sizeBin / 1000,
+            x = x2xSizes$sizeBin / xScaleFactor,
             y = x2xFreqs$m2m,
             col = insertSizeTypes[["trans.intra.passed"]],
             lwd = 2
@@ -188,11 +210,12 @@ sink <- plotInsertSizes("insert_sizes", "mass",  insertSizeFreqs_mass,  insertSi
 # working from the observed projected insert size distribution that best defines the size of true fragments
 #-------------------------------------------------------------------------------------
 message("modeling artifact insert size distributions")
-minPieceSize <- 100
-sizePlotBinSize <- 250
+minM2MSize <- 10
 nSamples <- 5e4
-message("  sampling projected insert sizes")
-x2xSizes <- insertSizeCounts[sizeBin > minPieceSize, .(sizeBin, nonSV.projected)]
+message("  sampling insert sizes")
+
+if (!("nonSV.projected" %in% names(insertSizeCounts))) insertSizeCounts[, nonSV.projected := nonSV.actual ]
+x2xSizes <- insertSizeCounts[sizeBin > minM2MSize, .(sizeBin, nonSV.projected)]
 I <- 1:nrow(x2xSizes)
 sampleI_1 <- sample(I, nSamples, replace = TRUE, prob = x2xSizes$nonSV.projected)
 sampleI_2 <- sample(I, nSamples, replace = TRUE, prob = x2xSizes$nonSV.projected)
@@ -200,8 +223,8 @@ message("  modeling end-to-end")
 e2eSizes <- x2xSizes[sampleI_1, sizeBin] + x2xSizes[sampleI_2, sizeBin]
 message("  modeling middle-to-middle")
 m2mSizes <- sapply(1:nSamples, function(j){
-    size1 <- x2xSizes[sampleI_1[j], sample(minPieceSize:(sizeBin-minPieceSize), 1)] # the size of a piece taken from a broken sizeBin fragment
-    size2 <- x2xSizes[sampleI_2[j], sample(minPieceSize:(sizeBin-minPieceSize), 1)]
+    size1 <- x2xSizes[sampleI_1[j], sample(minM2MSize:(sizeBin-minM2MSize), 1)] # the size of a piece taken from a broken sizeBin fragment
+    size2 <- x2xSizes[sampleI_2[j], sample(minM2MSize:(sizeBin-minM2MSize), 1)]
     as.integer(floor((size1 + size2) / sizePlotBinSize) * sizePlotBinSize)
 })
 x2xSizes <- merge(
@@ -257,23 +280,22 @@ if(length(availableStemLengthTypeNames) > 0){
     png(filename = pngFile,
         width = 3, height = 3, units = "in", pointsize = 8,
         bg = "white", res = 600, type = "cairo")
-    maxX <- minAllowedSize * 4
+    xScaleFactor <- if(isShortRead) 1 else 1000
+    maxX <- getMaxX()
     maxY <- max(unlist(stemLengthFreqs))
     plot(
         x = NA,
         y = NA,
-        xlab = "Min Stem Length (kb)",
+        xlab = if(isShortRead) "Min Stem Length (bp)" else "Min Stem Length (kb)",
         ylab = "Frequency",
-        xlim = c(0, maxX) / 1000,
+        xlim = c(0, maxX) / xScaleFactor,
         ylim = c(0, maxY) * 1.05,
         main = paste(env$DATA_NAME, plotType)
     )
-    abline(h = 0)
-    abline(v = 1:100, col = "grey80")
-    abline(v = c(minAllowedSize, maxAllowedSize) / 1000, col = "black")
+    addVLines(xScaleFactor)
     for(type in availableStemLengthTypeNames){
         points(
-            x = stemLengths$sizeBin / 1000,
+            x = stemLengths$sizeBin / xScaleFactor,
             y = stemLengthFreqs[[type]],
             col = insertSizeTypes[[type]],
             pch = 19,

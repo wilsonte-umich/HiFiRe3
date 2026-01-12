@@ -4,10 +4,11 @@
 # versions current as of September 2025
 dependencies:
 
-  # general genome handling
+  # general read and genome handling
     - samtools=1.22
     - minimap2=2.30
     - bedtools=2.31
+    - fastp=1.0
 
   # R and its packages
     - r-base=4.4

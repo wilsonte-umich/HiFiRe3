@@ -6,25 +6,32 @@ options:
         type: string
         required: true
         default: null
-        description: "platform used to sequence long reads (PacBio|ONT)" 
-    min-selected-size: 
+        description: "platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBio)" 
+    library-type: 
         order: 2
+        short: L
+        type: string
+        required: true
+        default: null
+        description: "how inserts were prepared for --sequencing-platform (Nextera|TruSeq|Elevate|Ultima|Ligation|Rapid|HiFi)" 
+    min-selected-size: 
+        order: 3
         short: I
         type: integer
         required: false
         default: 0
         description: "smallest insert in bp selected BEFORE adapter ligation"
     selected-size-cv: 
-        order: 3
+        order: 4
         short: V
         type: double
         required: false
         default: 0.15
         description: "estimated coefficient of variation for --min-selected-size used to calculate min-allowed-size and max-allowed-size"
     min-allowed-size:
-        order: 4
+        order: 5
         short: z
         type: integer
         required: false
-        default: 0
-        description: "use this value for min-allowed-size, instead of calculating from --min-selected-size and --selected-size-cv"
+        default: 0 # if both --min-allowed-size and --min-selected-size are zero, no size filtering is performed
+        description: "use this value for min-allowed-size instead of calculating from --min-selected-size and --selected-size-cv"

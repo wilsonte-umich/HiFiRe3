@@ -37,12 +37,24 @@ settings:
         Max_Priority:
             type: numericInput
             value: 5
-        Sweet_Spot_Min_kb:
-            type: numericInput
-            value: 4
-            min: 1
-            max: 10
-            step: 1
+        Read_Length_Type:
+            type: selectInput
+            choices:
+                - short_read
+                - long_read
+            value: long_read
         Bins_Per_Plot:
             type: numericInput
             value: 200
+        Short_Read_Min_bp:
+            type: numericInput
+            value: 300
+            min: 150
+            max: 350
+            step: 25
+        Long_Read_Min_kb:
+            type: numericInput
+            value: 4
+            min: 1
+            max: 15
+            step: 1

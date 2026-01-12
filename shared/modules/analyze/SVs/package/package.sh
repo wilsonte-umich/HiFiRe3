@@ -17,7 +17,7 @@ TABIX="tabix --threads $N_CPU"
 # mask final junctions file 1
 echo "masking junctions file 1"
 zcat $SV_FINAL_JUNCTIONS_FILE_1 | 
-perl ${ACTION_DIR}/package/package_jxns.pl |
+perl ${MODULES_DIR}/analyze/SVs/package/package_jxns.pl |
 $BGZIP $SV_MASKED_JUNCTIONS_FILE_1
 checkPipe
 $TABIX --sequence 1 --begin 2 --end 2 $SV_MASKED_JUNCTIONS_FILE_1
@@ -26,7 +26,7 @@ checkPipe
 # mask final junctions file 2
 echo "masking junctions file 2"
 zcat $SV_FINAL_JUNCTIONS_FILE_2 | 
-perl ${ACTION_DIR}/package/package_jxns.pl |
+perl ${MODULES_DIR}/analyze/SVs/package/package_jxns.pl |
 $BGZIP $SV_MASKED_JUNCTIONS_FILE_2
 checkPipe
 $TABIX --sequence 4 --begin 5 --end 5 $SV_MASKED_JUNCTIONS_FILE_2

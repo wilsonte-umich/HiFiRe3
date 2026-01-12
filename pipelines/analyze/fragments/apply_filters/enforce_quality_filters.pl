@@ -32,9 +32,9 @@ use constant {
     S_MAPQ              => 4,
     S_CIGAR             => 5,
     # ... unused fields ...
-    S_SEQ               => 33,
-    S_QUAL              => 34,
-    CS_TAG              => 35,
+    S_SEQ               => 37,
+    S_QUAL              => 38,
+    CS_TAG              => 39,
     # -------------
     ALN_FAIL_NONE            => 0,
     ALN_FAIL_MAPQ            => 1,

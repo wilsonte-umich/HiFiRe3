@@ -25,7 +25,7 @@ sub setCanonicalChroms {
             map { getPushValue($_, \%canonicalChroms) } qw(I II III IV V VI VII VIII IX X 
                                                             XI XII XIII XIV XV XVI XVII XVIII XIX XX 
                                                             XXI XXII XXIII XXIV XXV XXVI XXVII XXVIII XXIX XXX) :
-            map { getPushValue($_, \%canonicalChroms) } (1..90,'X','Y','M','EBV');
+            map { getPushValue($_, \%canonicalChroms) } (map { ($_, $_."L", $_."R") } 1..90,'X','Y','M','EBV');
     }
     %chromIndex    = map { $canonicalChroms[$_] => $_ + 1 } 0..$#canonicalChroms; # 1-referenced chrom indices, i.e., chr3 => 3
     %revChromIndex = map { $_ + 1 => $canonicalChroms[$_] } 0..$#canonicalChroms;    

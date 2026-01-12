@@ -21,6 +21,8 @@ TABIX="tabix --threads $N_CPU"
 PURGE_DUPLICATES="cut -f 1-26"
 if [ "$SEQUENCING_PLATFORM" == "ONT" ]; then
     PURGE_DUPLICATES="perl ${ACTION_DIR}/aggregate/purge_ONT_duplexes.pl"
+elif [ "$DEDUPLICATE_READS" == "TRUE" ]; then
+    PURGE_DUPLICATES="perl ${ACTION_DIR}/aggregate/purge_PCR_duplicates.pl"
 fi
 
 # merge event metadata from junction_sources into junctions

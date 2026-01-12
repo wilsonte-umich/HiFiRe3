@@ -1,37 +1,41 @@
 columnIndex1,columnName,dataType,level,description
-1,S_QNAME,string,read,same as SAM QNAME = read/sequencing event identifier
+1,S_QNAME,string,read,same as SAM QNAME = sequencing event identifier; suffixed with /1 or /2 for unmerged paired reads
 2,S_FLAG,integer,alignment,same as SAM FLAG = bit-encoded alignment metatdata
 3,S_RNAME,string,alignment,same as SAM RNAME = reference name i.e. chromosome
 4,S_POS1,integer,alignment,same as SAM POS1 = leftmost alignment position in RNAME
 5,S_MAPQ,integer,alignment,same as SAM MAPQ = mapping quality assigned by minimap2
 6,S_CIGAR,string,alignment,same as SAM CIGAR = alignment CIGAR string
-7,SITE_INDEX1_1,signed integer,alignment,1-indexed site on RNAME for 5'-most alignment end pos1 in read order; signed by the direction from pos1 to SITE_POS1_1
+7,SITE_INDEX1_1,signed integer,alignment,closest 1-indexed site on RNAME for the 5'-most base of this alignment in read order; signed by the direction from this base to SITE_POS1_1
 8,SITE_POS1_1,integer,alignment,1-indexed RE site coordinate on RNAME for SITE_INDEX1_1
-9,SITE_DIST_1,integer,alignment,signed distance in bp from strand-adjusted (but NOT clip-adjusted) pos1 to SITE_POS1_1
-10,SITE_INDEX1_2,signed integer,alignment,same as above for 3'-most alignment end pos1 in read order
-11,SITE_POS1_2,integer,alignment,same as above for 3'-most alignment end pos1 in read order
-12,SITE_DIST_2,integer,alignment,same as above for 3'-most alignment end pos1 in read order
+9,SITE_DIST_1,integer,alignment,signed distance in bp from the strand-adjusted (but NOT clip-adjusted) 5'-most base of the alignment to SITE_POS1_1
+10,SITE_INDEX1_2,signed integer,alignment,same as above for the 3'-most base of the alignment
+11,SITE_POS1_2,integer,alignment,same as above for the 3'-most base of the alignment
+12,SITE_DIST_2,integer,alignment,same as above for the 3'-most base of the alignment
 13,SEQ_SITE_INDEX1_2,integer,read,unsigned SITE_INDEX1_2 for the actual or projected read 3' end
 14,SEQ_SITE_POS1_2,integer,read,1-indexed RE site coordinate on RNAME for SEQ_SITE_INDEX1_2
-15,IS_END_TO_END,integer boolean,read,boolean 0|1 flag; true if the read 3' end was validated to reach an adapter/RE site to complete a fragment insert
-16,CH_TAG,integer,read,ONT channel tag = integer number of the pore that sequenced the read (0 if NA or unknown)
-17,TL_TAG,string,read,HiFiRe3 trim tags = trim5<comma>trim3
-18,INSERT_SIZE,integer,read,length of S_SEQ in bp
-19,IS_ALLOWED_SIZE,integer,read,boolean 0|1 flag; true if INSERT_SIZE is between --min-selected-size / (1 + --selected-size-cv) and twice that value
-20,DE_TAG,double,alignment,minimap2 de:f: tag = fractional gap-compressed per-base sequence divergence
-21,HV_TAG,integer,alignment,custom hv:i: tag = bit-encoded flag of alignment and read variant status
-22,N_REF_BASES,integer,alignment,number of reference bases spanned by the alignment (excludes CIGAR I operations)
-23,N_READ_BASES,integer,alignment,number of read bases comprising the alignment (excludes CIGAR D operations)
-24,STEM5_LENGTH,integer,alignment,number of bp from the clipped read 5' end to the 3' end of this alignment (read 5' ends are always validated ends of the insert)
-25,STEM3_LENGTH,integer,alignment,number of bp from a validated read 3' end to the 5' end of this alignment; 0 if the read 3' end is not a validated end of the insert
-26,PASSED_STEM5,integer,alignment,boolean 0|1 flag; true if STEM5_LENGTH < --min-selected-size / (1 + --selected-size-cv)
-27,PASSED_STEM3,integer,alignment,boolean 0|1 flag; true if STEM3_LENGTH < --min-selected-size / (1 + --selected-size-cv); false if STEM3_LENGTH == 0
-28,BLOCK_N,integer,alignment,reference vs. read traversal block; numbered sequentially across each read; alignments with the same BLOCK_N failed traversal check
-29,ALN_FAILURE_FLAG,integer,alignment,bitwise encoding of the first failed flag applied to this alignment; 0 if the alignment passed all alignment-level quality filters
-30,JXN_FAILURE_FLAG,integer,alignment,bitwise encoding of first failed flag applied to the junction following this alignment; 0 if the junction passed all end-to-end chimera and block traversal filters
-31,TARGET_CLASS,integer,alignment,bitwise encoding of whether the alignment and read overlapped a target region
-32,END5_ON_TARGET,integer boolean,read,boolean 0|1 flag; true if the 5' most alignment of the read was on target; always 1 if not a targeted library
-33,READ_HAS_JXN,integer boolean,read,boolean 0|1 flag; true if the read has at least one SV junction where JXN_FAILURE_FLAG == 0; false if no junction or all failed
-34,S_SEQ,string,alignment (rc),same as SAM SEQ = read base sequence; S_SEQ S_QUAL and CS_TAG tag are large trailing fields that can be truncated away
-35,S_QUAL,string,alignment,same as SAM_QUAL = read base quailities; like S_SEQ is alignment-level due to possible reverse complement per alignment
-36,CS_TAG,string,alignment,minimap2 cs tag with read-to-genome alignment details (excluding clips)
+15,IS_END_TO_END_READ,integer boolean,read,boolean 0|1 flag; true if both ends of this read were validated to reach an adapter/RE site; 0==false for incomplete single reads or reads from unmerged pairs
+16,IS_END_TO_END_INSERT,integer boolean,insert,boolean 0|1 flag; true if both ends of this insert were validated to reach an adapter/RE site; 0==false for incomplete single reads but 1==true for reads from unmerged pairs
+17,NODE_5,signed integer,insert,encoded 5'-most  base on the insert as (+|- strand)(chromIndex1)(9-digit padded pos1 or sitePos1); used for deduplication
+18,NODE_3,signed integer,insert,encoded 3'-most  (projected) base on the insert as above; not necessarily the true end of an insert if not projected and not and end-to-end insert
+19,CH_TAG,integer,insert,ONT channel tag = integer number of the pore that sequenced the read (0 if NA or unknown)
+20,TL_TAG,string,insert,HiFiRe3 trim tags = trim5<comma>trim3
+21,INSERT_SIZE,integer,insert,length of S_SEQ in bp for single or merged reads; internode distance for unmerged paired reads if no SV in read otherwise 0 as insert size is unknown
+22,IS_ALLOWED_SIZE,integer,insert,boolean 0|1 flag; true if INSERT_SIZE is between --min-allowed-size and twice that value
+23,FM_TAG,string,read,fastp merge status for paired reads as mergeLevel:nRead1:nRead2; 0:0:0 for single-read platforms
+24,DE_TAG,double,alignment,minimap2 de:f: tag = fractional gap-compressed per-base sequence divergence
+25,HV_TAG,integer,alignment,custom hv:i: tag = bit-encoded flag of alignment and read variant status
+26,N_REF_BASES,integer,alignment,number of reference bases spanned by the alignment (excludes CIGAR I operations)
+27,N_READ_BASES,integer,alignment,number of read bases comprising the alignment (excludes CIGAR D operations)
+28,STEM5_LENGTH,integer,alignment,number of bp from the clipped read 5' end to the 3' end of this alignment (read 5' ends are always validated ends of the insert)
+29,STEM3_LENGTH,integer,alignment,number of bp from a validated read 3' end to the 5' end of this alignment; 0 if the read 3' end is not a validated end of the insert
+30,PASSED_STEM5,integer,alignment,boolean 0|1 flag; true if STEM5_LENGTH < --min-allowed-size
+31,PASSED_STEM3,integer,alignment,boolean 0|1 flag; true if STEM3_LENGTH <--min-allowed-size; false if STEM3_LENGTH == 0
+32,BLOCK_N,integer,alignment,reference vs. read traversal block; numbered sequentially across each read; alignments with the same BLOCK_N failed traversal check
+33,ALN_FAILURE_FLAG,integer,alignment,bitwise encoding of the first failure flag applied to this alignment; 0 if the alignment passed all alignment-level quality filters
+34,JXN_FAILURE_FLAG,integer,alignment,bitwise encoding of first failure flag applied to the junction following this alignment; 0 if the junction passed all end-to-end chimera and block traversal filters
+35,TARGET_CLASS,integer,alignment,bitwise encoding of whether the alignment and read overlapped a target region
+36,IS_ON_TARGET,integer boolean,read,boolean 0|1 flag; true if the 5' most (ONT adaptive) or any (other platforms) alignment of the read was on target; always 1 if not a targeted library
+37,READ_HAS_JXN,integer boolean,read,boolean 0|1 flag; true if the read has at least one SV junction where JXN_FAILURE_FLAG == 0; false if no junctions or all failed
+38,S_SEQ,string,alignment (rc),same as SAM SEQ = read base sequence; S_SEQ S_QUAL and CS_TAG tag are large trailing fields that can be truncated away
+39,S_QUAL,string,alignment,same as SAM_QUAL = read base quailities; like S_SEQ is alignment-level due to possible reverse complement per alignment
+40,CS_TAG,string,alignment,minimap2 cs tag with read-to-genome alignment details (excluding clips)

@@ -1,0 +1,11 @@
+[package]
+name = "mdi"
+version = "0.1.0"
+edition = "2021"
+authors = ["Thomas E. Wilson"]
+
+[dependencies]
+csv = "1.4"
+rayon = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

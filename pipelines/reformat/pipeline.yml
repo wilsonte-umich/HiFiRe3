@@ -1,0 +1,30 @@
+---
+pipeline:
+    name: reformat
+    description: "Utilities for reformatting input read files (not required by most users)"
+    version: v0.0.1
+actions:
+    _global:
+        environment: hf3Main
+        condaFamilies:
+            - base
+            - main
+    ONT:
+        order: 1
+        optionFamilies:
+            - read-file
+        resources:
+            required:
+                total-ram: 8G
+            recommended: 
+                n-cpu: 2
+                ram-per-cpu: 4G
+        job-manager:
+            recommended:
+                time-limit: 6:00:00
+        description: "reformat ONT unaligned bam files to compress them and to convert legacy files"
+# container:
+#     supported: false    # set to true if you maintain a container registry for this pipeline [false]
+#     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]
+#     owner:     wilsontelab # REQUIRED: the name of the owner, e.g., user or organization, at 'registry'
+#     installer: apt-get  # the installer program used by the container OS, typically apt-get or yum [apt-get]

@@ -1,0 +1,1 @@
+shared/crates/hf3_tools

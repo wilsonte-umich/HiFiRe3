@@ -1,9 +1,23 @@
 ---
 options:
-    min-rflp-evidence: 
+    min-rflp-evidence: # default pathway scores RFLP sites for this one sample unless --enzyme-name is NA
         order: 1
-        short: L
+        short: S
         type: integer
         required: false
         default: 3
-        description: "accept genome positions matching this many read ends as RFLP sites"
+        description: "locate genome positions matching this many read ends as RFLP sites"
+    skip-rflp-detection: # setting --skip-rflp-detection reverts to in silico sites only unless site-override-dir is provided
+        order: 2
+        short: X
+        type: boolean
+        required: false
+        default: false
+        description: "do not locate non-reference RFLP sites, use in silico sites only"
+    site-override-dir: # user override has highest precedence 
+        order: 3
+        short: o
+        type: string
+        required: false
+        default: NA
+        description: "do not locate RFLP sites, use filtering_sites files from --site-override-dir"

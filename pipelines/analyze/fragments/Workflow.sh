@@ -2,12 +2,12 @@
 
 # set derivative environment variables and file paths
 export PIPELINE_SHARED_DIR=${PIPELINE_DIR}/shared
-source ${PIPELINE_SHARED_DIR}/Workflow.sh
+source ${PIPELINE_SHARED_DIR}/workflow.sh
 source $MODULES_DIR/align/set_read_file_vars.sh
 mkdir -p $PLOTS_DIR
 
 #-------------------------------------------------------------------------------
-# read alignment
+# read alignment, initial fragment analysis, and RE endpoint extraction
 #-------------------------------------------------------------------------------
 
 # set working directory to READ_FILE_DIR to avoid too-long argument list with multiple read files
@@ -23,28 +23,28 @@ cd ${TASK_DIR}
 # RE site localization
 #-------------------------------------------------------------------------------
 
-# make a tally of the informative endpoints of all reads
-# many/most should match in silico RE sites below
-runWorkflowStep 2 extract_endpoints locate/extract_endpoints.sh
+# # make a tally of the informative endpoints of all reads
+# # many/most should match in silico RE sites below
+# runWorkflowStep 2 extract_endpoints locate/extract_endpoints.sh
 
 # match endpoints to each other and to in silico site positions
 # creates a table of filtering sites for tolerance matching, etc.
-runWorkflowStep 3 tabulate_endpoints locate/tabulate_endpoints.sh
+runWorkflowStep 2 tabulate_endpoints locate/tabulate_endpoints.sh
 
-# TODO: consider letting match_sites.sh create the index files in temporary directories
-#       rather than writing them to the permanent output directory
+# exit 1
 
-# create binary lookup files to speed matching of sample endpoints to filtering sites
-runWorkflowStep 4 create_index locate/create_index.sh
+# # create binary lookup files to speed matching of sample endpoints to filtering sites
+# #   at sample level if EXPECTING_ENDPOINT_RE_SITES==TRUE
+# #   at genome level if only REJECTING_JUNCTION_RE_SITES==TRUE
+# runWorkflowStep 4 create_index locate/create_index.sh
 
 #-------------------------------------------------------------------------------
 # read alignment parsing, including matching to RE sites
 #-------------------------------------------------------------------------------
 
-# match alignments to RE sites and fragments
+# match alignments to RE sites and fragments to characterize inserts
 # apply various alignment and SV quality filters and error correction mechanisms
-# write SITE_SAM for subsequent fragment and variant aggregation
-runWorkflowStep 5 apply_filters apply_filters/apply_filters.sh
+runWorkflowStep 3 analyze_inserts analyze_inserts.sh
 
 #-------------------------------------------------------------------------------
 # insert size analysis
@@ -52,7 +52,7 @@ runWorkflowStep 5 apply_filters apply_filters/apply_filters.sh
 
 # create plots of insert size distributions before and after filtering and RE site projection
 # establish automated thresholds for allowed insert sizes working with the hint from --min-selected-size
-runWorkflowStep 6 insert_sizes insert_sizes/analyze_insert_sizes.sh
+runWorkflowStep 4 insert_sizes insert_sizes/analyze_insert_sizes.sh
 
 # clean up
 rm -fr $TMP_DIR_WRK_SMALL

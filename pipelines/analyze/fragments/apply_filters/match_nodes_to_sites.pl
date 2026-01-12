@@ -7,10 +7,12 @@ use warnings;
 
 # environment variables
 use vars qw(
+    $error
     $SITE_CHROM_DATA_FILE
     $CLOSEST_SITE_LOOKUP_WRK
     $SITE_DATA_LOOKUP_WRK
-); # $ENZYME_NAME $BLUNT_RE_TABLE
+    $ENZYME_NAME $BLUNT_RE_TABLE $OVERHANG5_RE_TABLE
+);
 
 # constants
 use constant {
@@ -58,26 +60,43 @@ use constant {
 };
 my @nullSite = (0, 0, 0);
 
-# # load the RE site metadata to properly handle blunt sites
-# # enzyme  strand  cut_site regex   offset  CpG_priority
-# # EcoRV   0       GATATC   GATATC  3       4  
-# # thus:
-# # blunt cutter: correction5 = 0
-# #            *      sitePos1
-# #        --3 5--    top strand alignment
-# #  EcoRV GAT^ATC
-# #        CTA^TAG
-# #        --5 3--    bottom strand alignment
-# open my $reH, "<", $BLUNT_RE_TABLE or die "could not open: $!\n";
-# my $header = <$reH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length
-# while (my $line = <$reH>){
-#     my ($enzyme, $strand, $cut_site, $regex, $offset, $priority, $hiFidelity, $siteLength) = split(",", $line);
-#     $enzyme or next;
-#     $enzyme =~ s/\s//g;
-#     $enzyme eq $ENZYME_NAME or next;
-#     last;
-# }
-# close $reH;
+# load the RE site metadata to properly handle blunt vs. 5' overhanging sites
+# enzyme  strand  cut_site regex   offset  CpG_priority
+# EcoRV   0       GATATC   GATATC  3       4  
+# NcoI    0       CCATGG   CCATGG  1       5  
+# thus:
+# blunt cutter: correction5 = 0
+#            *      sitePos1
+#        --3 5--    top strand alignment
+#  EcoRV GAT^ATC
+#        CTA^TAG
+#        --5 3--    bottom strand alignment
+# 5' overhanging cutter: correction5 = siteLength - 2 * offset
+#          *        sitePos1
+#      --3 5--      top strand alignment
+#  NcoI  C^CATG G
+#        G GTAC^C
+#           --5 3-- bottom strand alignment
+# correction5 is applied to alignment pos1 on reverse strand by apply_filter.pl when querying for closest site
+our ($correction5);
+foreach my $table($BLUNT_RE_TABLE, $OVERHANG5_RE_TABLE){
+    open my $reH, "<", $table or die "could not open: $!\n";
+    my $header = <$reH>; # enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length
+    while (my $line = <$reH>){
+        my ($enzyme, $strand, $cut_site, $regex, $offset, $priority, $hiFidelity, $siteLength) = split(",", $line);
+        $enzyme or next;
+        $enzyme =~ s/\s//g;
+        $enzyme eq $ENZYME_NAME or next;
+        if($table eq $BLUNT_RE_TABLE){
+            $correction5 = 0;
+        } else {
+            $correction5 = $siteLength - 2 * $offset; # account for staggered cleaved bonds with 5' overhanging enzymes
+        }
+        last;
+    }
+    close $reH;
+}
+defined $correction5 or die "$error: could not find enzyme $ENZYME_NAME in RE tables\n";
 
 # load the RE site lookup index
 our (%chromData);

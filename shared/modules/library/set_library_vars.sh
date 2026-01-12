@@ -1,5 +1,5 @@
 # action:
-#     set environment variables that indicate the type of library being analyzed
+#     set environment variables that indicate the type of reads being analyzed
 #     set environment variables with output file paths and names
 # requires:
 #     source $MODULES_DIR/genome/set_genome_vars.sh
@@ -10,8 +10,8 @@
 # library/sample output files
 export LIBRARY_STATS_FILE=${DATA_FILE_PREFIX}.library_stats.yml
 
-# set alignment and other analysis parameters based on the sequencing platform in use
-# for clarity, these options are read from a table
+# set alignment and analysis parameters based on the sequencing platform and library method in use
+# for clarity, these options are read from tables
 if [ "$SEQUENCING_PLATFORM" != "" ]; then
     source <( perl ${MODULES_DIR}/library/set_library_vars.pl )
     if [ "$GET_CONFIGURATION_ERROR" != "" ]; then
@@ -35,6 +35,45 @@ export FILTERING_SITES_BGZ=${INDEXED_SITES_PREFIX}.txt.bgz
 export SITE_CHROM_DATA_FILE=${INDEXED_SITES_PREFIX}.index.txt        # tabular index to next three files
 export CLOSEST_SITE_BINARY_FILE=${INDEXED_SITES_PREFIX}.closest_site # one value per genome position = signed closest site index
 export SITE_DATA_BINARY_FILE=${INDEXED_SITES_PREFIX}.site_data       # one value per RE filtering site = sitePos1 on chrom
+
+# set RE site matching mode variables
+export EXPECTING_ENDPOINT_RE_SITES=""
+export REJECTING_JUNCTION_RE_SITES=""
+export CREATING_SAMPLE_SITE_FILES="TRUE"
+if [[ "$ENZYME_NAME" != "NA" && "$CHECK_ENDPOINT_RE_MATCH" = "TRUE" ]]; then
+    export EXPECTING_ENDPOINT_RE_SITES="TRUE" # REJECTING_JUNCTION_RE_SITES is always TRUE if EXPECTING_ENDPOINT_RE_SITES is TRUE
+fi
+if [ "$ENZYME_NAME" != "NA" ]; then
+    export REJECTING_JUNCTION_RE_SITES="TRUE" # EXPECTING_ENDPOINT_RE_SITES may be FALSE even if REJECTING_JUNCTION_RE_SITES is TRUE
+fi
+if [ "$SITE_OVERRIDE_DIR" != "NA" ]; then
+    # override sample-level site files above with files from user-specified directory containing prior RE site calls
+    INDEXED_SITES_PREFIX=${SITE_OVERRIDE_DIR}/*.${GENOME}.filtering_sites
+    export FILTERING_SITES_FILE=$(ls -1 ${INDEXED_SITES_PREFIX}.txt.gz)
+    export FILTERING_SITES_BGZ=$(ls -1 ${INDEXED_SITES_PREFIX}.txt.bgz)
+    export SITE_CHROM_DATA_FILE=$(ls -1 ${INDEXED_SITES_PREFIX}.index.txt)
+    export CLOSEST_SITE_BINARY_FILE=$(ls -1 ${INDEXED_SITES_PREFIX}.closest_site)
+    export SITE_DATA_BINARY_FILE=$(ls -1 ${INDEXED_SITES_PREFIX}.site_data)
+    if [ ! -f $SITE_CHROM_DATA_FILE ]; then
+        echo
+        echo "error: --site-override-dir $SITE_OVERRIDE_DIR does not contain expected filtering site files for genome $GENOME"
+        echo
+        exit 1
+    fi
+    export CREATING_SAMPLE_SITE_FILES=""
+elif [ "$SKIP_RFLP_DETECTION" = "1" ]; then
+    # override sample-level site files with genome-level files when user says to do so but provides no alternative site files
+    export SITE_CHROM_DATA_FILE=${GENOME_SITE_CHROM_DATA_FILE}
+    export CLOSEST_SITE_BINARY_FILE=${GENOME_CLOSEST_SITE_BINARY_FILE}
+    export SITE_DATA_BINARY_FILE=${GENOME_SITE_DATA_BINARY_FILE}
+    export CREATING_SAMPLE_SITE_FILES=""
+elif [ "$REJECTING_JUNCTION_RE_SITES" = "TRUE" ] && [ "$EXPECTING_ENDPOINT_RE_SITES" = "" ]; then
+    # override sample-level site files with genome-level files when outer ends don't match RE sites
+    export SITE_CHROM_DATA_FILE=${GENOME_SITE_CHROM_DATA_FILE}
+    export CLOSEST_SITE_BINARY_FILE=${GENOME_CLOSEST_SITE_BINARY_FILE}
+    export SITE_DATA_BINARY_FILE=${GENOME_SITE_DATA_BINARY_FILE}
+    export CREATING_SAMPLE_SITE_FILES=""
+fi
 
 # SV extract file paths
 export EXTRACT_PREFIX=${DATA_GENOME_PREFIX}.extract

@@ -6,6 +6,7 @@
 #     source $MODULES_DIR/align/set_alignment_vars.sh
 
 # set the alignment log files
+export FASTP_LOG_PREFIX=$LOG_FILE_PREFIX.fastp.log
 export MINIMAP_LOG_FILE=$LOG_FILE_PREFIX.minimap.log
 
 # set the product alignment files
