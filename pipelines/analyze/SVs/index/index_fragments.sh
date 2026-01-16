@@ -11,13 +11,28 @@
 #   library summation values (nReads, nBases...) to log file
 
 # working variables
-export SAMPLE_PATHS_PREFIX_WRK=${TMP_FILE_PREFIX_SMALL}.paths
-rm -f $SAMPLE_PATHS_PREFIX_WRK.*.txt.bgz
-rm -f $SAMPLE_PATHS_PREFIX_WRK.*.txt.gz
+export INDEX_FILE_PREFIX_WRK=${TMP_FILE_PREFIX_SMALL}.index
+rm -f $INDEX_FILE_PREFIX_WRK.*.bam
+rm -f $INDEX_FILE_PREFIX_WRK.*.txt.bgz
+rm -f $INDEX_FILE_PREFIX_WRK.*.txt.gz
 export SORT="sort --parallel=$N_CPU --buffer-size=4G --temporary-directory $TMP_DIR_WRK_SMALL"
 PIGZ="pigz --stdout --processes $N_CPU"
 BGZIP="bgzip --threads $N_CPU --force --output"
 TABIX="tabix --threads $N_CPU --sequence 1"
+
+# split name-sorted BAM by the chromosome of the first alignment
+# only on-target reads are retained for SV calling
+# this represents a first sort action and supports downstream parallelization by chrom
+${SUITE_BIN_DIR}/hf3_tools split_by_chrom
+checkPipe
+
+# index and parse unique fragment alignments and junctions
+${SUITE_BIN_DIR}/hf3_tools index_fragments_by_chrom
+checkPipe
+
+
+
+
 
 # index and parse unique fragment alignments and junctions
 SUMMATION_COMMAND=cat

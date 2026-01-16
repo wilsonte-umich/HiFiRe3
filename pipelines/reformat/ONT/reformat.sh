@@ -24,6 +24,7 @@ for UBAM_FILE in $READ_1_FILES; do
     samtools view -@ ${N_CPU} --with-header ${BU_FILE} |
     ${SUITE_BIN_DIR}/hf3_tools reformat_ont |
     samtools view -@ ${N_CPU} -b -o ${UBAM_FILE} -
+    checkPipe
 
     # delete the backup (pending)
     echo "      done (backup file NOT deleted, see .../bu_original_files)"

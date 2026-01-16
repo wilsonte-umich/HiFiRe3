@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         basecall PacBio
         ------------------------------------------------------------- */
         // merge fwd and rev PacBio reads into pbFree "unleaded" reads
-        // "basecall_pacbio" => tools::basecall_pacbio::stream(),
+        "basecall_pacbio" => tools::basecall_pacbio::main(),
 
         /*--------------------------------------------------------------
         analyze fragments
@@ -55,8 +55,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         /*--------------------------------------------------------------
         analyze SVs
         ------------------------------------------------------------- */
-        // analyze reads for evidence of shared SV junctions
-        // "analyze_svs" => tools::analyze_svs::stream(),
+        // prepare reads for SV indexing by splitting BAM by chromosome
+        "split_by_chrom" => tools::split_by_chrom::main(),
+
+        // index fragments to collect read paths and junctions
+        "index_fragments_by_chrom" => tools::index_fragments_by_chrom::main(),
 
         /*--------------------------------------------------------------
         unrecognized pipeline action tool

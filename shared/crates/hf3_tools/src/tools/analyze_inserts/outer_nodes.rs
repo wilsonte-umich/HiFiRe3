@@ -68,8 +68,8 @@ impl OuterNodes {
         OuterNodes { node5, node3 }
     }
     
-    /// Encode outer nodes as a SAM tag string.
+    /// Encode outer nodes as a SAM tag string, in 5' to 3' order.
     pub fn to_sam_tag(&self) -> String {
-        format!("{},{}", self.node5, self.node3)
+        SamRecord::paired_nodes_to_sam_tag(self.node5, self.node3)
     }
 }

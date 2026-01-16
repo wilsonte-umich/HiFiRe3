@@ -9,7 +9,7 @@ use mdi::workflow::Workflow;
 use mdi::OutputFile;
 use genomex::sam::{SamRecord, flag};
 use genomex::genome::Chroms;
-use crate::formats::hf_tags::TRIM_LENGTHS;
+use crate::formats::hf3_tags::TRIM_LENGTHS;
 
 // constants
 pub_key_constants!{

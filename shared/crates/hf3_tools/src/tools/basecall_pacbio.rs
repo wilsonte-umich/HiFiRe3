@@ -11,7 +11,6 @@
 //     PACBIO_BASECALL_KINETICS file with kinetics values stratified by 3-base context
 
 // modules
-mod bam;
 mod channel_reader;
 mod channel_worker;
 mod channel_kinetics;
@@ -24,7 +23,7 @@ use faimm::IndexedFasta;
 use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, record::Aux, Header, Format};
 use mdi::pub_key_constants;
 use mdi::workflow::{Config, Counters};
-use crate::formats::hf_tags::*;
+use crate::formats::hf3_tags::*;
 use channel_kinetics::kinetics::{StrandMetadata, FrameCounts};
 
 /// BufferedStrand holds the data needed for a single PacBio strand.
@@ -87,7 +86,7 @@ const MIN_READ_LEN: usize = 250;
 const MAX_READ_LEN: usize = 25000;
 
 // main basecall pacbio function called by hf3_tools main()
-pub fn stream() -> Result<(), Box<dyn Error>> {
+pub fn main() -> Result<(), Box<dyn Error>> {
 
     // get config from environment variables
     let mut cfg = Config::new();

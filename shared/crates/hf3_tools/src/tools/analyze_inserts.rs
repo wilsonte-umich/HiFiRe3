@@ -36,7 +36,7 @@ use mdi::workflow::{Workflow, Config, Counters};
 use mdi::RecordStreamer;
 use genomex::sam::{SamRecord, flag};
 use genomex::genome::Chroms;
-use crate::formats::hf_tags::*;
+use crate::formats::hf3_tags::*;
 use crate::junctions::JxnFailureFlag;
 use insert_sizes::InsertSizer;
 use outer_nodes::OuterNodes;

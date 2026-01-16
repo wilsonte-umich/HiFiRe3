@@ -3,8 +3,9 @@
 
 // dependencies
 use rust_htslib::bam::Record as BamRecord;
-use crate::formats::hf_tags::{PACBIO_FAIL, PACBIO_EFF_COVERAGE};
-use crate::tools::basecall_pacbio::{bam, MIN_READ_LEN, MAX_READ_LEN};
+use genomex::bam::tags;
+use crate::formats::hf3_tags::{PACBIO_FAIL, PACBIO_EFF_COVERAGE};
+use crate::tools::basecall_pacbio::{MIN_READ_LEN, MAX_READ_LEN};
 
 /// CcsFailBits enumerates the failure reasons for PacBio CCS reads
 /// as found in the "ff:i:" tag in ccs bam files (even hifi files)
@@ -37,8 +38,8 @@ const MIN_EFFECTIVE_COVERAGE: f32 = 3.0; // expose as options?
 
 /// Determine whether a by-strand read is usable for merging based on its PacBio tags.
 pub (super) fn is_usable(strand: &BamRecord) -> (bool, u8, f32) {
-    let ff  = bam::get_tag_u8(strand, PACBIO_FAIL);
-    let ec = bam::get_tag_f32_default(strand, PACBIO_EFF_COVERAGE);
+    let ff  = tags::get_tag_u8(strand, PACBIO_FAIL);
+    let ec = tags::get_tag_f32_default(strand, PACBIO_EFF_COVERAGE, 0.0);
     let read_len = strand.seq().len();
     let is_usable = {
         read_len >= MIN_READ_LEN && 

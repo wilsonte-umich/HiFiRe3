@@ -27,7 +27,7 @@ use mdi::workflow::Config;
 use mdi::RecordStreamer;
 use genomex::sam::{SamRecord, SamQual};
 use genomex::sequence::{rc_acgt_str, Aligner, ForceQryTerminus};
-use crate::formats::hf_tags::{TRIM_LENGTHS, StageTags};
+use crate::formats::hf3_tags::{TRIM_LENGTHS, StageTags};
 
 // tool support structures
 struct Adapter {

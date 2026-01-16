@@ -14,7 +14,7 @@
 use mdi::pub_key_constants;
 use mdi::workflow::Workflow;
 use genomex::sam::SamRecord;
-use crate::formats::hf_tags::ALN_FAILURE_FLAG;
+use crate::formats::hf3_tags::ALN_FAILURE_FLAG;
 
 // constants
 pub_key_constants!{

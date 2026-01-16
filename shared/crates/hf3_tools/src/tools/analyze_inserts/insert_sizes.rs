@@ -7,7 +7,7 @@ use mdi::OutputFile;
 use genomex::sam::SamRecord;
 use genomex::genome::Chroms;
 use crate::junctions::{JxnFailureFlag};
-use crate::formats::hf_tags::*;
+use crate::formats::hf3_tags::*;
 use super::site_matching::SiteMatches;
 
 // constants

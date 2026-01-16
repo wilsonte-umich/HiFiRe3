@@ -60,7 +60,7 @@ use mdi::RecordStreamer;
 use genomex::sam::{SamRecord, flag};
 use genomex::genome::{Chroms, TargetRegions};
 use genomex::sam::nullable::*;
-use crate::formats::hf_tags::*;
+use crate::formats::hf3_tags::*;
 use crate::junctions::JxnFailureFlag;
 use alignment_quality_filters::{AlnFailure, N_ALNS_BY_REASON, AVG_BASE_QUAL};
 use traversal_delta::Traversal;
