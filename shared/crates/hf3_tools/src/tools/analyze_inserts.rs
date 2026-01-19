@@ -38,23 +38,24 @@ use genomex::sam::{SamRecord, flag};
 use genomex::genome::Chroms;
 use crate::formats::hf3_tags::*;
 use crate::junctions::JxnFailureFlag;
+use crate::sites::{SiteMatch, SiteMatches};
 use insert_sizes::InsertSizer;
 use outer_nodes::OuterNodes;
-use site_matching::{SiteMatcher, SiteMatches, SiteMatch, N_SITES, N_MATCHES_BY_OUTCOME};
+use site_matching::{SiteMatcher, N_SITES, N_MATCHES_BY_OUTCOME};
 
 // Tool structure, for passing data workers to record processing functions.
 struct Tool {
-    chroms: Chroms,
-    site_matcher: SiteMatcher,
-    insert_sizer: InsertSizer,
-    incoming_tags: Vec<&'static str>,
+    chroms:                      Chroms,
+    site_matcher:                SiteMatcher,
+    insert_sizer:                InsertSizer,
+    incoming_tags:               Vec<&'static str>,
     expecting_endpoint_re_sites: bool,
     rejecting_junction_re_sites: bool,
-    is_end_to_end_platform: bool,
-    is_paired_reads: bool,
-    is_ont: bool,
-    clip_tolerance: usize,
-    accept_endpoint_distance: usize,
+    is_end_to_end_platform:      bool,
+    is_paired_reads:             bool,
+    is_ont:                      bool,
+    clip_tolerance:              u32,
+    accept_endpoint_distance:    u32,
 }
 
 // constants 
@@ -108,7 +109,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     let mut cfg = Config::new();
     cfg.set_string_env(&[SEQUENCING_PLATFORM, READ_PAIR_TYPE]);
     cfg.set_bool_env(&[IS_END_TO_END_READ, EXPECTING_ENDPOINT_RE_SITES, REJECTING_JUNCTION_RE_SITES]);
-    cfg.set_usize_env(&[CLIP_TOLERANCE, ACCEPT_ENDPOINT_DISTANCE]);
+    cfg.set_u32_env(&[CLIP_TOLERANCE, ACCEPT_ENDPOINT_DISTANCE]);
 
     // set derived config values
     cfg.set_bool( IS_END_TO_END_PLATFORM, *cfg.get_bool(IS_END_TO_END_READ));
@@ -132,17 +133,17 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
 
     // build tool support resources, i.e. data workers
     let mut tool = Tool {
-        chroms: Chroms::new(&mut w.cfg),
-        insert_sizer: InsertSizer::new(&mut w),
-        site_matcher: SiteMatcher::new(&mut w),
-        incoming_tags: StageTags::AlignmentAnalysis.tags_after_stage(),
+        chroms:                       Chroms::new(&mut w.cfg),
+        insert_sizer:                 InsertSizer::new(&mut w),
+        site_matcher:                 SiteMatcher::new(&mut w),
+        incoming_tags:                StageTags::AlignmentAnalysis.tags_after_stage(),
         expecting_endpoint_re_sites: *w.cfg.get_bool(EXPECTING_ENDPOINT_RE_SITES),
         rejecting_junction_re_sites: *w.cfg.get_bool(REJECTING_JUNCTION_RE_SITES),
         is_end_to_end_platform:      *w.cfg.get_bool(IS_END_TO_END_PLATFORM),
         is_ont:                      *w.cfg.get_bool(IS_ONT),
         is_paired_reads:             *w.cfg.get_bool(IS_PAIRED_READS),
-        clip_tolerance:              *w.cfg.get_usize(CLIP_TOLERANCE),
-        accept_endpoint_distance:    *w.cfg.get_usize(ACCEPT_ENDPOINT_DISTANCE),
+        clip_tolerance:              *w.cfg.get_u32(CLIP_TOLERANCE),
+        accept_endpoint_distance:    *w.cfg.get_u32(ACCEPT_ENDPOINT_DISTANCE),
     };
 
     // process groups of SAM records for each read in a stream
@@ -243,7 +244,7 @@ fn record_parser(
             is_end_to_end_read = 
                  tool.is_end_to_end_platform || 
                 (tool.is_ont && trims[TRIM3] > 0) || 
-                (tool.is_paired_reads && is_unmerged_pair);
+                (tool.is_paired_reads && !is_unmerged_pair);
             // check 5' query end, always required to match a RE site if ligFree
             let is_reverse = alns[i].check_flag_any(flag::REVERSE);
             let clip5 = if tool.is_ont && trims[TRIM5] == 0 {
@@ -259,11 +260,11 @@ fn record_parser(
             }
             if tool.expecting_endpoint_re_sites {
                 let dist5 = if is_reverse {
-                    site5.distance + clip5 as isize
+                    site5.distance + clip5 as i32
                 } else {
-                    site5.distance - clip5 as isize
+                    site5.distance - clip5 as i32
                 };
-                if dist5.abs() as usize > tool.accept_endpoint_distance {
+                if dist5.abs() as u32 > tool.accept_endpoint_distance {
                     w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_DISTANCE);
                     return print_all_alns;
                 }
@@ -281,23 +282,23 @@ fn record_parser(
                 alns[i].get_clip_right()
             };
             let dist3 = if is_reverse {
-                site3.distance - clip3 as isize
+                site3.distance - clip3 as i32
             } else {
-                site3.distance + clip3 as isize
+                site3.distance + clip3 as i32
             };
             if is_end_to_end_read {
                 if clip3 > tool.clip_tolerance {
                     w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_CLIP_TOLERANCE);
                     return print_all_alns;
                 }
-                if tool.expecting_endpoint_re_sites && dist3.abs() as usize > tool.accept_endpoint_distance {
+                if tool.expecting_endpoint_re_sites && dist3.abs() as u32 > tool.accept_endpoint_distance {
                     w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_DISTANCE);
                     return print_all_alns;
                 }
             // promote incomplete sequences to end-to-end status if they got to the fragment end
             } else if tool.expecting_endpoint_re_sites && 
                       !is_unmerged_pair && 
-                      dist3.abs() as usize <= tool.accept_endpoint_distance {
+                      dist3.abs() as u32 <= tool.accept_endpoint_distance {
                 is_end_to_end_read = true;
             }
         }
@@ -344,7 +345,7 @@ fn record_parser(
             if jxn_failure_flag != 0 {
                 w.ctrs.increment_keyed(N_JXNS_BY_REASON, JXN_FAIL_UPSTREAM);
             }
-            jxn_failure_flag |= tool.site_matcher.check_jxn(&aln_sites, aln5_i, aln3_i, w) as u8;
+            jxn_failure_flag |= tool.site_matcher.check_jxn(&aln_sites,    aln5_i, aln3_i, w) as u8;
             jxn_failure_flag |= tool.insert_sizer.check_jxn(&insert_sizes, aln5_i, aln3_i, w) as u8;
             if jxn_failure_flag != JxnFailureFlag::None as u8 {
                 alns[aln5_i].set_tag_value(JXN_FAILURE_FLAG, &jxn_failure_flag);

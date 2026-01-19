@@ -3,7 +3,7 @@
 
 // dependencies
 use std::error::Error;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use mdi::pub_key_constants;
 use mdi::workflow::Workflow;
 use mdi::OutputFile;
@@ -27,19 +27,19 @@ pub_key_constants!{
 const ONT_ADAPTER_LEN5: i32 = 34; // 3 empirically determined median adapter trim lengths 
 const TRIM5: usize = 0;           // tl tag indices for 5' and 3' adapter trims
 const TRIM3: usize = 1;
-const FORWARD: u8 = 0;
-const REVERSE: u8 = 1;
+const FORWARD: u8  = 0;
+const REVERSE: u8  = 1;
 
 /// Endpoint structure for collecting and printing putative RE site positions.
 pub struct Endpoints {
-    collecting: bool,
-    min_mapq: u8,
-    clip_tolerance: usize,
-    is_ont: bool,
+    collecting:             bool,
+    min_mapq:               u8,
+    clip_tolerance:         u32,
+    is_ont:                 bool,
     is_end_to_end_platform: bool,
-    is_paired_reads: bool,
-    counter: HashMap<(usize, usize), usize>, // (chrom_index, site_pos1) -> count
-    file: OutputFile,
+    is_paired_reads:        bool,
+    counter:                FxHashMap<(u8, u32), usize>, // (chrom_index, site_pos1) -> count
+    file:                   OutputFile,
 }
 impl Endpoints {
 
@@ -47,7 +47,7 @@ impl Endpoints {
     /// in case IO fails.
     pub fn new(w: &mut Workflow) -> Endpoints {
         w.cfg.set_u8_env(&[MIN_MAPQ]);
-        w.cfg.set_usize_env(&[CLIP_TOLERANCE]);
+        w.cfg.set_u32_env(&[CLIP_TOLERANCE]);
         w.cfg.set_bool_env(&[EXPECTING_ENDPOINT_RE_SITES]);
         let collecting = *w.cfg.get_bool(EXPECTING_ENDPOINT_RE_SITES);
         if collecting {
@@ -55,7 +55,7 @@ impl Endpoints {
                 (N_ENDS, "read endpoints processed"),
                 (N_HIGH_QUAL, format!(
                     "candidate endpoints with MAPQ >= {} and clip <= {}", 
-                    w.cfg.get_u8(MIN_MAPQ), w.cfg.get_usize(CLIP_TOLERANCE)).as_str()
+                    w.cfg.get_u8(MIN_MAPQ), w.cfg.get_u32(CLIP_TOLERANCE)).as_str()
                 ),
                 (N_ENDPOINTS, "unique endpoint reference positions nominated as RE sites"),
             ]);
@@ -63,11 +63,11 @@ impl Endpoints {
         Endpoints {
             collecting,
             min_mapq: *w.cfg.get_u8(MIN_MAPQ),
-            clip_tolerance: *w.cfg.get_usize(CLIP_TOLERANCE),
+            clip_tolerance: *w.cfg.get_u32(CLIP_TOLERANCE),
             is_ont: *w.cfg.get_bool(super::IS_ONT),
             is_end_to_end_platform: *w.cfg.get_bool(super::IS_END_TO_END_PLATFORM),
             is_paired_reads: *w.cfg.get_bool(super::IS_PAIRED_READS),
-            counter: HashMap::new(), // (chrom_index, site_pos1) -> count, incompatible with mdi::keyed_counters
+            counter: FxHashMap::default(), // (chrom_index, site_pos1) -> count, incompatible with mdi::keyed_counters
             file: OutputFile::open_env(&mut w.cfg, OBSERVED_ENDPOINTS_FILE),
         }
     }
@@ -163,12 +163,12 @@ impl Endpoints {
             (3, REVERSE) => -1,
             _ => unreachable!(),
         };
-        site_pos1 = (site_pos1 as i32 + clip_dir * clip_len as i32) as usize; // concern for possible overflow
+        site_pos1 = (site_pos1 as i32 + clip_dir * clip_len as i32) as u32; // concern for possible overflow
 
         // use a typical trim value to adjust clips on ONT trim failures, to account for adapter bases still present
         // only applicable to 5' ends here, untrimmed 3' ends were filtered above as uninformative
         if self.is_ont && end == 5 && trims[TRIM5] == 0 {
-            site_pos1 = (site_pos1 as i32 - clip_dir * ONT_ADAPTER_LEN5) as usize;
+            site_pos1 = (site_pos1 as i32 - clip_dir * ONT_ADAPTER_LEN5) as u32;
         }
 
         // keep a tally of all genome positions nominated as RE sites
@@ -180,7 +180,7 @@ impl Endpoints {
     pub fn write(&mut self, w: &mut Workflow, chroms: &Chroms) -> Result<(), Box<dyn Error>> {
         if !self.collecting { return Ok(()); }
         w.log.print("printing endpoint tallies");
-        let mut sorted_keys: Vec<(usize, usize)> = self.counter.keys().cloned().collect();
+        let mut sorted_keys: Vec<(u8, u32)> = self.counter.keys().cloned().collect();
         sorted_keys.sort_unstable();
         for (chrom_index, site_pos1) in sorted_keys.iter() {
             w.ctrs.increment(N_ENDPOINTS);

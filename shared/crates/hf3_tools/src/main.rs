@@ -8,6 +8,8 @@ use std::error::Error;
 mod tools;
 mod formats;
 mod junctions;
+mod sites;
+mod inserts;
 
 // constants
 const TOOLS_NAME: &str = "hf3_tools";
@@ -55,11 +57,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         /*--------------------------------------------------------------
         analyze SVs
         ------------------------------------------------------------- */
-        // prepare reads for SV indexing by splitting BAM by chromosome
-        "split_by_chrom" => tools::split_by_chrom::main(),
+        // prepare reads for SV analysis by splitting BAM to chrom-level files
+        "split_bam_by_chrom" => tools::split_bam_by_chrom::main(),
 
         // index fragments to collect read paths and junctions
-        "index_fragments_by_chrom" => tools::index_fragments_by_chrom::main(),
+        "analyze_svs" => tools::analyze_svs::main(),
 
         /*--------------------------------------------------------------
         unrecognized pipeline action tool

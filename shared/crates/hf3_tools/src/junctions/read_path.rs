@@ -13,6 +13,9 @@ use genomex::bam::{tags, cigar, junction::pack_signed_node_aln};
 use genomex::genome::Chroms;
 use crate::formats::hf3_tags::*;
 
+// constants
+const COMMA: &str = ",";
+
 /// A SvReadPath holds detailed information on the path of alignments
 /// through a read with a junction, i.e., with multiple alignment segments.
 pub struct SvReadPath {
@@ -20,11 +23,11 @@ pub struct SvReadPath {
     // read identifier and read-level metadata
     qname:          String,
     read_len:       u32,  // length of SEQ
-    insert_size:    i32,  // INSERT_SIZE tag value
+    insert_size:    i32,  // INSERT_SIZE tag value, or read_len if insert_size not available
     has_passed_jxn: bool, // READ_HAS_PASSED_JXN tag value
     /* ------------------------------------------- */
     // concatenated alignment-level metadata
-    // use String right away since SvReadPath only exists to be written to file
+    // use String since SvReadPath only exists to be written to file
     node5_observeds:   String, // observed 5' end nodes of the alignment segments
     qry_start0s:       String, // query start positions
     qry_end1s:         String, // query end   positions
@@ -33,9 +36,9 @@ pub struct SvReadPath {
     divergences:       String, // DIVERGENCE tag values
     block_ns:          String, // BLOCK_N tag values
     aln_failure_flags: String, // ALN_FAILURE_FLAG tag values
-    jxn_failure_flags: String, // JXN_FAILURE_FLAG tag values
+    jxn_failure_flags: String, // JXN_FAILURE_FLAG tag values (0 or last alignment where not applicable)
     /* ------------------------------------------- */
-    // full read SEQ and QUAL, exactly as reported by the first alignment of the read
+    // full read SEQ and QUAL as reported by the first alignment of the read
     // reverse complement of the read if seq_strand == -1
     seq_strand: i8, // strand of seq as +1=top|-1=bottom; compare node5_observeds[i].sign() to seq_strand to match seq to cigars[i]
     seq:        String, 
@@ -44,7 +47,7 @@ pub struct SvReadPath {
 impl SvReadPath {
 
     /// Create a new pre-allocated SvReadPath.
-    pub fn new(
+    pub fn from_alns(
         alns:    &[BamRecord],
         header:  &HeaderView,
         chroms:  &Chroms,
@@ -77,15 +80,15 @@ impl SvReadPath {
         // iterate to fill in concatenated alignment-level values
         // all values, including single and last values, end with a comma
         alns.iter().for_each(|aln| {
-            read_path.node5_observeds  .push_str(&(pack_signed_node_aln(aln, header, 5, chroms).to_string() + ","));
-            read_path.qry_start0s      .push_str(&(cigar::get_query_start0(aln).to_string() + ","));
-            read_path.qry_end1s        .push_str(&(cigar::get_query_end1(aln).to_string() + ","));
-            read_path.mapqs            .push_str(&(aln.mapq().to_string() + ","));
-            read_path.cigars           .push_str(&(aln.cigar().to_string() + ","));
-            read_path.divergences      .push_str(&(tags::get_tag_f32(aln, DIVERGENCE).to_string() + ","));
-            read_path.block_ns         .push_str(&(tags::get_tag_u8_default(aln, BLOCK_N, 1).to_string() + ","));
-            read_path.aln_failure_flags.push_str(&(tags::get_tag_u8_default(aln, ALN_FAILURE_FLAG, 0).to_string() + ","));
-            read_path.jxn_failure_flags.push_str(&(tags::get_tag_u8_default(aln, JXN_FAILURE_FLAG, 0).to_string() + ","));
+            read_path.node5_observeds  .push_str(&(pack_signed_node_aln(aln, header, 5, chroms).to_string() + COMMA));
+            read_path.qry_start0s      .push_str(&(cigar::get_query_start0(aln).to_string() + COMMA));
+            read_path.qry_end1s        .push_str(&(cigar::get_query_end1(aln).to_string() + COMMA));
+            read_path.mapqs            .push_str(&(aln.mapq().to_string() + COMMA));
+            read_path.cigars           .push_str(&(aln.cigar().to_string() + COMMA));
+            read_path.divergences      .push_str(&(tags::get_tag_f32(aln, DIVERGENCE).to_string() + COMMA));
+            read_path.block_ns         .push_str(&(tags::get_tag_u8_default(aln, BLOCK_N, 1).to_string() + COMMA));
+            read_path.aln_failure_flags.push_str(&(tags::get_tag_u8_default(aln, ALN_FAILURE_FLAG, 0).to_string() + COMMA));
+            read_path.jxn_failure_flags.push_str(&(tags::get_tag_u8_default(aln, JXN_FAILURE_FLAG, 0).to_string() + COMMA));
         });
 
         // return the filled SvReadPath
@@ -96,10 +99,10 @@ impl SvReadPath {
     /// unique sorted segment with a count.
     pub fn write_sorted(
         mut read_paths: Vec<SvReadPath>, 
-        file_path: &str
+        bgz_path: &str
     ) -> Result<(), Box<dyn Error>> {
-        let mut bgz_writer = BgzWriter::from_path(file_path)?;
         read_paths.par_sort_unstable();
+        let mut bgz_writer = BgzWriter::from_path(bgz_path)?;
         for read_path in &read_paths {
             writeln!(
                 bgz_writer, 
@@ -131,8 +134,7 @@ impl SvReadPath {
 // support sorting of read paths by qname and read length
 impl PartialEq for SvReadPath {
     fn eq(&self, other: &Self) -> bool {
-        self.qname    == other.qname && 
-        self.read_len == other.read_len
+        self.qname == other.qname
     }
 }
 impl Eq for SvReadPath {}
@@ -144,6 +146,5 @@ impl PartialOrd for SvReadPath {
 impl Ord for SvReadPath {
     fn cmp(&self, other: &Self) -> Ordering {
         self.qname.cmp(&other.qname)
-            .then(self.read_len.cmp(&other.read_len))
     }
 }

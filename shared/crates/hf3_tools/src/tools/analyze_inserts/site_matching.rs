@@ -1,12 +1,14 @@
 //! Perform site matching for alignment endpoints.
 
 // dependencies
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
+use rayon::prelude::*;
 use mdi::pub_key_constants;
 use mdi::workflow::Workflow;
 use mdi::InputFile;
 use genomex::sam::{SamRecord, flag};
 use crate::junctions::JxnFailureFlag;
+use crate::sites::{SiteMatch, SiteMatches};
 
 // constants
 pub_key_constants!{
@@ -28,87 +30,17 @@ pub_key_constants!{
     NO_SITES_ON_CHROM
 }
 
-/// SiteMatch structure to declare the best match of a genome position/strand
-/// to an RE filtering site.
-#[derive(Clone)]
-pub struct SiteMatch {
-    // signed 1-based index in filtering_sites_file of the closest RE site to query.pos1
-    // sign = direction from query.pos1 to site.pos1, + means query.pos1 >= site.pos1
-    // 0 = no site matched
-    pub index1:   isize, 
-    pub pos1:     usize, // 1-based site coordinate on the chromosome
-    pub distance: isize, // query.pos1 - site.pos1
-}
-impl SiteMatch {
-    /// Return a new empty SiteMatch.
-    pub fn new() -> SiteMatch {
-        SiteMatch {
-            index1:   0,
-            pos1:     0,
-            distance: 0,
-        }
-    }
-}
-
-/// SiteMatches structure to hold 5', 3', and projected 3' site matches.
-pub struct SiteMatches {
-    pub site5: SiteMatch,
-    pub site3: SiteMatch,
-    pub proj3: SiteMatch,
-}
-impl SiteMatches {
-    /* ---------------------------------------------------------------------------
-    pack and unpack sam tags
-    ---------------------------------------------------------------------------- */
-    /// Pack site matches into a string representation of i-type closest sites
-    /// as (site5, site3, site_proj3) for use as a value for tag prefix 'sc:B:i,'.
-    pub fn to_tag(&self) -> String {
-        [   
-            self.site5.index1.to_string(), // 5' site
-            self.site5.pos1.to_string(),
-            self.site5.distance.to_string(),
-            self.site3.index1.to_string(), // 3' site
-            self.site3.pos1.to_string(),
-            self.site3.distance.to_string(),
-            self.proj3.index1.to_string(), // projected 3' site
-            self.proj3.pos1.to_string(),
-            self.proj3.distance.to_string(),
-        ].join(",")
-    }
-    // /// Unpack site matches from a string representation of i-type closest sites
-    // /// from a tag prefix 'sc:B:i,' into (site5, site3, site_proj3).
-    // pub fn from_tag(tag_value: &str) -> SiteMatches {
-    //     let parts: Vec<&str> = tag_value.split(',').collect();
-    //     let site5 = SiteMatch {
-    //         index1:   parts[0].parse().unwrap_or(0),
-    //         pos1:     parts[1].parse().unwrap_or(0),
-    //         distance: parts[2].parse().unwrap_or(0),
-    //     };
-    //     let site3 = SiteMatch {
-    //         index1:   parts[3].parse().unwrap_or(0),
-    //         pos1:     parts[4].parse().unwrap_or(0),
-    //         distance: parts[5].parse().unwrap_or(0),
-    //     };
-    //     let proj3 = SiteMatch {
-    //         index1:   parts[6].parse().unwrap_or(0),
-    //         pos1:     parts[7].parse().unwrap_or(0),
-    //         distance: parts[8].parse().unwrap_or(0),
-    //     };
-    //     SiteMatches{site5, site3, proj3}
-    // }
-}
-
 /// SiteMatcher matches alignment endpoints to RE filtering sites, i.e.,
 /// site found by either in silico digestion of a genome or by examination
 /// of read 5' endpoints.
 pub struct SiteMatcher {
     pub is_matching_sites: bool, // false if not matching sites in ligFree or tagFree
-    enzyme_name: String,
-    filtering_sites_file: String,
-    filtering_sites: HashMap<String, Vec<usize>>, // chrom -> [site_pos1]
-    n_sites: usize,
-    correction5: usize, // 5' correction for site matching with 5' overhanging enzymes
-    reject_junction_distance: usize,
+    enzyme_name:           String,
+    filtering_sites_file:  String,
+    filtering_sites:       FxHashMap<String, Vec<u32>>, // chrom -> [site_pos1]
+    n_sites:               usize,
+    correction5:           u32, // 5' correction for site matching with 5' overhanging enzymes
+    reject_junction_distance: i32,
 }
 impl SiteMatcher {
     /* ---------------------------------------------------------------------------
@@ -122,14 +54,14 @@ impl SiteMatcher {
                 is_matching_sites:      false,
                 enzyme_name:            "".to_string(),
                 filtering_sites_file:   "".to_string(),
-                filtering_sites:        HashMap::new(),
+                filtering_sites:        FxHashMap::default(),
                 n_sites:                0,
                 correction5:            0,
                 reject_junction_distance: 0,
             };
         }
         w.cfg.set_string_env(&[ENZYME_NAME, BLUNT_RE_TABLE, OVERHANG5_RE_TABLE, FILTERING_SITES_FILE]);
-        w.cfg.set_usize_env(&[REJECT_JUNCTION_DISTANCE]);
+        w.cfg.set_u32_env( &[REJECT_JUNCTION_DISTANCE]);
         w.ctrs.add_counters(&[
             (N_SITES, &format!("{} filtering sites being matched against", w.cfg.get_string(ENZYME_NAME))),
         ]);
@@ -140,10 +72,10 @@ impl SiteMatcher {
             is_matching_sites:      true,
             enzyme_name:            w.cfg.get_string(ENZYME_NAME).to_string(),
             filtering_sites_file:   w.cfg.get_string(FILTERING_SITES_FILE).to_string(),
-            filtering_sites:        HashMap::new(),
+            filtering_sites:        FxHashMap::default(),
             n_sites:                0,
             correction5:            0,
-            reject_junction_distance: *w.cfg.get_usize(REJECT_JUNCTION_DISTANCE),
+            reject_junction_distance: *w.cfg.get_u32(REJECT_JUNCTION_DISTANCE) as i32,
         };
         let n_sites = site_matcher.load_filtering_site();
         site_matcher.n_sites = n_sites;
@@ -158,12 +90,12 @@ impl SiteMatcher {
             site_i1 += 1; // 1-referenced
             let parts: Vec<&str> = line.split('\t').collect(); // chrom,sitePos1,inSilico,nObserved
             let chrom = parts[0];
-            let site_pos1: usize = parts[1].parse().unwrap_or(0);
+            let site_pos1: u32 = parts[1].parse().unwrap_or(0);
             self.filtering_sites.entry(chrom.to_string()).or_insert_with(Vec::new).push(site_pos1);
         }
         // ensure that each chrom's sites are sorted by site_pos1
         for sites in self.filtering_sites.values_mut() {
-            sites.sort_unstable();
+            sites.par_sort_unstable();
         }
         site_i1
     }
@@ -186,7 +118,7 @@ impl SiteMatcher {
     //           --5 3-- bottom strand alignment
     // correction5 is applied to alignment pos1 on reverse strand by apply_filter.pl when querying for closest site
     fn set_correction5(&mut self, w: &Workflow) {
-        let mut correction5: Option<usize> = None;
+        let mut correction5: Option<u32> = None;
         for table in &[w.cfg.get_string(BLUNT_RE_TABLE), w.cfg.get_string(OVERHANG5_RE_TABLE)] {
             // enzyme,strand,cut_site,regex,offset,CpG_priority,high_fidelity,site_length
             for line in InputFile::get_lines(table, true) {
@@ -196,8 +128,8 @@ impl SiteMatcher {
                     if table == &w.cfg.get_string(BLUNT_RE_TABLE) {
                         correction5 = Some(0);
                     } else {
-                        let offset: usize = parts[4].parse().unwrap_or(0);
-                        let site_length: usize = parts[7].parse().unwrap_or(0);
+                        let offset: u32 = parts[4].parse().unwrap();
+                        let site_length: u32 = parts[7].parse().unwrap();
                         correction5 = Some(site_length - 2 * offset); // account for staggered cleaved bonds with 5' overhanging enzymes
                     }
                     break;
@@ -216,37 +148,37 @@ impl SiteMatcher {
     /// Match a specific position on a chromosome to the closest RE filtering site.
     pub fn find_closest_site(
         &self, 
-        chrom: &str, 
-        qry_pos1: usize,
-        w: &mut Workflow, 
+        chrom:    &str, 
+        qry_pos1: u32,
+        w:        &mut Workflow, 
     ) -> SiteMatch {
         if let Some(sites) = self.filtering_sites.get(chrom) {
             match sites.binary_search(&qry_pos1) {
-                Ok(i) => { // exact match
+                Ok(site_index0) => { // exact match
                     w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, EXACT_SITE_MATCH);
                     SiteMatch {
-                        index1: i as isize + 1, // 1-based index
-                        pos1: sites[i],
+                        index1: site_index0 as i32 + 1, // 1-based index
+                        pos1: sites[site_index0],
                         distance: 0,
                     }
                 },
-                Err(i) => { // no exact match
+                Err(next_site_index0) => { // no exact match
                     // return the closest site with index1 and distance signed negative if qry_pos1 < site.pos1
-                    if i > 0 && i < sites.len() {
+                    if next_site_index0 > 0 && next_site_index0 < sites.len() {
                         w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, INEXACT_SITE_MATCH);
-                        let dist_low = qry_pos1 - sites[i - 1];
-                        let dist_high = sites[i] - qry_pos1;
+                        let dist_low = qry_pos1 - sites[next_site_index0 - 1];
+                        let dist_high = sites[next_site_index0] - qry_pos1;
                         if dist_low < dist_high {
                             SiteMatch {
-                                index1: i as isize, // 1-based index, i.e., i == i - 1 + 1
-                                pos1: sites[i - 1],
-                                distance: dist_low as isize,
+                                index1: next_site_index0 as i32, // 1-based index, i.e., index1 == next_site_index0 - 1 + 1
+                                pos1: sites[next_site_index0 - 1],
+                                distance: dist_low as i32,
                             }
                         } else {
                             SiteMatch {
-                                index1: -(i as isize + 1), // 1-based index
-                                pos1: sites[i],
-                                distance: -(dist_high as isize),
+                                index1: -(next_site_index0 as i32 + 1), // 1-based index
+                                pos1: sites[next_site_index0],
+                                distance: -(dist_high as i32),
                             }
                         }
                     // telomeric sites on a chromosome are considered unusable and return a null site
@@ -266,7 +198,7 @@ impl SiteMatcher {
     pub fn match_aln_sites(
         &self, 
         aln: &SamRecord,
-        w: &mut Workflow, 
+        w:   &mut Workflow, 
     ) -> (SiteMatch, SiteMatch) {
         if self.is_matching_sites {
             if aln.check_flag_any(flag::REVERSE){
@@ -287,55 +219,62 @@ impl SiteMatcher {
     /* ---------------------------------------------------------------------------
     project alignment 3' end to next RE site
     ---------------------------------------------------------------------------- */
-    /// Return the projected 3' SiteMatch for SamRecord alignment.
+    /// Return the projected 3' SiteMatch for a SamRecord alignment.
     pub fn get_projection(
         &self, 
-        aln: &SamRecord,
-        mut site_match: SiteMatch, // provided as the actual aln 3' site to be projected
+        aln:       &SamRecord,
+        mut site3: SiteMatch, // provided as the actual aln 3' site to be projected
     ) -> SiteMatch {
         // find the next site in the direction of the alignment strand
         // actual and projected site indices could be the same
         // no sign on index, pretend an exact match
         //          +          -
         //  ----|------------------|-----
-        //      |------------->           first two do not need to be projected
-        //          <--------------|
-        //      |------>                  last two do need to be projected
-        //                   <-----|       
+        //      |------------->~~~~~      first three DO NOT need to be projected, closest site is the projected site
+        //      |-------------------> (small overrun)
+        //      ~~~~<--------------|
+        //      |------>~~~~~~~~~~~~      last three DO need to be projected, closet site is one away from the projected site
+        //      ~~~~~~~~~~~~~<-----|       
+        //     <-------------------|
+        let chrom_sites = self.filtering_sites.get(&aln.rname).unwrap();
         if aln.check_flag_any(flag::REVERSE){
-            if site_match.index1 < 0 && 
-               site_match.index1.abs() > 1 {
-                site_match.index1 = site_match.index1.abs() - 1;
+            if site3.index1 < 0 && 
+               site3.distance.abs() > self.reject_junction_distance && // more permissive than ACCEPT_ENDPOINT_DISTANCE
+               site3.index1.abs() > 1 {
+                site3.index1 = site3.index1.abs() - 1;
             }
         } else {
-            if site_match.index1 > 0 && 
-               site_match.index1 < (self.filtering_sites.get(&aln.rname).unwrap().len() as isize) {
-                site_match.index1 += 1; 
+            let n_sites_on_chrom = chrom_sites.len() as i32;
+            if site3.index1 > 0 && 
+               site3.distance.abs() > self.reject_junction_distance &&
+               site3.index1 < n_sites_on_chrom {
+                site3.index1 += 1; 
             }
         }
-        site_match.index1 = site_match.index1.abs(); // projected site has no sign, implies exact match
-        site_match.pos1 = self.filtering_sites.get(&aln.rname).unwrap()[(site_match.index1 - 1) as usize];
-        site_match.distance = 0;
-        site_match
+        site3.index1 = site3.index1.abs(); // projected site has no sign, implies exact match
+        site3.pos1 = chrom_sites[(site3.index1 - 1) as usize];
+        site3.distance = 0;
+        site3
     }
     /* ---------------------------------------------------------------------------
     perform chimeric junction assessment based on RE site matches
     ---------------------------------------------------------------------------- */
     /// Assess whether a junction has either end within REJECT_JUNCTION_DISTANCE
-    /// of an RE filtering site, returning true if the junction should be rejected.
+    /// of an RE filtering site, returning JxnFailureFlag::SiteMatch if the junction 
+    /// should be rejected.
     pub fn check_jxn(
         &self,  
         aln_sites: &[SiteMatches],
-        aln5_i: usize, // the alignment 5' to the junction on the read (its 3' end is the breakpoint)
-        aln3_i: usize,
+        aln5_i:    usize, // the alignment 5' to the junction on the read (its 3' end is the breakpoint)
+        aln3_i:    usize,
         w: &mut Workflow,
     ) -> JxnFailureFlag {
         if !self.is_matching_sites { return JxnFailureFlag::None; }
         let dist_prox = &aln_sites[aln5_i].site3.distance;
         let dist_dist = &aln_sites[aln3_i].site5.distance;
         // either breakpoint node can fail the junction site match test
-        let failed = dist_prox.abs() as usize <= self.reject_junction_distance ||
-                           dist_dist.abs() as usize <= self.reject_junction_distance;
+        let failed = dist_prox.abs() <= self.reject_junction_distance ||
+                           dist_dist.abs() <= self.reject_junction_distance;
         if failed {
             w.ctrs.increment_keyed(super::N_JXNS_BY_REASON, super::JXN_FAIL_SITE_MATCH);
             JxnFailureFlag::SiteMatch

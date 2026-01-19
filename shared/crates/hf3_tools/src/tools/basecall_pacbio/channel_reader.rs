@@ -6,7 +6,7 @@ mod usable;
 // dependencies
 use std::error::Error;
 use std::path::Path;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::str::from_utf8_unchecked;
 use crossbeam::channel::Sender;
 use rust_htslib::{bam::{Read, Reader, Record as BamRecord}};
@@ -20,14 +20,14 @@ use super::{BufferedStrand, StrandPair, MergeResult};
 /// while waiting for their matching strand.
 struct StrandBuffer {
     movies: Vec<String>,
-    pub strand_buffer: HashMap<usize, BufferedStrand>,  
+    pub strand_buffer: FxHashMap<usize, BufferedStrand>,  
 }
 impl StrandBuffer {
     /// Create a new, empty StrandBuffer structure.
     pub fn new() -> Self {
         StrandBuffer {
             movies: Vec::new(),
-            strand_buffer: HashMap::new(),
+            strand_buffer: FxHashMap::default(),
         }
     }
     /// Convert a movie name and ZMW hole number into a unique usize strand buffer key.
@@ -129,7 +129,7 @@ fn parse_record(
     let (this_usable, this_ff, this_ec) = usable::is_usable(this_strand);
 
     // process the second strand of a matching by-strand read pair
-    // remove the cached data from the HashMap for memory management
+    // remove the cached data from the map for memory management
     if let Some(prev_strand) = strand_buffer.remove(&buffer_key){
         let qname = format!("{}/{}/ccs", parts[0], zmw).into_bytes();
         let ff = prev_strand.ff | this_ff; // read reports both strands' fail flags

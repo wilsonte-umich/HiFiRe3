@@ -8,7 +8,7 @@ use genomex::sam::SamRecord;
 use genomex::genome::Chroms;
 use crate::junctions::{JxnFailureFlag};
 use crate::formats::hf3_tags::*;
-use super::site_matching::SiteMatches;
+use crate::sites::SiteMatches;
 
 // constants
 pub_key_constants!{
@@ -38,35 +38,35 @@ const INTERGENOMIC: &str = "inter";
 const CHIMERIC:     &str = "chimeric";
 const NOT_CHIMERIC: &str = "passed";
 const CHIMERIC_DELIMITER: &str = ".";
-
-/// StemLengths structure for holding 5' and 3' stem lengths.
-pub struct StemLengths {
-    pub stem5: isize,
-    pub stem3: isize,
-}
+const SIZE_PLOT_BIN_SIZE_SR: f64 = 10.0;  // short read bin size
+const SIZE_PLOT_BIN_SIZE_LR: f64 = 250.0; // long read bin size
 
 /// InsertSizes object for passing insert size outcomes.
 pub struct InsertSizes {
-    pub insert_size: isize,
-    pub size_bin:    usize,
-    pub use_for_size_dist: bool,
-    pub stem_lengths: Vec<StemLengths>, // one pair of stem lengths per alignment
+    pub insert_size:        i32,
+    pub size_bin:           u32,
+    pub use_for_size_dist:  bool,
+    pub stem_lengths:       Vec<StemLengths>, // one pair of stem lengths per alignment
     pub size_plot_bin_size: f64,
+}
+
+/// StemLengths structure for holding 5' and 3' stem lengths.
+pub struct StemLengths {
+    pub stem5: i32,
+    pub stem3: i32,
 }
 
 /// InsertSizer helps analyze insert size and junction stem length distributions.
 pub struct InsertSizer {
-    pub is_size_selected: bool,
-    // is_matching_sites: bool, // false if not matching sites in ligFree or tagFree, inherited from SiteMatcher
-    // is_composite_genome: bool,
+    pub is_size_selected:        bool,
     expecting_endpoint_re_sites: bool,
-    min_allowed_size: isize, // i.e., 1N
-    max_allowed_size: isize, // i.e., 2N
-    size_plot_bin_size: f64,
-    min_dist_size_bin: usize,
-    max_dist_size_bin: usize,
-    insert_size_counts: Counters,
-    stem_length_counts: Counters,
+    min_allowed_size:            i32, // i.e., 1N
+    max_allowed_size:            i32, // i.e., 2N
+    size_plot_bin_size:          f64,
+    min_dist_size_bin:           u32,
+    max_dist_size_bin:           u32,
+    insert_size_counts:          Counters,
+    stem_length_counts:          Counters,
 }
 impl InsertSizer {
     /* ---------------------------------------------------------------------------
@@ -74,23 +74,36 @@ impl InsertSizer {
     ---------------------------------------------------------------------------- */
     /// Initialize an insert size recorder.
     pub fn new(w: &mut Workflow) -> InsertSizer {
-        w.cfg.set_bool_env(&[EXPECTING_ENDPOINT_RE_SITES]);
+        w.cfg.set_bool_env(  &[EXPECTING_ENDPOINT_RE_SITES]);
         w.cfg.set_string_env(&[READ_LENGTH_TYPE]);
-        w.cfg.set_usize_env(&[MIN_SELECTED_SIZE, MIN_ALLOWED_SIZE, PLATFORM_MAX_INSERT_SIZE, PLATFORM_MIN_INSERT_SIZE]);
-        w.cfg.set_f64_env(&[SELECTED_SIZE_CV]);
-        let min_allowed_size = *w.cfg.get_usize(MIN_ALLOWED_SIZE);
-        let min_selected_size = *w.cfg.get_usize(MIN_SELECTED_SIZE);
-        let selected_size_cv = *w.cfg.get_f64(SELECTED_SIZE_CV);
+        w.cfg.set_u32_env( &[MIN_SELECTED_SIZE, MIN_ALLOWED_SIZE, PLATFORM_MAX_INSERT_SIZE, PLATFORM_MIN_INSERT_SIZE]);
+        w.cfg.set_f64_env(   &[SELECTED_SIZE_CV]);
+
+        let min_allowed_size  = *w.cfg.get_u32(MIN_ALLOWED_SIZE);
+        let min_selected_size = *w.cfg.get_u32(MIN_SELECTED_SIZE);
+        let selected_size_cv  = *w.cfg.get_f64(SELECTED_SIZE_CV);
+
         w.cfg.set_bool(IS_SIZE_SELECTED, min_allowed_size > 0 || min_selected_size > 0);
-        let is_size_selected = *w.cfg.get_bool(IS_SIZE_SELECTED);
+        w.cfg.set_f64(SIZE_PLOT_BIN_SIZE, if w.cfg.equals_string(READ_LENGTH_TYPE, "short") { 
+            SIZE_PLOT_BIN_SIZE_SR 
+        } else { 
+            SIZE_PLOT_BIN_SIZE_LR 
+        });
+        let is_size_selected   = *w.cfg.get_bool(IS_SIZE_SELECTED);
+        let size_plot_bin_size  = *w.cfg.get_f64(SIZE_PLOT_BIN_SIZE);
+
         if min_allowed_size == 0 {
-            w.cfg.set_usize(MIN_ALLOWED_SIZE, (min_selected_size as f64 / (1.0 + selected_size_cv)) as usize);
+            w.cfg.set_u32(MIN_ALLOWED_SIZE, (min_selected_size as f64 / (1.0 + selected_size_cv)) as u32);
         }
-        let min_allowed_size = *w.cfg.get_usize(MIN_ALLOWED_SIZE);
-        w.cfg.set_usize(MAX_ALLOWED_SIZE, min_allowed_size * 2);
-        let max_allowed_size = *w.cfg.get_usize(MAX_ALLOWED_SIZE);
-        w.cfg.set_f64(SIZE_PLOT_BIN_SIZE, if w.cfg.equals_string(READ_LENGTH_TYPE, "short") { 10.0 } else { 250.0 });
-        let size_plot_bin_size = *w.cfg.get_f64(SIZE_PLOT_BIN_SIZE);
+        let min_allowed_size  = *w.cfg.get_u32(MIN_ALLOWED_SIZE);
+        w.cfg.set_u32(MAX_ALLOWED_SIZE, min_allowed_size * 2);
+        let max_allowed_size  = *w.cfg.get_u32(MAX_ALLOWED_SIZE);
+        let platform_max_insert_size = if is_size_selected {
+            max_allowed_size * 4
+        } else {
+            *w.cfg.get_u32(PLATFORM_MAX_INSERT_SIZE)
+        };
+
         let mut insert_size_counts = Counters::new("insert_size_counts", &[]);
         let mut stem_length_counts = Counters::new("stem_length_counts", &[]);
         insert_size_counts.add_indexed_counters(&[
@@ -105,6 +118,7 @@ impl InsertSizer {
             (SV_CHIMERIC,       "", 0, ""),
             (SV_PASSED_FILTERS, "", 0, ""),
         ]);
+
         for translocation_type in [
             format!("{}{}{}", INTRAGENOMIC, CHIMERIC_DELIMITER, CHIMERIC),
             format!("{}{}{}", INTRAGENOMIC, CHIMERIC_DELIMITER, NOT_CHIMERIC),
@@ -114,20 +128,15 @@ impl InsertSizer {
             insert_size_counts.add_indexed_counters(&[(&translocation_type, "", 0, "")]);
             stem_length_counts.add_indexed_counters(&[(&translocation_type, "", 0, "")]);
         }
+
         InsertSizer{
-            is_size_selected:    is_size_selected,
-            // is_matching_sites,
-            // is_composite_genome: *w.cfg.get_bool(IS_COMPOSITE_GENOME),
+            is_size_selected:            is_size_selected,
             expecting_endpoint_re_sites: *w.cfg.get_bool(EXPECTING_ENDPOINT_RE_SITES),
-            min_allowed_size: min_allowed_size as isize,
-            max_allowed_size: max_allowed_size as isize,
-            size_plot_bin_size: size_plot_bin_size,
-            min_dist_size_bin: (*w.cfg.get_usize(PLATFORM_MIN_INSERT_SIZE) as f64 / size_plot_bin_size) as usize,
-            max_dist_size_bin: (if is_size_selected {
-                max_allowed_size * 4
-            } else {
-                *w.cfg.get_usize(PLATFORM_MAX_INSERT_SIZE)
-            } as f64 / size_plot_bin_size) as usize,
+            min_allowed_size:            min_allowed_size as i32,
+            max_allowed_size:            max_allowed_size as i32,
+            size_plot_bin_size:          size_plot_bin_size,
+            min_dist_size_bin:           (*w.cfg.get_u32(PLATFORM_MIN_INSERT_SIZE) as f64 / size_plot_bin_size) as u32,
+            max_dist_size_bin:           (platform_max_insert_size                      as f64 / size_plot_bin_size) as u32,
             insert_size_counts,
             stem_length_counts,
         }
@@ -138,12 +147,12 @@ impl InsertSizer {
     /// Assess and record insert size and junction stem length for a read pair.
     pub fn assess_insert_sizes(
         &mut self,
-        alns: &mut [SamRecord],
-        is_unmerged_pair: bool,
-        paired_outer_node: Option<isize>,
-        trims: &[usize],
+        alns:               &mut [SamRecord],
+        is_unmerged_pair:   bool,
+        paired_outer_node:  Option<isize>,
+        trims:              &[usize],
         is_end_to_end_read: bool,
-        chroms: &Chroms,
+        chroms:             &Chroms,
     ) -> InsertSizes {
         let n_alns = alns.len();
 
@@ -151,20 +160,28 @@ impl InsertSizer {
         let mut insert_size = if is_unmerged_pair {
             // when read carries any type of SV, whether sequenced or not, we cannot infer the true insert size
             if n_alns == 1 { // TODO: also check that other alignment does not have a jxn?
-                let node5 = alns[0].pack_signed_node_aln(5, chroms);
-                let node3 = paired_outer_node.unwrap();
-                if node5.signum() != node3.signum() { // paired outer nodes must have opposite orientations
-                    (-node3 - node5).abs() // passed_1n_2n below demands same chrom as well as size limits
+                let (_chrom_1, chrom_index_1, ref_pos1_1, is_reverse_1) = 
+                    alns[0].get_unpacked_node_aln(5, chroms);
+                let (_chrom_2, chrom_index_2, ref_pos1_2, is_reverse_2) = 
+                    SamRecord::unpack_signed_node(paired_outer_node.unwrap(), chroms);
+                if chrom_index_1 == chrom_index_2 &&
+                   is_reverse_1 != is_reverse_2 { // paired outer nodes must have opposite orientations
+                    let insert_size = (ref_pos1_2 as i32 - ref_pos1_1 as i32).abs();
+                    if insert_size <= self.max_allowed_size * 4 {
+                        insert_size
+                    } else {
+                        self.is_size_selected as i32
+                    }
                 } else {
-                    self.is_size_selected as isize
+                    self.is_size_selected as i32
                 }
             } else {
-                self.is_size_selected as isize
+                self.is_size_selected as i32
             }
         } else if alns[0].seq.len() > 1 {
-            (alns[0].seq.len() - trims[0] - trims[1]) as isize // path taken by SV or other reads with sequence
+            (alns[0].seq.len() - trims[0] - trims[1]) as i32 // path taken by SV or other reads with sequence
         } else {
-            alns[0].get_aligned_size() as isize // path taken by non-SV reads where SEQ is now *
+            alns[0].get_aligned_size() as i32 // path taken by non-SV reads where SEQ is now *
         };
         let passed_1n_2n = !self.is_size_selected || (
             insert_size >= self.min_allowed_size && 
@@ -173,14 +190,14 @@ impl InsertSizer {
         if !passed_1n_2n { insert_size = -insert_size; }
 
         // assess junction stem lengths, alignment-level properties
-        let query_start0 = alns[0].get_query_start0() as isize;
-        let query_end1 = alns[n_alns - 1].get_query_end1() as isize; // may not be the end of the insert
+        let query_start0 = alns[0].get_query_start0() as i32;
+        let query_end1   = alns[n_alns - 1].get_query_end1() as i32; // may not be the end of the insert
         let stem_lengths: Vec<StemLengths> = alns.iter().map(|aln| {
-            let mut stem5 = aln.get_query_end1() as isize - query_start0;
+            let mut stem5 = aln.get_query_end1() as i32 - query_start0;
             let passed_stem5 = !self.is_size_selected || stem5 <= self.min_allowed_size;
             if !passed_stem5 { stem5 = -stem5; }
             let stem3 = if is_end_to_end_read {
-                let mut stem3 = query_end1 - aln.get_query_start0() as isize;
+                let mut stem3 = query_end1 - aln.get_query_start0() as i32;
                 let passed_stem3 = !self.is_size_selected || stem3 <= self.min_allowed_size;
                 if !passed_stem3 { stem3 = -stem3; }
                 stem3
@@ -191,7 +208,7 @@ impl InsertSizer {
         }).collect();
 
         // return results
-        let size_bin = (insert_size.abs() as f64 / self.size_plot_bin_size) as usize;
+        let size_bin = (insert_size.abs() as f64 / self.size_plot_bin_size) as u32;
         let use_for_size_dist = size_bin >= self.min_dist_size_bin && size_bin <= self.max_dist_size_bin;
         InsertSizes { 
             insert_size, 
@@ -209,9 +226,9 @@ impl InsertSizer {
     pub fn check_jxn(
         &self,  
         insert_sizes: &InsertSizes,
-        aln5_i: usize, // the alignment 5' to the junction on the read (its 3' end is the breakpoint)
-        aln3_i: usize,
-        w: &mut Workflow,
+        aln5_i:       usize, // the alignment 5' to the junction on the read (its 3' end is the breakpoint)
+        aln3_i:       usize,
+        w:            &mut Workflow,
     ) -> JxnFailureFlag {
         if !self.is_size_selected { return JxnFailureFlag::None; }
         // either breakpoint node can pass the junction stem length test
@@ -231,10 +248,10 @@ impl InsertSizer {
     pub fn record_non_sv_sizes(
         &mut self, 
         insert_sizes: &InsertSizes,
-        aln_sites: &[SiteMatches],
+        aln_sites:    &[SiteMatches],
     ) {
         if !insert_sizes.use_for_size_dist { return; }
-        self.insert_size_counts.increment_indexed(NON_SV_ACTUAL, insert_sizes.size_bin);
+        self.insert_size_counts.increment_indexed(NON_SV_ACTUAL, insert_sizes.size_bin as usize);
         if !self.expecting_endpoint_re_sites { return; }
         let projected_size = (
             aln_sites[0].proj3.pos1 as isize - 
@@ -247,10 +264,10 @@ impl InsertSizer {
     /// Only on-target reads with exactly two alignments reach this sub.
     pub fn record_sv_sizes(
         &mut self, 
-        insert_sizes: &InsertSizes,
-        alns: &[SamRecord],
+        insert_sizes:     &InsertSizes,
+        alns:             &[SamRecord],
         jxn_failure_flag: u8,
-        chroms: &Chroms,
+        chroms:           &Chroms,
     ) {
 
         // only tally single-junction SV reads
@@ -266,7 +283,7 @@ impl InsertSizer {
         // the junction to either end of the read (when both are known, o/w use stem5)
         let stem_length5 = insert_sizes.stem_lengths[0].stem5;
         let stem_length3 = insert_sizes.stem_lengths[1].stem3;
-        let stem_length3_wrk = if stem_length3.abs() > 1 { stem_length3 } else { -1e9 as isize }; // only consider meaningful 3' stem lengths
+        let stem_length3_wrk = if stem_length3.abs() > 1 { stem_length3 } else { -1e9 as i32 }; // only consider meaningful 3' stem lengths
         let min_stem_length = stem_length5.abs().min(stem_length3_wrk.abs());
         let stem_length_bin = (min_stem_length as f64 / self.size_plot_bin_size) as usize;
 
@@ -274,10 +291,10 @@ impl InsertSizer {
         // non-chimeric here may contain deletion and other true SVs
         let is_chimeric = JxnFailureFlag::is_chimeric_jxn_u8(jxn_failure_flag);
         if is_chimeric {
-            self.insert_size_counts.increment_indexed(SV_CHIMERIC, insert_sizes.size_bin);
+            self.insert_size_counts.increment_indexed(SV_CHIMERIC, insert_sizes.size_bin as usize);
             self.stem_length_counts.increment_indexed(SV_CHIMERIC, stem_length_bin);
         } else {
-            self.insert_size_counts.increment_indexed(SV_PASSED_FILTERS, insert_sizes.size_bin);
+            self.insert_size_counts.increment_indexed(SV_PASSED_FILTERS, insert_sizes.size_bin as usize);
             self.stem_length_counts.increment_indexed(SV_PASSED_FILTERS, stem_length_bin);
         }
 
@@ -300,7 +317,7 @@ impl InsertSizer {
         let chimera_type = format!("{}{}{}", genomicity, CHIMERIC_DELIMITER, chimericity);
 
         // increment size counts for translocation presumptive artifacts
-        self.insert_size_counts.increment_indexed(&chimera_type, insert_sizes.size_bin);
+        self.insert_size_counts.increment_indexed(&chimera_type, insert_sizes.size_bin as usize);
         self.stem_length_counts.increment_indexed(&chimera_type, stem_length_bin);
     }
     /// Print insert size and stem length distributions to files for plotting.

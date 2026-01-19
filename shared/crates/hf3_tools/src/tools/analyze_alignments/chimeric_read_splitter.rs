@@ -29,17 +29,17 @@ pub_key_constants!{
 const PHRED_OFFSET: usize = 33;
 
 pub struct ChimeraSplitter {
-    is_ont: bool,
-    insertion_window_size: isize,
-    min_sum_ins_qual: usize,
-    has_adapters: bool,
-    adapter_core: String,
-    adapter_core_rc: String,
-    min_adapter_length: isize,
-    max_adapter_length: isize,
-    min_adapter_score: i32,
-    max_possible_score: i32,
-    aligner: Aligner,
+    is_ont:                 bool,
+    insertion_window_size:  i16,
+    min_sum_ins_qual:       usize,
+    has_adapters:           bool,
+    adapter_core:           String,
+    adapter_core_rc:        String,
+    min_adapter_length:     i16,
+    max_adapter_length:     i16,
+    min_adapter_score:      i16,
+    max_possible_score:     i32,
+    aligner:                Aligner,
 }
 impl ChimeraSplitter {
     /* ---------------------------------------------------------------------------
@@ -69,21 +69,20 @@ impl ChimeraSplitter {
             ]);
         }
         ChimeraSplitter{
-            is_ont: *w.cfg.get_bool(super::IS_ONT), // must be set upstream
-            insertion_window_size: insertion_window_size as isize,
-            min_sum_ins_qual: (min_insertion_window_qual + PHRED_OFFSET) * insertion_window_size,
+            is_ont:                *w.cfg.get_bool(super::IS_ONT), // must be set upstream
+            insertion_window_size: insertion_window_size as i16,
+            min_sum_ins_qual:      (min_insertion_window_qual + PHRED_OFFSET) * insertion_window_size,
             has_adapters,
-            adapter_core:      adapter_core.to_string(),       // fused to 5' genomic ends; for ONT ligation kit, last T matches the one-base A-tail
-            adapter_core_rc:   rc_acgt_str(&adapter_core), // fused to 3' genomic ends 
-            min_adapter_length: min_adapter_length as isize,
-            max_adapter_length: max_adapter_length as isize,
-            min_adapter_score: *w.cfg.get_usize(MIN_ADAPTER_SCORE) as i32,
-            max_possible_score: adapter_core.len() as i32,
-            aligner: aligner,
+            adapter_core:          adapter_core.to_string(),        // fused to 5' genomic ends; for ligation, last T matches the one-base A-tail
+            adapter_core_rc:       rc_acgt_str(&adapter_core), // fused to 3' genomic ends 
+            min_adapter_length:    min_adapter_length as i16,
+            max_adapter_length:    max_adapter_length as i16,
+            min_adapter_score:     *w.cfg.get_usize(MIN_ADAPTER_SCORE) as i16,
+            max_possible_score:    adapter_core.len() as i32,
+            aligner:               aligner,
         }
     }
-
-    /// check junction quality from pairs of alignments
+    /// Check junction quality from pairs of alignments to return a junction failure flag.
     pub fn get_jxn_failure_flag(
         &mut self, 
         w: &mut Workflow, 
@@ -92,6 +91,8 @@ impl ChimeraSplitter {
         aln3_i: usize,
         jxn: &Junction,
     ) -> JxnFailureFlag {
+
+        // like alignment failure flags, only the first failure is reported
 
         // reject junctions consistent with foldback inversions
         // do not increment chimeric count for foldbacks, they are intra, not inter-molecular
@@ -122,7 +123,7 @@ impl ChimeraSplitter {
     }
 
     // /* ---------------------------------------------------------------------------
-    // chimera filter functions
+    // chimera filter methods
     // ---------------------------------------------------------------------------- */
     /// Check whether a sequence is consistent with an ONT duplex read as a single 
     /// foldback inversion. It is most sensitive and acceptable to reject any 
@@ -184,116 +185,14 @@ impl ChimeraSplitter {
         // next examine the inserted bases for adapters using Smith-Waterman on both strands
         let sw = self.aligner.align(&self.adapter_core, &jxn.jxn_seq, None, true);
         w.ctrs.increment_indexed(ADAPTER_SCORES, sw.score.max(0).min(self.max_possible_score) as usize);
-        if sw.score >= self.min_adapter_score {
+        if sw.score as i16 >= self.min_adapter_score {
             return true;
         }
         let sw = self.aligner.align(&self.adapter_core_rc, &jxn.jxn_seq, None, true);
         w.ctrs.increment_indexed(ADAPTER_SCORES, sw.score.max(0).min(self.max_possible_score) as usize);
-        if sw.score >= self.min_adapter_score {
+        if sw.score as i16 >= self.min_adapter_score {
             return true;
         }
         false
     }
-
-    // /* ---------------------------------------------------------------------------
-    // export likely SV artifact reads for exploring artifact mechanisms
-    // ---------------------------------------------------------------------------- */
-    // /// export likely SV artifact reads to a separate file
-    // /// only on-target reads with exactly two alignments reach this sub
-    // sub recordVariantSizes {
-    //     my ($sizeBin, @alns) = @_;
-
-    //     // do not record foldback inversions as intermolecular chimeras
-    //     $isFoldback and return;
-    //     my $stemLengthBin = int(min(
-    //         $alns[0][STEM5_LENGTH],
-    //         $alns[1][STEM3_LENGTH] ? $alns[1][STEM3_LENGTH] : 1e9
-    //     ) / $sizePlotBinSize) * $sizePlotBinSize;
-
-    //     // record insert sizes for all single-junction SV reads stratified by chimericity
-    //     // non-chimeric here may contain deletion and other true SVs
-    //     if($isChimeric){
-    //         $insertSizeCounts{$READ_LEN_CHIMERIC}{$sizeBin}++;
-    //         $stemLengthCounts{$READ_LEN_CHIMERIC}{$stemLengthBin}++;
-    //     } else {
-    //         $insertSizeCounts{$READ_LEN_NON_CHIMERIC}{$sizeBin}++;
-    //         $stemLengthCounts{$READ_LEN_NON_CHIMERIC}{$stemLengthBin}++;
-    //     }
-
-    //     // only print single-junction interchromosomal chimeras as presumptive artifacts
-    //     // we do not yet know if these are single-molecule or would be confirmed downstream
-    //     // but most interchromosomal, i.e., translocation molecules are likely artifacts
-    //     $alns[0][S_RNAME] eq $alns[1][S_RNAME] and return;
-
-    //     // stratify interchromosomal molecules as inter- or intra-genomic, when applicable
-    //     my $genomicity = $IS_COMPOSITE_GENOME ?
-    //         isInterGenomic($alns[0][S_RNAME], $alns[1][S_RNAME]) :
-    //         INTRAGENOMIC;
-
-    //     // reads were stratified above as chimeric or not
-    //     // "chimeric" means a single junction that failed breakpointMatchesSite, isOntFollowOn, or junctionHasAdapters
-    //     // "not chimeric" means it passed those chimeric tests, but it may still be chimeric by some other mechanism
-    //     my $chimericity = $isChimeric ? CHIMERIC : NOT_CHIMERIC;
-    //     my $type = $genomicity.CHIMERIC_DELIMITER.$chimericity;
-
-    //     // increment size counts for translocation presumptive artifacts
-    //     $insertSizeCounts{$type}{$sizeBin}++;
-    //     $stemLengthCounts{$type}{$stemLengthBin}++;
-    // }
-    // sub isInterGenomic {
-    //     my ($chrom1, $chrom2) = @_;
-    //     my ($genome1) = ($chrom1 =~ m/.+_(.+)/); // e.g., chr1_(hs1)
-    //     my ($genome2) = ($chrom2 =~ m/.+_(.+)/);
-    //     $genome1 eq $genome2 ? INTRAGENOMIC : INTERGENOMIC;
-    // }
-
-    // /// print summary information
-    // sub printChimeraSummary {
-
-    //     // print and save insert size distributions
-    //     open my $sizesH, '>', "$FILTERED_INSERT_SIZES_FILE" or throwError("could not open insert sizes file: $!");
-    //     open my $stemsH, '>', "$FILTERED_STEM_LENGTHS_FILE" or throwError("could not open stem lengths file: $!");
-    //     foreach my $type(
-    //         READ_LEN_PROPER, PROJ_LEN_PROPER, READ_LEN_CHIMERIC, READ_LEN_NON_CHIMERIC, 
-    //         @translocationTypes
-    //     ){
-    //         if($insertSizeCounts{$type}){
-    //             my @insertSizes = sort { $a <=> $b } keys %{$insertSizeCounts{$type}};
-    //             print $sizesH join("\n", map { 
-    //                 join("\t", 
-    //                     $type,
-    //                     $_, 
-    //                     $insertSizeCounts{$type}{$_}
-    //                 )
-    //             } @insertSizes), "\n";
-    //         }
-    //         if($stemLengthCounts{$type}){
-    //             my @stemLengths = sort { $a <=> $b } keys %{$stemLengthCounts{$type}};
-    //             print $stemsH join("\n", map { 
-    //                 join("\t", 
-    //                     $type,
-    //                     $_, 
-    //                     $stemLengthCounts{$type}{$_}
-    //                 )
-    //             } @stemLengths), "\n";
-    //         }
-    //     }
-    //     close $sizesH;
-    //     close $stemsH;
-
-    //     // print site distance distribution to log
-    //     if($REJECTING_JUNCTION_RE_SITES){
-    //         print STDERR "\njunction node-to-site distances\n";
-    //         foreach my $dist(0..MAX_SITE_DISTANCE){
-    //             print STDERR join("\t", $dist, $siteDistances[$dist] || 0), "\n";
-    //         }
-    //     }
-
-    //     // print adapter SW score distribution to log
-    //     print STDERR "\nadapter SW scores\n";
-    //     foreach my $score(0..100){
-    //         print STDERR join("\t", $score, $adapterScores[$score] || 0), "\n";
-    //     }
-    // }
-
 }

@@ -118,6 +118,7 @@ pub_key_constants!(
     JXN_FAIL_STEM_LENGTH
     JXN_FAIL_UPSTREAM
 );
+const SECOND_IN_PAIR_MASK: u16 = flag::IS_PAIRED | flag::SECOND_IN_PAIR;
 
 // tool function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {
@@ -223,16 +224,16 @@ fn parse_paired_end(
     // junctions in anomalous gaps are unverifiable and not considered for rare SV analysis
     let mut n_read1: usize  = 0;
     for aln in alns.iter_mut() {
-        let read_n: usize = if aln.check_flag_all(flag::IS_PAIRED + flag::SECOND_IN_PAIR) { 2 } else { 1 };
+        let read_n: usize = if aln.check_flag_all(SECOND_IN_PAIR_MASK) { 2 } else { 1 };
         if read_n == 1 { n_read1 += 1; }
         aln.qname = format!("{}/{}", aln.qname, read_n);
     }
 
     // sort unmerged paired reads by read number then by query start position
-    alns.sort_by_key(|aln| {(
+    alns.sort_by_key(|aln| (
         if aln.qname.ends_with("/2") { 2 } else { 1 }, 
         aln.get_query_start0()
-    )});
+    ));
     
     // process each read's 5'-3' sorted alignments
     let paired_outer_node = alns[n_read1].pack_signed_node_aln(5, &tool.chroms);
@@ -364,7 +365,7 @@ fn process_read(
                 alns[aln3_i].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
                 JxnFailureFlag::TraversalDelta
             } else {
-                block_n += 1; // increment alignment blockN on every non-failed junction
+                block_n += 1; // increment alignment blockN on every junction that passed traversal delta
                 alns[aln3_i].tags.tags.push(format!("{}{}", BLOCK_N, block_n));
                 if 
                     !tool.chroms.is_canonical(&alns[aln5_i].rname) || 
@@ -386,7 +387,7 @@ fn process_read(
     
         // now that junctions are described, drop SEQ and QUAL on all alignments except the 5' alignment
         for aln3_i in 1..n_alns {
-            alns[aln3_i].set_to_null(&[SEQ, QUAL]);
+            alns[aln3_i].set_to_null(&[SEQ, QUAL]); // but keep the difference string
         }
 
     // to save disk space

@@ -1,21 +1,23 @@
 //! Split an input name-sorted BAM file into temporary per-chromosome BAM 
 //! files based on the chromosome of the first alignment in each read.
 //! 
-//! Output only includes on-target reads, as defined by the absence of the
-//! READ_IS_OFF_TARGET tag.
+//! Output only includes on-target reads, as defined by the absence of 
+//! the UNMAPPED flag bit and the READ_IS_OFF_TARGET tag.
 //! 
 //! Along the way, collect de-duplicated on-target coverage statistics.
 
 // dependencies
 use std::error::Error;
-use std::collections::HashMap;
-use rust_htslib::bam::{Reader, Read, Writer, Record, Header, Format, record::Aux};
+use std::fs::File;
+use std::io::Write;
+use rustc_hash::FxHashMap;
+use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, Header, Format};
 use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
 use genomex::genome::{Chroms, TargetRegions};
 use genomex::sam::SamRecord;
-use genomex::bam::tags;
 use crate::formats::hf3_tags::*;
+use crate::inserts::UniqueInsertSpan;
 
 // constants
 const TOOL: &str = "split_by_chrom";
@@ -39,16 +41,14 @@ pub_key_constants!(
 const OFF_TARGET_FLAG: &[u8] = READ_IS_OFF_TARGET.as_bytes(); 
 
 /// ChannelAlignment holds (re)ordered alignment indices, (re)ordered outer nodes,
-/// and ONT channel information for deduplicated counting.
+/// and ONT channel information for deduplication.
 /// 
 /// Thus, an instance identifies "the nth alignment of a read after (re)ordering into the 
-/// canonical orientation of the outer nodes (for an insert on a specific ONT channel)".
+/// canonical orientation of the two outer nodes (for an insert on a specific ONT channel)".
 #[derive(Hash, Eq, PartialEq)]
 struct ChannelAlignment {
-    alni:    u8, // up to 256 alignments per read
-    node1:   isize,
-    node2:   isize,
-    channel: u32,
+    aln_i: u8, // up to 256 alignments per read
+    unique_insert_span: UniqueInsertSpan,
 }
 /// ChannelAlignmentCounts holds (deduplicated) tallies for a ChannelAlignment. The 
 /// value is a count or sum when DEDUPLICATE_READS is false, otherwise n==1 and 
@@ -92,12 +92,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let on_target_chroms = targets.get_on_target_chroms(&chroms);
 
     // initialize the output BAM writers, one per target chromosome
-    let name_bam_path = w.cfg.get_string(NAME_BAM_FILE);
+    let name_bam_path     = w.cfg.get_string(NAME_BAM_FILE);
     let chrom_file_prefix = w.cfg.get_string(INDEX_FILE_PREFIX_WRK);
     let mut name_bam = Reader::from_path(&name_bam_path)?;
     let header_view = name_bam.header(); // for TID lookups
     let header = Header::from_template(header_view); // shared header for each output BAM writer
-    let mut writers: HashMap<u32, Writer> = HashMap::new(); // keyed by TID, file named by our padded chrom index
+    let mut writers:     FxHashMap<u32, Writer> = FxHashMap::default(); // keyed by TID, file named by our padded chrom index
+    let mut read_counts: FxHashMap<u32, usize>  = FxHashMap::default(); // Track record counts per chromosome
+    let mut chrom_map:   FxHashMap<u32, String> = FxHashMap::default(); // keyed by TID, value is chrom name
     for (chrom, chrom_index) in on_target_chroms {
         let tid = header_view.tid(chrom.as_bytes()).unwrap();
         let chrom_index_padded = format!("{:02}", chrom_index);
@@ -106,26 +108,37 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             &header,
             Format::Bam
         ).expect(&format!("Failed to create BAM writer for chrom {}", chrom)));
+        read_counts.insert(tid, 0); 
+        chrom_map.insert(tid, chrom_index_padded);
     }
 
     // initialize the deduplication counter
     let deduplicating = *w.cfg.get_bool(DEDUPLICATE_READS);
-    let mut insert_counts: HashMap<ChannelAlignment, ChannelAlignmentCounts> = HashMap::new();
+    let mut insert_counts: FxHashMap<ChannelAlignment, ChannelAlignmentCounts> = FxHashMap::default();
 
     // process input BAM records
-    let mut records = name_bam.records();
     w.log.print("streaming BAM records");
-    let mut alns: Vec<Record> = vec![records.next().unwrap()?]; // expect there to always be data, thus alns is never empty for print_alns
+    let mut records = name_bam.records();
+    let mut alns: Vec<BamRecord> = vec![records.next().unwrap()?]; // expect there to always be data, thus alns is never empty
     for result in records {
         let record = result?;
         if record.qname() != alns[0].qname() { 
-            print_alns(&alns, &mut writers, &mut w.ctrs, deduplicating, &mut insert_counts)?;
+            print_alns(&alns, &mut writers, &mut read_counts, &mut w.ctrs, deduplicating, &mut insert_counts)?;
             alns.clear();
         }
         alns.push(record);
     }
-    print_alns(&alns, &mut writers, &mut w.ctrs, deduplicating, &mut insert_counts)?;
+    print_alns(&alns, &mut writers, &mut read_counts, &mut w.ctrs, deduplicating, &mut insert_counts)?;
 
+    // Write chrom read count files
+    w.log.print("writing read count files");
+    for (tid, count) in &read_counts {
+        let chrom_index_padded = chrom_map.get(tid).unwrap();
+        let count_file_path = format!("{}.chr{}.read_count", chrom_file_prefix, chrom_index_padded);
+        let mut count_file = File::create(&count_file_path)?;
+        writeln!(count_file, "{}", count)?;
+    }
+    
     // report counter values
     w.log.print("tallying coverage statistics");
     tally_read_bases(&insert_counts, &chroms, &mut w);
@@ -141,17 +154,18 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
 // print and count on-target alignments
 fn print_alns(
-    alns:          &[Record], 
-    writers:       &mut HashMap<u32, Writer>,
+    alns:          &[BamRecord], 
+    writers:       &mut FxHashMap<u32, Writer>,
+    read_counts:   &mut FxHashMap<u32, usize>,
     ctrs:          &mut Counters,
     deduplicating: bool,
-    insert_counts: &mut HashMap<ChannelAlignment, ChannelAlignmentCounts>
+    insert_counts: &mut FxHashMap<ChannelAlignment, ChannelAlignmentCounts>
 ) -> Result<(), Box<dyn Error>> {
 
     // skip off-target reads
     ctrs.increment(N_READS);
     let tid = alns[0].tid();
-    if tid < 0 ||                                  // skip unmapped reads
+    if tid < 0 ||                                  // skip unmapped reads (synonymous with UNMAPPED flag bit being set)
        alns[0].aux(OFF_TARGET_FLAG).is_ok() { // skip if off-target flag is set
         return Ok(());
     }
@@ -162,20 +176,15 @@ fn print_alns(
     for aln in alns {
         writer.write(aln)?;
     }
+    *read_counts.get_mut(&(tid as u32)).unwrap() += 1; // count reads, not alns
 
-    // collect deduplication statistics
-    let channel = tags::get_tag_u32_default(&alns[0], CHANNEL, 0);
-    let ordered_outer_nodes = SamRecord::sam_tag_to_paired_nodes(
-        &tags::get_tag_str(&alns[0], OUTER_NODES), 
-        true
-    );
+    // collect deduplicated alignment counts
+    let (unique_insert_span, was_reordered) = UniqueInsertSpan::from_bam_record(&alns[0]);
     let n_alns = alns.len();
     for i in 0..n_alns {
         let channel_aln = ChannelAlignment {
-            alni: (if ordered_outer_nodes.was_reordered { n_alns - 1 - i } else { i }) as u8,
-            node1: ordered_outer_nodes.node1, 
-            node2: ordered_outer_nodes.node2, 
-            channel,
+            aln_i: (if was_reordered { n_alns - 1 - i } else { i }) as u8,
+            unique_insert_span: unique_insert_span.clone(),
         };
         let counts = insert_counts.entry(channel_aln)
             .or_insert(ChannelAlignmentCounts {
@@ -195,7 +204,7 @@ fn print_alns(
 
 // calculate on-target read and base counts over a (deduplicated) library
 fn tally_read_bases(
-    insert_counts: &HashMap<ChannelAlignment, ChannelAlignmentCounts>,
+    insert_counts: &FxHashMap<ChannelAlignment, ChannelAlignmentCounts>,
     chroms: &Chroms,
     w: &mut Workflow,
 ){
@@ -203,16 +212,16 @@ fn tally_read_bases(
     for (channel_aln, counts) in insert_counts.iter() {
         w.ctrs.increment(N_UNIQ_ALNS);
         w.ctrs.add_to(N_ALNS, counts.n);
-        w.ctrs.add_to(N_REF_BASES, counts.n_ref_bases);
+        w.ctrs.add_to(N_REF_BASES,  counts.n_ref_bases);
         w.ctrs.add_to(N_READ_BASES, counts.n_read_bases);
 
         // count reads and bases per genome to determine the observed mixing ratio
         if is_composite_genome {
-            let (chrom1, _, _) = SamRecord::unpack_signed_node(channel_aln.node1, &chroms);
-            let (chrom2, _, _) = SamRecord::unpack_signed_node(channel_aln.node2, &chroms);
-            if chrom1 == chrom2 {
+            let ( chrom1, chrom_index1, _, _) = SamRecord::unpack_signed_node(channel_aln.unique_insert_span.node1, &chroms);
+            let (_chrom2, chrom_index2, _, _) = SamRecord::unpack_signed_node(channel_aln.unique_insert_span.node2, &chroms);
+            if chrom_index1 == chrom_index2 {
                 let genome_name = chrom1.split_once('_').unwrap().1; // e.g., chr1_hs1
-                if channel_aln.alni == 0 {
+                if channel_aln.aln_i == 0 {
                     w.ctrs.increment_keyed(N_READS_BY_GENOME, genome_name);
                 }
                 w.ctrs.add_to_keyed(N_REF_BASES_BY_GENOME,  genome_name, counts.n_ref_bases);

@@ -32,16 +32,6 @@ const CHIMERIC_JXN_FLAGS: u8 =
 // methods for matching against JxnFailureFlag values
 impl JxnFailureFlag {
 
-    /// Determine if a junction failure flag indicates a chimeric junction.
-    pub fn is_chimeric_jxn_u8(flag: u8) -> bool {
-        CHIMERIC_JXN_FLAGS & flag != 0
-    }
-
-    // /// Determine if a junction failure flag indicates a chimeric junction.
-    // pub fn is_chimeric_jxn(flag: JxnFailureFlag) -> bool {
-    //     Self::is_chimeric_jxn_u8(flag as u8)
-    // } 
-
     /// Determine if a junction failed traversal or noncanonical filters,
     /// i.e., upstream of RE site matching and insert sizing.
     pub fn is_pre_chimeric_failure_u8(flag: u8) -> bool {
@@ -53,4 +43,14 @@ impl JxnFailureFlag {
     // pub fn is_pre_chimeric_failure(flag: JxnFailureFlag) -> bool {
     //     Self::is_pre_chimeric_failure_u8(flag as u8)
     // }
+
+    /// Determine if a junction failure flag indicates a chimeric junction.
+    pub fn is_chimeric_jxn_u8(flag: u8) -> bool {
+        CHIMERIC_JXN_FLAGS & flag != 0
+    }
+
+    // /// Determine if a junction failure flag indicates a chimeric junction.
+    // pub fn is_chimeric_jxn(flag: JxnFailureFlag) -> bool {
+    //     Self::is_chimeric_jxn_u8(flag as u8)
+    // } 
 }

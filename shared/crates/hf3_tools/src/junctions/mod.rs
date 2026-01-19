@@ -36,20 +36,23 @@ mod flag;
 mod junction;
 mod read_path;
 mod alignment;
+mod grouping;
 
 // re-exports
 pub use flag::*;
 pub use junction::*;
 pub use read_path::*;
 pub use alignment::*;
+pub use grouping::*;
 
 // dependencies
 use crossbeam::channel::Sender;
 use rust_htslib::bam::HeaderView;
 use genomex::genome::Chroms;
 
-/// Tool collects structs and methods for SV read processing.
+/// JunctionTool collects structs and methods for SV analysis.
 pub struct JunctionTool <'a, 'b>{
+
     // global configuration parameters
     pub expecting_endpoint_re_sites: bool,
 
@@ -57,8 +60,8 @@ pub struct JunctionTool <'a, 'b>{
     pub chroms: &'a Chroms, // HiFiRe3 ordered chroms
     pub header: HeaderView, // BAM header contigs
 
-    // structures for aggegregating over all reads
-    pub first_alns:    Vec<AlignmentSegment>,
+    // structures for aggregating over all reads
+    pub first_alns: Vec<AlignmentSegment>,
 
     // result channel senders
     pub tx_jxn:        &'b Sender<(OrderedJunction, JunctionInstance)>,
