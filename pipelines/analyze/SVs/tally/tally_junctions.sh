@@ -10,7 +10,6 @@
 echo "tallying SV junctions"
 
 perl ${ACTION_DIR}/tally/tally_junctions.pl > ${JUNCTION_TALLY_FILE}
-# tee ${JUNCTION_TALLY_FILE}
 checkPipe
 
 echo "done"

@@ -35,7 +35,7 @@ pub const DIFFERENCE_STRING: &str       = "cs:Z:";   // only retained when neede
 
 // AlignmentAnalysis, added by hf3_tools analyze_alignments
 pub const PAIRED_OUTER_NODE: &str       = "po:Z:";   // signed 64-bit encoding of the paired read 5' outer node; only on unmerged read pairs
-pub const TARGET_CLASS: &str            = "tc:i:";   // bit-encoded target region metadata as region_i1 << 3 | target_class; only on targeted libraries
+pub const TARGET_MATCH: &str            = "tm:i:";   // bit-encoded target region metadata as region_i1 << 3 | paired_state; only on targeted libraries
 pub const READ_IS_OFF_TARGET: &str      = "to:A:";   // flag indicating that the read is considered to be off-target; on-target/untargeted if absent
 pub const ALN_FAILURE_FLAG: &str        = "af:i:";   // bit-encoded flag based on MAQ and divergence; zero/passed if absent
 pub const BLOCK_N: &str                 = "bn:i:";   // number/index of the traversal block of this alignment; block 1 if absent
@@ -43,6 +43,7 @@ pub const JUNCTION: &str                = "jx:Z:";   // serialized encoding of j
 pub const JXN_FAILURE_FLAG_INIT: &str   = "ji:i:";   // bit-encoded flag based on all junction filters to this point; zero/passed if absent
 
 // InsertAnalysis, added by hf3_tools analyze_inserts
+pub const READ_FAILURE_FLAG: &str       = "rf:i:";   // bit-encoded flag why a read was rejected (unmapped, off-target, excessive outer clip, no outer site); zero/passed if absent
 pub const JXN_FAILURE_FLAG: &str        = "jf:i:";   // bit-encoded flag based on all junction filters; zero/passed if absent
 pub const IS_END_TO_END: &str           = "ee:i:";   // bit-encoded flag 000000IR whether the parent read (R) and insert (I) is end-to-end; on all on-target reads
 pub const OUTER_NODES: &str             = "on:Z:";   // paired signed 64-bit encoding of 5',3' outer nodes; on all on-target reads
@@ -98,7 +99,7 @@ impl StageTags {
             ],
             Self::AlignmentAnalysis => vec![
                 PAIRED_OUTER_NODE,
-                TARGET_CLASS,
+                TARGET_MATCH,
                 READ_IS_OFF_TARGET,
                 ALN_FAILURE_FLAG,
                 BLOCK_N,
@@ -106,6 +107,7 @@ impl StageTags {
                 JXN_FAILURE_FLAG_INIT,
             ],
             Self::InsertAnalysis => vec![
+                READ_FAILURE_FLAG,
                 JXN_FAILURE_FLAG,
                 IS_END_TO_END,
                 OUTER_NODES,

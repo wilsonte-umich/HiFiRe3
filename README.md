@@ -18,6 +18,7 @@ template switching.
 The steps to using HiFiRe3 are to:
 - install the codebase
 - build the conda enviroment
+- download the `hf3_tools` utility, or compile it using Rust
 - download and digest a reference genome using `prepare genome`
 - if needed, basecall reads using `basecall PacBio` or `basecall ONT`
 - align and analyze basecalled reads using:
@@ -38,7 +39,7 @@ we recommend a single-suite installation (see the
 for multi-suite installation), which is accomplished by:
 - cloning this tool suite repository
 - running _install.sh_ to create a suite-specific MDI installation
-- calling _alias.pl_ to create a `hf3` alias to the suite's command line interface (CLI)
+- optionally running _alias.pl_ to create a `hf3` alias to the suite's command line interface (CLI)
 
 ### Install this tool suite
 
@@ -125,6 +126,35 @@ e.g., 4 CPU with 4G RAM per CPU.
 **PENDING**: once HiFiRe3 stabilizes, we will release Singularity containers
 that can be used instead of building the conda environment yourself.
 
+## Download or compile the required `hf3_tools` utility
+
+Many compute actions in HiFiRe3 pipelines are executed by the `hf3_tools`
+utility, a executable binary compiled from 
+[source Rust code in this repository](https://github.com/wilsontelab/HiFiRe3/tree/main/shared/crates/hf3_tools).
+
+### Download the compiled x86_64 binary
+
+The easiest way to obtain the `hf3_tools` executable is to download it
+from the pre-compiled x86_64 binary **DETAILS PENDING**.
+
+### Compile the `hf3_tools` utility
+
+Alternatively, developers can compile the Rust code using the 
+support features provided by the mdi-pipelines-framework.
+
+```bash
+cd .../HiFiRe3/shared/crates/hf3_tools # must compile from within the crate directory
+hf3 analyze rust --help
+hf3 analyze rust --create  1.92 # create a versioned Rust development environment
+hf3 analyze rust --compile 1.92 # compile hf3_tools using the created environment
+hf3 analyze rust --gcc "module load gcc/15.1.0" --compile 1.92 # if a command is required to make C compilers available 
+```
+
+It is also possible to compile the Rust code from first principles
+if you know how to do it and all prerequisites are met. If you do, the
+compiled executable binary must be copied into file `.../HiFiRe3/mdi/bin/HiFiRe3/hf3_tools`
+(the compile commands above copy the binary there automatically).
+
 ## Execute a pipeline from the command line
 
 ### Job files
@@ -198,7 +228,7 @@ A given library preparation will only use one of these enzymes (or none at all).
 
 ### Optionally create a composite genome for mixed species analysis
 
-Especially during development, quality assessment of SV artifact rates is
+Especially during development, quality assessment of SV artifact rates can be
 enhanced by mixing samples from two species prior to libary preparation and sequencing.
 The `combine genomes` pipeline action will create the required composite reference,
 which should then be provided as option `--genome` in later analysis steps while
@@ -290,12 +320,11 @@ base call and quality score. When heteroduplex DNA is detected, it might result 
 - a base mismatch characterized by two high-quality but non-Watson-Crick paired bases
 - a damaged base on one of the two strands opposite an undamaged base
 
-HiFiRe3 uses base quality and kinetic information to determine which case is more likely.
-For mismatched high-quality bases, an N base and low quality are reported, with the values
-of the mismatched bases reported in the XX tag. 
-For base pairs with one high-quality and one low confidence/kinetically unusual base, 
-the high-quality base is reported at lower confidence than fully validated base pairs
-and information about the low-quality bases is reported in the XX tag.
+HiFiRe3 uses reference alignments to determine which case is more likely. If one
+heteroduplex base matches the reference, that base is reported. If neither base
+matches the reference, an N base and low quality are reported. In either case, 
+the values of the mismatched bases and kinetic information are reported in 
+[SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf_tags.rs).
 
 PacBio reads processed in this way can be used for high-accuracy, error-corrected calling of 
 both SVs and SNVs. Alternatively, larger PacBio reads can be subjected to normal basecalling
@@ -320,21 +349,20 @@ invoke modified basecalling.
 ### HiFiRe3 tags in unaligned bam files
 
 The final output of either HiFiRe3 `basecall` action is one or more unaligned
-BAM files in folder `<--output-dir>/<--data-name>/ubam`. Important custom tags specific to HiFiRe3
-or derived from vendor files are (all propagate into aligned BAM files, below):
-- ch:i: = ONT channel (absent for other platforms)
-- tl:Z: = ONT adapter trim lengths in format `<5' trim>,<3' trim>` (absent for other platforms)
+BAM files in folder `<--output-dir>/<--data-name>/ubam`. Important metatadata specific 
+to HiFiRe3 or derived from vendor files is propagated into output files as
+[SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf_tags.rs).
 
 ## Shared fragment analysis upstream of SV and SNV calling
 
 The `analyze` pipeline aligns and processes reads with the goal of finding
-rare mosaic variants, especially singleton variants, with extremely low baseline artifact rates
-for SVs and, mainly for PacBio, SNVs/indels.
+rare mosaic variants, especially singleton variants, with extremely low baseline 
+artifact rates for SVs and, mainly for PacBio, SNVs/indels.
 
-The `analyze fragments` action filters and indexes reads to prepare for variant analysis.
-Briefly, various quality filters ensure that only high-quality conforming reads and bases are used for
-variant calling downstream. Indexing allows for efficient comparison of individual reads
-to RE fragment locations and read recovery during visualization.
+The `analyze fragments` action filters, aligns and indexes reads to prepare for variant analysis.
+Briefly, various quality filters ensure that only high-quality conforming reads and bases 
+are used for variant calling downstream. Indexing allows for efficient comparison of individual 
+reads to RE fragment locations and read recovery during visualization.
 
 ```sh
 hf3 analyze --help
@@ -342,17 +370,17 @@ hf3 analyze fragments --help
 hf3 analyze fragments ...
 ```
 
+Custom metadata generated by HiFiRe3 fragment analysis is propagated into output BAM files as
+[SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf_tags.rs).
+These tags codify information on RE site matching, size distributions, alignment and junction
+quality filterting, and more.
+
 ### Read alignment using minimap2
 
 The first step in `analyze fragments` aligns properly basecalled reads to the reference genome using 
 [minimap2](https://github.com/lh3/minimap2), 
 for both short and long reads. Use option --`read-file-dir` and `--read-file-prefix` to communicate 
 the path to your input read files if they were not generated with `basecall PacBio` or `basecall ONT`.
-
-The following custom BAM tags are added by HiFiRe3
-alignment, in addition to the basecalling tags added above:
-- fm:Z: = metadata describing merging of paired-end reads as mergeLevel:nRead1:nRead2 (absent for single-read platforms)
-- hv:i: = bit-encoded flag of alignment and read variant status
 
 ### Inferring RE site locations in reduced representation reads
 
@@ -384,10 +412,9 @@ not useful for identifying non-reference RFLPs.
 
 You can also skip RFLP assessment by setting option `--skip-rflp-detection`, in which
 case only reference RE sites will be tracked during SV error correction.
-Alternatively, you can set option `--site-override-dir` to a directory containing
-properly constructed HiFiRe3 RE site index files, which uses that site index instead of 
-performing _de novo_ RE site discovery from the current sample's reads
-(additional methods for constructing site indices are pending).
+Alternatively, you can set option `--site-override-file` to a file containing
+a properly constructed HiFiRe3 RE site list to use instead of 
+performing _de novo_ RE site discovery from the current sample's reads.
 
 ## Mosaic variant calling
 
@@ -429,8 +456,9 @@ calculated from `--min-selected-size` and `--selected-size-cv` can be overridden
 size-based SV error correction.
 
 RE-based and size-based SV error correction methods are substantially redundant but 
-independent, so both can be used to achieve maximal SV error correction. There is little 
-point in running `analyze SVs` pipelines if neither method was used during library preparation. 
+independent, so both can be used to achieve maximal SV error correction. There is not too much 
+point in running HiFiRe3 pipelines if neither method was used during library preparation,
+although the pipelines are highly functional SV callers in any case. 
 
 Importantly, each SV error correction method only allows the pipeline to reliably reject 
 end-to-end chimeras. Many middle-to-middle chimeras arising from DNA fragmentation after 
@@ -438,7 +466,35 @@ size-selection cannot be error corrected, so care must be taken to suppress thei
 by aggressively limiting DNA fragmentation that occurs between size selection and adapter ligation.
 
 The final output of both variant calling actions is a data package suitable for
-loading into the interactive visualization app.
+loading into the interactive visualization app, in additional variant-specific files described next.
+Note that many output files have the `.bgz` extension to indicate that they are bgzipped
+and tabix-indexed for random access data retrieval. The can be decompressed with either
+`bgzip` or `gzip`.
+
+### SV-specific output files
+
+The primary "final junctions" output file of interest from SV variant calling is called 
+`XXXX.analysis.final_junctions_1.txt.bgz`, a tab-delimited custom file. Please see the
+[final_junctions table format](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/junctions/junction.rs).
+for detailed information on the column definitions and data formatting.
+
+Notably, HiFiRe3 SV final junction files retain ALL junctions detected in all (on-target)
+reads that passed read-level quality filtering, including junctions identified as chimeric
+artifacts, single-molecule junctions, etc. This allows one to make detailed comparisons 
+of the properties of real vs. artifact junctions. Filtering the table against the various 
+column values yields lists of SV junctions of greatest interest for different applications,
+e.g., clonal SV analysis, rare/singleton SV analysis, etc.
+
+Addtional SV output files are mainly intended for use in the R Shiny app and 
+include alignment coverage maps and read-level metadata for 
+all SV junction-containing reads, which is used for retrieving SEQ, QUAL, CIGAR 
+and other larger data fields to avoid repeating them in the final junctions file.
+Details on these file formats can be found in the matching `.rs` files in the
+[hf3_tools junction source files](https://github.com/wilsontelab/HiFiRe3/tree/main/shared/crates/hf3_tools/src/junctions).
+
+### SNV-specific output files
+
+PENDING.
 
 ## Comparing variants across samples
 
@@ -456,7 +512,7 @@ are only analyzing one sample.
 
 The process for comparing variants across samples is essentially the same as
 that used to count the number of reads that called a variant in a single
-sample, now tracking sample sources whan applying fuzzy-logic variant comparisons.
+sample, tracking sample sources whan applying fuzzy-logic variant comparisons.
 
 ## Targeted genomic analysis
 

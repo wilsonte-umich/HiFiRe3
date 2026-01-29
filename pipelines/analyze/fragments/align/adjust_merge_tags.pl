@@ -24,7 +24,6 @@ resetCountFile();
 
 # constants
 use constant {
-    EVENT   => 0,
     READ1   => 1,
     READ2   => 2,
     MERGED  => 3,
@@ -34,7 +33,7 @@ use constant {
 my $lineN = 0;
 my ($prevQName, $readN) = ("");
 while(my $line = <STDIN>){
-    if($lineN % 4 == 0){
+    if($lineN % 4 == 0){ # the QNAME line
         $nInputReads++;
         chomp $line;
         my @f = split(" ", $line); 
@@ -46,6 +45,7 @@ while(my $line = <STDIN>){
 
         # a single or unmerged read
         } else {
+            $line .= "\n";
             $nUnmergedReads++;
             $prevQName eq $f[0] or $nUnmergedEvents++;
         }
@@ -53,7 +53,7 @@ while(my $line = <STDIN>){
         $readN = $prevQName eq $f[0] ? READ2 : READ1;
         $readN == READ2 and $nPairedEvents++;
         $prevQName = $f[0];
-    } elsif($lineN % 4 == 1){
+    } elsif($lineN % 4 == 1){ # the sequence line
         $baseCounts[$readN] += length($line) - 1;
     }
     print $line;
@@ -65,18 +65,17 @@ my $nInputEvents    = $nMergedReads + $nUnmergedEvents;
 my $nOrphanedReads  = $nUnmergedReads - 2 * $nPairedEvents;
 my $percentMerged   = $nMergedReads   / $nInputEvents * 100;
 my $percentOrphaned = $nOrphanedReads / $nInputEvents * 100;
-printCount(commify($nInputReads),       'nInputReads',       'input reads');
-printCount(commify($nInputEvents),      'nInputEvents',      'input events');
-printCount(commify($nMergedReads),      'nMergedReads',      'input merged reads == events with merged read pairs');
-printCount(commify($nUnmergedReads),    'nUnmergedReads',    'input unmerged reads (single, paired, or orphaned reads)');
-printCount(commify($nUnmergedEvents),   'nUnmergedEvents',   'input events with unmerged reads (single reads, unmerged read pairs, or orphaned reads)');
-printCount(commify($nPairedEvents),     'nPairedEvents',     'input events with paired reads == read2 count');
-printCount(commify($nOrphanedReads),    'nOrphanedReads',    'input read1 without a read2 partner = events that lost (or never had) a read partner');
-printCount(roundCount2($percentMerged), 'percentMerged',     'percent of reads pairs merged');
-printCount(roundCount2($percentOrphaned),'percentOrphaned',  'percent of reads pairs orphaned');
-printCount(commify($baseCounts[READ1]), 'baseCounts[READ1]', 'read1 bases in input events (single, first paired, merged, or orphaned)');
-printCount(commify($baseCounts[READ2]), 'baseCounts[READ2]', 'read2 bases in input events (second paired)');
-printCount(commify($baseCounts[READ1] + $baseCounts[READ2]), 'baseCounts[EVENT]', 'read1 + read2 bases in input events (nearly all unique)');
+printCount(commify($nInputReads),        'nInputReads',       'input reads');
+printCount(commify($nInputEvents),       'nInputEvents',      'input events');
+printCount(commify($nMergedReads),       'nMergedReads',      'input merged reads == events with merged read pairs');
+printCount(commify($nUnmergedReads),     'nUnmergedReads',    'input unmerged reads (single, paired, or orphaned reads)');
+printCount(commify($nUnmergedEvents),    'nUnmergedEvents',   'input events with unmerged reads (single reads, unmerged read pairs, or orphaned reads)');
+printCount(commify($nPairedEvents),      'nPairedEvents',     'input events with paired reads == read2 count');
+printCount(commify($nOrphanedReads),     'nOrphanedReads',    'input read1 without a read2 partner = events that lost (or never had) a read partner');
+printCount(roundCount2($percentMerged),  'percentMerged',     'percent of reads pairs merged');
+printCount(roundCount2($percentOrphaned),'percentOrphaned',   'percent of reads pairs orphaned');
+printCount(commify($baseCounts[READ1]),  'baseCounts[READ1]', 'read1 bases in input events (single, first paired, merged, or orphaned)');
+printCount(commify($baseCounts[READ2]),  'baseCounts[READ2]', 'read2 bases in input events (second paired)');
 
 
 # from https://github.com/OpenGene/fastp?tab=readme-ov-file#merge-paired-end-reads

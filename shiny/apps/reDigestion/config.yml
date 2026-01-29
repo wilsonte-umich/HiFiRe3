@@ -6,7 +6,7 @@
 # external modules will come from latest suite versions unless listed in suiteVersions
 #----------------------------------------------------------------------
 name: reDigestion
-description: "Visualize blunt RE fragment size distributions for a reference genome"
+description: "Visualize RE fragment size distributions for a reference genome"
 # version: v0.0.0 # OPTIONAL
 # suiteVersions:
 #     suiteName: v0.0.0

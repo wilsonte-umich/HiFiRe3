@@ -32,7 +32,7 @@ build.analyze_SVs_arcsTrack <- function(track, reference, coord, layout){
 
     # get junctions with >=1 node in window
     startSpinner(session, message = "building SVs arcs.")
-    junctions <- af_getFilteredJunctions(sourceId, coord)[isTruthy(chromIndex1_1) & isTruthy(chromIndex1_2)]
+    jxns <- hf3_getFilteredJunctions(sourceId, coord)[isTruthy(chrom_index1_1) & isTruthy(chrom_index1_2)]
     startSpinner(session, message = "building SVs arcs..")
 
     # set plot configuration
@@ -46,9 +46,9 @@ build.analyze_SVs_arcsTrack <- function(track, reference, coord, layout){
         Max_Y_BP,
         window_width = diff(coord$range) * 0.51,
         max_sv_width = {
-            intraChrom <- junctions[jxnType != af_junctions$typeToIndex$translocation]
+            intraChrom <- jxns[jxn_type != hf3_junctions$typeToBits["translocation"]]
             if(nrow(intraChrom) == 0) diff(coord$range) 
-            else intraChrom[, max(abs(refPos1_2 - refPos1_1))]
+            else intraChrom[, max(abs(ref_pos1_2 - ref_pos1_1))]
         } * 0.51,
         fixed = as.integer(track$settings$get("SV_Arcs","Fixed_Y_BP"))
     )
@@ -65,27 +65,28 @@ build.analyze_SVs_arcsTrack <- function(track, reference, coord, layout){
 
         # plot the arcs
         x <- seq(0, pi, length.out = 25)
-        if(nrow(junctions) == 0) trackNoData(coord, ylim, "no matching junctions in window") else {
-            junctions <- junctions[sample.int(.N, replace = FALSE)]
-            junctions[, randomI := 1:.N]
+        if(nrow(jxns) == 0) trackNoData(coord, ylim, "no matching junctions in window") else {
+            jxns <- jxns[sample.int(.N, replace = FALSE)]
+            jxns[, randomI := 1:.N]
             transOffset <- coord$width / 4
-            junctions[, {
-                if(jxnType == af_junctions$typeToIndex$translocation){
-                    if(chromIndex1_1 == af_getChromIndex(sourceId, coord$chromosome)){
-                        pos <- refPos1_1
+            jxns[, color := hf3_junctions$getColorsFromBits(jxn_type, is_intergenomic)]
+            jxns[, {
+                if(jxn_type == hf3_junctions$typeToBits["translocation"]){
+                    if(chrom_index1_1 == hf3_getChromIndex(sourceId, coord$chromosome)){
+                        pos <- ref_pos1_1
                         dir <- 1
                     } else {
-                        pos <- refPos1_2
+                        pos <- ref_pos1_2
                         dir <- -1
                     }
                     lines(
                         x = c(pos, pos + dir * transOffset), 
                         y = ylim,
-                        col = af_junctions$getIndexColor(jxnType),
+                        col = color,
                         lwd = Line_Width
                     )
                 } else {
-                    pos <- range(refPos1_1, refPos1_2)
+                    pos <- range(ref_pos1_1, ref_pos1_2)
                     halfsize <- (pos[2] - pos[1] + 1) / 2
                     center <- pos[1] + halfsize
                     y <- sin(x) * halfsize
@@ -93,7 +94,7 @@ build.analyze_SVs_arcsTrack <- function(track, reference, coord, layout){
                     lines(
                         x = cos(x) * halfsize + center, 
                         y = y,
-                        col = af_junctions$getIndexColor(jxnType),
+                        col = color,
                         lwd = Line_Width
                     )
                 }

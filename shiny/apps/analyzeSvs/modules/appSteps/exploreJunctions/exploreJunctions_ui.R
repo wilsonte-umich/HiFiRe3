@@ -34,6 +34,37 @@ exploreJunctionsUI <- function(id, options) {
             collapsible = TRUE
         ),
         fluidRow(
+            box(
+                title = NULL,
+                width = 12,
+                solidHeader = FALSE,
+                status = "primary",
+                collapsible = FALSE,
+                fluidRow(
+                    column(
+                        style = "text-align: right;",
+                        width = 4,
+                        hf3_flagFilterModeUI(ns("alnFlagFilterMode"), "Aln Flag Mode", "any_pass")
+                    ),
+                    column(
+                        width = 8,
+                        hf3_alnFailureBitsUI(ns("alnFailureBits"))
+                    )
+                ),
+                fluidRow(
+                    column(
+                        style = "text-align: right;",
+                        width = 4,
+                        hf3_flagFilterModeUI(ns("jxnFlagFilterMode"), "Jxn Flag Mode", "any_pass")
+                    ),
+                    column(
+                        width = 8,
+                        hf3_jxnFailureBitsUI(ns("jxnFailureBits"))
+                    )
+                )
+            )
+        ),
+        fluidRow(
             mdiInteractivePlotBoxUI(
                 ns('sizePlot'), 
                 "Junctions By Size",
@@ -64,7 +95,8 @@ exploreJunctionsUI <- function(id, options) {
                     collapsible = TRUE,
                     collapsed = FALSE
                 )
-            )
+            ),
+            NULL
         ),
         fluidRow(
             mdiInteractivePlotBoxUI(
@@ -116,8 +148,9 @@ exploreJunctionsUI <- function(id, options) {
                         ),
                         tags$p(
                             style = "display: inline-block; text-align: center; margin: 5px;",
-                            uiOutput(ns("expandedReadSummary"))
-                        )
+                            uiOutput(ns("expandedReadQname"))
+                        ),
+                        NULL
                     )
                 ),
                 plotOutput(ns("readQualPlot"), height = 96 * 0.75),

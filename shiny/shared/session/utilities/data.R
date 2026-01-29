@@ -2,94 +2,149 @@
 # these functions expect that files utilized chromIndex1, not chrom
 
 # types
-af_strands <- list(
+hf3_strands <- list(
     top    = 0,
     bottom = 1
 )
-af_junctions <- list(
+hf3_strands_signed <- list(
+    top    =  1,
+    bottom = -1
+)
+hf3_junctions <- list(
+    typeToBits = c(
+        proper        = 0L,
+        deletion      = 1L,
+        duplication   = 2L,
+        inversion     = 4L,
+        translocation = 8L
+    ),
+    bitsToIndex = c(
+        1,
+        2,
+        NA,
+        3,
+        NA,
+        NA,
+        NA,
+        4
+    ),
     indexToType = c(
         "deletion",
         "duplication",
         "inversion",
         "translocation",
-        "mixed" # when a floating alignment has two junction types
+        "intergenomic" # translocation + 1
     ),
     indexToTypeLabel = c(
+        "del",
+        "dup",
+        "inv",
+        "trans",
+        "int-gen" # translocation + 1
+    ),
+    bitsToType = c(
+        "deletion",
+        "duplication",
+        NA,
+        "inversion",
+        NA,
+        NA,
+        NA,
+        "translocation"
+    ),
+    bitsToTypeLabel = c(
         "del    ",
         "dup    ",
+        NA,
         "inv    ",
-        "trans  ",
-        "int-gen"
+        NA,
+        NA,
+        NA,
+        "trans  "
     ),
-    typeToIndex = list(
-        proper          = 0L,
-        deletion        = 1L,
-        duplication     = 2L,
-        inversion       = 3L,
-        translocation   = 4L,
-        mixed           = 5L
-    ),
-    indexToRowOffset = c(
+    typeToRowOffset = list(
+        proper          =   NA,
         deletion        = -1/3,
-        duplication     = 0,
-        inversion       = 1/3,
-        translocation   = 0,
-        mixed           = NA
+        duplication     =    0,
+        inversion       =  1/3,
+        translocation   =    0,
+        intergenome     =  1/3,
+        mixed           =   NA
     ),
     typeToColor = list(
-        proper          = CONSTANTS$plotlyColors$black,
-        deletion        = CONSTANTS$plotlyColors$blue,
-        duplication     = CONSTANTS$plotlyColors$green,
-        inversion       = CONSTANTS$plotlyColors$red,
-        translocation   = CONSTANTS$plotlyColors$orange,
-        mixed           = CONSTANTS$plotlyColors$purple
+        proper        = CONSTANTS$plotlyColors$black,
+        deletion      = CONSTANTS$plotlyColors$blue,
+        duplication   = CONSTANTS$plotlyColors$green,
+        inversion     = CONSTANTS$plotlyColors$red,
+        translocation = CONSTANTS$plotlyColors$orange,
+        intergenome   = CONSTANTS$plotlyColors$purple,
+        mixed         = CONSTANTS$plotlyColors$black
     ),
     barColors = function(){
-        af_junctions$typeToColor[1:5 + 1]
+        hf3_junctions$typeToColor[1:5 + 1]
     },
-    getIndexColor = function(indices){
-        sapply(indices, function(i){
-            if(i == 0) CONSTANTS$plotlyColors$black
-            else af_junctions$typeToColor[[af_junctions$indexToType[i]]]
+    getTypeFromBits = function(bits, is_intergenomic){
+        x <- hf3_junctions$bitsToType[bits]
+        if(length(x) == 0 || is.na(x)) return("mixed")
+        if(x == "translocation" && is_intergenomic == 1) return("intergenome")
+        x
+    },
+    getTypeLabelFromBits = function(bits, is_intergenomic){
+        x <- hf3_junctions$bitsToTypeLabel[bits]
+        if(length(x) == 0 || is.na(x)) return(NA)
+        if(x == "trans  " && is_intergenomic == 1) return("int-gen")
+        x
+    },
+    getColorsFromBits = function(jxn_types, is_intergenomics){
+        sapply(seq_along(jxn_types), function(i){
+            type <- hf3_junctions$getTypeFromBits(jxn_types[i], is_intergenomics[i])
+            hf3_junctions$typeToColor[[type]]
         })
     },
-    getJxnTypeIndices = function(jxnTypes){
-        sapply(jxnTypes, function(jxnType){
-            af_junctions$typeToIndex[[jxnType]]
+    getColorsFromBits_no_intergenomic = function(jxn_types){
+        sapply(seq_along(jxn_types), function(i){
+            type <- hf3_junctions$getTypeFromBits(jxn_types[i], 0)
+            hf3_junctions$typeToColor[[type]]
         })
     },
-    getJxnTypeNames = function(jxnIndices){
-        sapply(jxnIndices, function(jxnIndex){
-            af_junctions$indexToType[jxnIndex]
+    getOffsetsFromBits = function(jxn_types, is_intergenomics){
+        sapply(seq_along(jxn_types), function(i){
+            type <- hf3_junctions$getTypeFromBits(jxn_types[i], is_intergenomics[i])
+            hf3_junctions$typeToRowOffset[[type]]
         })
     },
-    getJxnTypeLabels = function(jxnIndices){
-        sapply(jxnIndices, function(jxnIndex){
-            af_junctions$indexToTypeLabel[jxnIndex]
+    getBitsFromTypes = function(jxnTypes){
+        hf3_junctions$typeToBits[jxnType]
+    },
+    getTypesFromBits = function(jxn_types, is_intergenomics){
+        sapply(seq_along(jxn_types), function(i){
+            hf3_junctions$getTypeFromBits(jxn_types[i], is_intergenomics[i])
+        })
+    },
+    getTypeLabelsFromBits = function(jxn_types, is_intergenomics){
+        sapply(seq_along(jxn_types), function(i){
+            hf3_junctions$getTypeLabelFromBits(jxn_types[i], is_intergenomics[i])
         })
     }
 )
-af_junctionClasses <- list(
+hf3_junctionClasses <- list(
     indexToClass = c(
         "intergenome",
         "artifact",
         "validated",
-        "expected",
         "unexpected2",
         "unexpected1"
     ),
     indexToClassLabel = c(
         "intergenome, all n",
-        "artifact, n=1",
-        "validated, n>=3",
-        "expected, n<3",
+        "artifact,   n=1",
+        "validated,  n>=3",
         "unexpected, n=2",
         "unexpected, n=1"
     ),
     sizedLabels = c(
-        "artifact, n=1",
-        "validated, n>=3",
-        "expected, n<3",
+        "artifact,   n=1",
+        "validated,  n>=3",
         "unexpected, n=2",
         "unexpected, n=1"
     ),
@@ -97,364 +152,325 @@ af_junctionClasses <- list(
         intergenome = 1L,
         artifact    = 2L,
         validated   = 3L,
-        expected    = 4L,
-        unexpected2 = 5L,
-        unexpected1 = 6L
+        unexpected2 = 4L,
+        unexpected1 = 5L
     ),
     classToColor = list(
         intergenome = CONSTANTS$plotlyColors$purple,
         artifact    = CONSTANTS$plotlyColors$orange,
         validated   = CONSTANTS$plotlyColors$green,
-        expected    = CONSTANTS$plotlyColors$blue,
         unexpected2 = CONSTANTS$plotlyColors$red,
         unexpected1 = CONSTANTS$plotlyColors$red
     ),
     getClassColor = function(indices){
         sapply(indices, function(i){
             if(i == 0) CONSTANTS$plotlyColors$black
-            else af_junctionClasses$classToColor[[af_junctionClasses$indexToType[i]]]
+            else hf3_junctionClasses$classToColor[[hf3_junctionClasses$indexToClass[i]]]
         })
     },
     getJxnClassLabels = function(is){
         sapply(is, function(i){
-            af_junctionClasses$indexToClassLabel[i]
+            hf3_junctionClasses$indexToClassLabel[i]
         })
     }
 )
-af_junctionStrata <- list(
+hf3_junctionStrata <- list(
     indexToStratum = c(
         "unexpected1",
         "unexpected2",
-        "expected",
         "validated"
     ),
     indexToStratumLabel = c(
         "unexpected, n=1",
         "unexpected, n=2",
-        "expected, n<3",
-        "validated, n>=3"
+        "validated,  n>=3"
     ),
     stratumToIndex = list(
         unexpected1 = 1L,
         unexpected2 = 2L,
-        expected    = 3L,
-        validated   = 4L
+        validated   = 3L
     ),
     getJxnStratumLabels = function(is){
         sapply(is, function(i){
-            af_junctionStrata$indexToStratumLabel[i]
+            hf3_junctionStrata$indexToStratumLabel[i]
         })
     }
 )
-af_alignments <- list(
+hf3_alignments <- list(
     typeToColor = list(
-        alignment       = CONSTANTS$plotlyColors$black,
-        projection      = CONSTANTS$plotlyColors$grey
+        alignment  = CONSTANTS$plotlyColors$black,
+        projection = CONSTANTS$plotlyColors$grey
     ) 
-)
-af_haplotypes <- list(
-    haplotypesToColor = c(
-        CONSTANTS$plotlyColors$black,   # 1 = reference only
-        CONSTANTS$plotlyColors$blue,    # 2 = haplotype 1
-        CONSTANTS$plotlyColors$blue,    # 3
-        CONSTANTS$plotlyColors$red,     # 4 = haplotype 2
-        CONSTANTS$plotlyColors$red,     # 5
-        CONSTANTS$plotlyColors$purple,  # 6 = haplotype 1+2 
-        CONSTANTS$plotlyColors$purple   # 7
-    ),
-    getHaplotypeColor = function(haplotypes){
-        af_haplotypes$haplotypesToColor[max(haplotypes, 1L)]
-    }
 )
 
 # column definitions
-af_bgzColumns <- list(
+hf3_bgzColumns <- list(
     filteringSitesBgz = c(
-        chromIndex1     = "integer",
-        sitePos1        = "integer",
-        inSilico        = "integer",
-        nObserved       = "integer"
+        chrom     = "character",
+        sitePos1  = "integer",
+        inSilico  = "integer",
+        nObserved = "integer"
     ),
     svAlignmentsBgz = c(
-        chromIndex1     = "integer",
-        refPos1_5       = "integer",
-        refPos1_2       = "integer",
-        refPos1_3       = "integer",
-        strandIndex0_5  = "integer",
-        jxnType         = "character", # middle floating alignments have two comma-delimited types
-        pathN           = "integer",
-        nJunctions      = "integer",
-        alnN            = "integer",
-        nObserved       = "integer"
+        chrom_index1   = "integer",
+        ref_pos5       = "integer",
+        ref_pos3       = "integer",
+        ref_proj3      = "integer",
+        strand_index0  = "integer",
+        jxn_types      = "integer", # middle floating alignments have two bit-encoded types
+        n_jxns         = "integer",
+        aln_i          = "integer",
+        n_observed     = "integer"
     ),
     svJunctions1Bgz = c(
-        chromIndex1_1   = "integer",
-        refPos1_1       = "integer",
-        strandIndex0_1  = "integer",
-        chromIndex1_2   = "integer",
-        refPos1_2       = "integer",
-        strandIndex0_2  = "integer",
-        jxnType         = "integer",
-        nObserved       = "integer",
-        alnOffset       = "character", # not integer since may be * (missing) when SEQ was dropped for known SVs
-        jxnBases        = "character",
-        paths           = "character",
-        nPathJxns       = "integer",
-        mapQ            = "integer",
-        deTag           = "double",
-        siteDist        = "integer",
-        alnFailFlag     = "character",
-        jxnFailFlag     = "character",
-        qNames          = "character", # comma-delimited lists, one per observed read
-        insertSizes     = "character", 
-        isAllowedSizes  = "character", 
-        stemLengths     = "character",
-        passedStems     = "character",
-        seqs            = "character",
-        quals           = "character",
-        cigars          = "character", # one per flanking alignment as CIGAR_1::CIGAR_2
-        orientations    = "character",
-        isExpected      = "integer",
-        hasAltAlignment = "integer",
-        svSize          = "integer",
-        isIntergenome   = "integer",
-        target1         = "character",
-        targetDist1     = "integer",
-        target2         = "character",
-        targetDist2     = "integer",
-        genes1          = "character",
-        geneDist1       = "character", # comma-delimited list of distances
-        genes2          = "character",
-        geneDist2       = "character",
-        isExcluded_1    = "integer",
-        isExcluded_2    = "integer",
-        bkptCoverage_1  = "integer",
-        bkptCoverage_2  = "integer",
-        nSamples        = "integer",
-        samples         = "character"  # ,sample1,sample2,...
+        chrom_index1_1   = "integer",
+        ref_pos1_1       = "integer",
+        strand_index0_1  = "integer",
+        chrom_index1_2   = "integer",
+        ref_pos1_2       = "integer",
+        strand_index0_2  = "integer",
+        offset           = "integer", 
+        jxn_seq          = "character",
+        # ------------------------------
+        jxn_type         = "integer",
+        strands          = "integer",
+        sv_size          = "integer",
+        # ------------------------------
+        q_names          = "character",
+        insert_sizes     = "character",
+        outer_node1s     = "character",
+        outer_node2s     = "character",
+        channels         = "character",
+        n_jxns           = "character",
+        is_duplicates    = "character",
+        # ------------------------------
+        aln5_is          = "character",
+        qry_pos1_aln5_end3s = "character",
+        # ------------------------------
+        jxn_orientations = "character",
+        jxn_failure_flags= "character",
+        aln_failure_flags= "character",
+        # ------------------------------
+        min_stem_lengths = "character",
+        min_mapqs        = "character",
+        max_divergences  = "character",
+        # ------------------------------
+        n_instances      = "integer",
+        n_reads          = "integer",
+        n_instances_dedup= "integer",
+        n_reads_dedup    = "integer",
+        # ------------------------------
+        has_multi_jxn_read = "integer",
+        has_multi_instance_read = "integer",
+        is_bidirectional = "integer",
+        jxn_failure_flag = "integer",
+        aln_failure_flag = "integer",
+        any_was_chimeric = "integer",
+        any_was_not_chimeric = "integer",
+        min_stem_length  = "integer",
+        max_min_mapq     = "integer",
+        min_max_divergence = "double",
+        # ------------------------------
+        is_intergenomic  = "integer",
+        target_1         = "character",
+        target_dist_1    = "integer",
+        target_2         = "character",
+        target_dist_2    = "integer",
+        genes_1          = "character",
+        gene_dists_1     = "character",
+        genes_2          = "character",
+        gene_dists_2     = "character",
+        is_excluded_1    = "integer",
+        is_excluded_2    = "integer",
+        # ------------------------------
+        n_samples       = "integer",
+        sample_names    = "character",
+        # ------------------------------
+        bkpt_coverage_1 = "integer",
+        bkpt_coverage_2 = "integer"
     ),
     svReadPaths = c(
-        qName       = "character",
-        qLen        = "integer",
-        channel     = "integer",
-        readHasJxn  = "integer",
-        chroms      = "character",
-        pos1s       = "character",
-        strand0s    = "character",
-        mapqs       = "character",
-        deTags      = "character",
-        blockNs     = "character",
-        nRefBases   = "character",
-        alnFailFlags= "character",
-        jxnFailFlags= "character",
-        qryStart0s  = "character",
-        qryEnd1s    = "character",
-        cigars      = "character",
-        seq         = "character",
-        qual        = "character",
-        pseudoRef   = "character"
+        qname             = "character",
+        read_len          = "integer",
+        insert_size       = "integer",
+        has_passed_jxn    = "integer",
+        # ------------------------------
+        chroms            = "character",
+        pos1s             = "character",
+        strand0s          = "character",
+        n_ref_bases       = "character",
+        qry_start0s       = "character",
+        qry_end1s         = "character",
+        block_ns          = "character",
+        mapqs             = "character",
+        divergences       = "character",
+        aln_failure_flags = "character",
+        jxn_failure_flags = "character",
+        cigars            = "character",
+        # ------------------------------
+        seq_strand0        = "integer",
+        seq               = "character",
+        qual              = "character"
     )
 )
-af_bgzColumns$svJunctions2Bgz <- af_bgzColumns$svJunctions1Bgz
-af_bgzColumns$svJunctions2Bgz_multi <- c(af_bgzColumns$svJunctions1Bgz, sample  = "integer")
-af_bgzColumns$svJunctions2Bgz_multi <- af_bgzColumns$svJunctions1Bgz_multi # for multiple-sample rbind
+hf3_bgzColumns$svJunctions2Bgz       <-   hf3_bgzColumns$svJunctions1Bgz
+
+# # header flags
+# hf3_hasHeader <- list(
+#     filteringSitesBgz = TRUE,
+# )
 
 # column display definitions
-af_bgzColumns_display <- list(
+hf3_bgzColumns_display <- list(
     svJunctions1Bgz = c(
-        sample          = "sample",
-        chromIndex1_1   = "chrom1",
-        refPos1_1       = "bkptPos1",
-        strandIndex0_1  = "strand1",
-        chromIndex1_2   = "chrom2",
-        refPos1_2       = "bkptPos2",
-        strandIndex0_2  = "strand2",
-        svSize          = "svSize",
-        jxnType         = "jxnType",
-        isIntergenome   = "interGen",
-        nObserved       = "nObs",
-        isExpected      = "expected",
-        mapQ            = "mapQ",
-        deTag           = "deTag",
-        siteDist        = "siteDist",
-        alnOffset       = "alnOffset", # not integer since may be * (missing)
-        # jxnBases        = "character",
-        target1         = "target1",
-        # targetDist1     = "integer",
-        target2         = "target2",
-        # isExcluded_1    = "excl1",
-        # isExcluded_2    = "excl2",
-        # hasAltAlignment = "hasAlt",
-        # targetDist2     = "integer",
-        # genes1          = "character",
-        # geneDist1       = "character", # comma-delimited list of distances
-        # genes2          = "character",
-        # geneDist2       = "character",
-        bkptCoverage_1  = "bkptCov1",
-        bkptCoverage_2  = "bkptCov2",
-        # orientations    = "character",
-        insertSizes     = "insSizes", 
-        stemLengths     = "stemLens",
+        sample_names    = "sample",
+        chrom_index1_1  = "chrom1",
+        ref_pos1_1      = "bkptPos1",
+        strand_index0_1 = "strand1",
+        chrom_index1_2  = "chrom2",
+        ref_pos1_2      = "bkptPos2",
+        strand_index0_2 = "strand2",
+        sv_size         = "svSize",
+        jxn_type        = "jxnType",
+        is_intergenomic = "interGen",
+        n_instances_dedup  = "nObs",
+        # is_expected     = "expected",
+        max_min_mapq       = "mapQ",
+        min_max_divergence = "deTag",
+        # site_dist       = "siteDist",
+        offset          = "alnOffset",
+        target_1        = "target1",
+        target_2        = "target2",
+        bkpt_coverage_1 = "bkptCov1",
+        bkpt_coverage_2 = "bkptCov2",
+        # insert_sizes    = "insSizes", 
+        # stem_lengths    = "stemLens",
         NULL
-        # paths           = "character",
-        # nPathJxns       = "integer",
-        # qNames          = "character",
-        # seqs            = "character",
-        # quals           = "character",
-        # cigars          = "character"
     )
 )
 
 # chrom to chromIndex conversion for bgz queries
 # simple cache, sessionCache not used
-af_chromIndex <- list()  
-af_getChromIndex <- function(sourceId, chrom){
-    if(is.null(af_chromIndex[[sourceId]])) {
-        af_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
+hf3_chromIndex <- list()  
+hf3_getChromNames <- Vectorize(function(sourceId, chromIndex1_){
+    if(is.null(hf3_chromIndex[[sourceId]])) {
+        hf3_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
     }
-    ci <- af_chromIndex[[sourceId]]
-    ci[ci[[1]] == chrom | startsWith(ci[[1]], paste0(chrom, "_"))][[2]]
-}
-af_getChromNames <- Vectorize(function(sourceId, chromIndex){
-    if(is.null(af_chromIndex[[sourceId]])) {
-        af_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
-    }
-    af_chromIndex[[sourceId]][af_chromIndex[[sourceId]][[2]] == chromIndex][[1]]
+    hf3_chromIndex[[sourceId]][chrom_index1 == chromIndex1_, chrom]
 })
-af_getChromSize <- function(sourceId, chromIndex){
-    if(is.null(af_chromIndex[[sourceId]])) {
-        af_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
+hf3_getChromIndex <- function(sourceId, chrom_){
+    if(is.null(hf3_chromIndex[[sourceId]])) {
+        hf3_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
     }
-    af_chromIndex[[sourceId]][af_chromIndex[[sourceId]][[2]] == chromIndex][[3]]
+    hf3_chromIndex[[sourceId]][chrom == chrom_, chrom_index1]
+}
+hf3_getChromSize <- function(sourceId, chromIndex1_){
+    if(is.null(hf3_chromIndex[[sourceId]])) {
+        hf3_chromIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "chromsFile"))
+    }
+    hf3_chromIndex[[sourceId]][chrom_index1 == chromIndex1_, chrom_size]
 }
 
 # genome excluded regions
-af_excludedRegions <- list()
-af_getExcludedRegions <- function(sourceId){
-    if(is.null(af_excludedRegions[[sourceId]])) {
-        af_excludedRegions[[sourceId]] <<- fread(getSourceFilePath(sourceId, "exclusionsBed"), fill = TRUE)[, 1:3]
-        setnames(af_excludedRegions[[sourceId]], c("chrom", "start0", "end1"))
+hf3_excludedRegions <- list()
+hf3_getExcludedRegions <- function(sourceId){
+    if(is.null(hf3_excludedRegions[[sourceId]])) {
+        hf3_excludedRegions[[sourceId]] <<- fread(getSourceFilePath(sourceId, "exclusionsBed"), fill = TRUE)[, 1:3]
+        setnames(hf3_excludedRegions[[sourceId]], c("chrom", "start0", "end1"))
     }
-    af_excludedRegions[[sourceId]]
+    hf3_excludedRegions[[sourceId]]
 }
 
 # general track data retrieval, uses tabix random access not sessionCache
-af_getTrackData_bgz <- function(sourceId, fileType, coord){
-    coord$chromosome <- af_getChromIndex(sourceId, coord$chromosome)
+hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE){
+    if(!use_chrom) coord$chromosome <- hf3_getChromIndex(sourceId, coord$chromosome)
     bgzFile <- getSourceFilePath(sourceId, fileType)
     if(!isTruthy(bgzFile) || !file.exists(bgzFile)) return(data.table()) # no data of this type
-    getCachedTabix(bgzFile) %>% # create = TRUE, force = TRUE
+    getCachedTabix(bgzFile) %>% # , create = TRUE, force = TRUE
     getTabixRangeData(
         coord, 
-        col.names  =  names(af_bgzColumns[[fileType]]), 
-        colClasses = unname(af_bgzColumns[[fileType]]), 
+        col.names  =  names(hf3_bgzColumns[[fileType]]), 
+        colClasses = unname(hf3_bgzColumns[[fileType]]), 
         skipChromCheck = TRUE
-    ) 
-    # coord$chromosome <- af_getChromIndex(sourceId, coord$chromosome)
-    # getSourceFilePath(sourceId, fileType) %>%
-    # getCachedTabix() %>%
-    # getTabixRangeData(
-    #     coord, 
-    #     col.names  =  names(af_bgzColumns[[fileType]]), 
-    #     colClasses = unname(af_bgzColumns[[fileType]]), 
-    #     skipChromCheck = TRUE
-    # )
+    )
 }
 # get and parse RE site, with padding for plotting
-af_getSites_padded <- function(sourceId, coord){
+hf3_getSites_padded <- function(sourceId, coord){
     coord$start <- coord$start - coord$width
     coord$end   <- coord$end   + coord$width
     if(coord$start < 1) coord$start <- 1L
-    af_getTrackData_bgz(sourceId, "filteringSitesBgz", coord)
+    hf3_getTrackData_bgz(sourceId, "filteringSitesBgz", coord, use_chrom = TRUE)
 }
 # get and parse read alignments
-af_getAlignments <- function(sourceId, coord){
-    x <- af_getTrackData_bgz(sourceId, "svAlignmentsBgz", coord)
-    if(nrow(x) == 0) return(x)
-    x[
-        refPos1_5 > 1 & 
-        refPos1_2 > 0
-    ]
-    x[, jxnType := ifelse(
-        grepl(",", jxnType),
-        af_junctions$typeToIndex$mixed,
-        as.integer(jxnType)
-    )]
-    x
+hf3_getAlignments <- function(sourceId, coord){
+    hf3_getTrackData_bgz(sourceId, "svAlignmentsBgz", coord)
 }
 # get and parse unique junction nodes in region ...
-af_getJunctions <- function(sourceId, coord){
+hf3_getJunctions <- function(sourceId, coord){
     # svJunctions1Bgz and svJunctions2Bgz are the same row data, just sorted differently
     # having both files allows for recover of all unique SVs with either junction within coord
     # importantly, svJunctions1Bgz and svJunctions2Bgz do NOT! have reversed nodes!
     # svJunctions1Bgz node1 == svJunctions2Bgz node1 NOT(svJunctions2Bgz node2)
     rbind(
-        af_getTrackData_bgz(sourceId, "svJunctions1Bgz", coord),
-        af_getTrackData_bgz(sourceId, "svJunctions2Bgz", coord) # same file as svJunctions1Bgz, just sorted differently
+        hf3_getTrackData_bgz(sourceId, "svJunctions1Bgz", coord),
+        hf3_getTrackData_bgz(sourceId, "svJunctions2Bgz", coord)
     ) %>% unique()
 }
 # ... additionally filtered the same way as is active the in exploreJunctions step
-af_getFilteredJunctions <- function(sourceId, coord){
-    af_applyJunctionFilters(
-        af_getJunctions(sourceId, coord), 
-        app$exploreJunctions$settingsObject
+hf3_getFilteredJunctions <- function(sourceId, coord){
+    hf3_applyJunctionFilters(
+        hf3_getJunctions(sourceId, coord), 
+        app$exploreJunctions$settingsObject, 
+        app$exploreJunctions$input
     )
 }
 
 # loading entire junction and tally tables, cached in sessionCache
-af_jxnClassNames <- c("all_jxns", "validated", "expected", "artifact", "intergenome", "candidate")
-af_jxnClasses <- 1:length(af_jxnClassNames)
-names(af_jxnClasses) <- af_jxnClassNames
-af_jxnCreate <- "asNeeded"
-af_getJunctions_all_source <- function(sourceId){
+hf3_jxnClassNames <- c("all_jxns", "validated", "artifact", "intergenome", "candidate")
+hf3_jxnClasses <- 1:length(hf3_jxnClassNames)
+names(hf3_jxnClasses) <- hf3_jxnClassNames
+hf3_jxnCreate <- "asNeeded"
+hf3_jxnForce  <- FALSE
+hf3_getJunctions_all_source <- function(sourceId){
     fileType <- "svJunctions1Bgz"
     filePath <- loadPersistentFile(
         sourceId = sourceId, # ... or source
         contentFileType = fileType,
-        header = FALSE,
-        force = FALSE,
-        colClasses = unname(af_bgzColumns[[fileType]]), 
-        col.names = names(af_bgzColumns[[fileType]]), # additional argument passed to fread
+        force = hf3_jxnForce,
+        header = TRUE,
+        colClasses = unname(hf3_bgzColumns[[fileType]]), 
+        col.names = names(hf3_bgzColumns[[fileType]]), # additional argument passed to fread
         quote = "", # additional argument passed to fread
         postProcess = function(jxns){
             startSpinner(session, message = "post-process junctions")
             jxns[, ":="(
                 jxnI = 1:.N,
                 sourceId = sourceId,
-                alnOffset = sapply(alnOffset, function(x) if(x == "*") NA_integer_ else as.integer(x)),
-                sample = sub(".analyze.SVs", "", getSourceFilePackageName(sourceId)),
-                isValidated = nObserved >= 3,
-                isExpected  = isExpected == 1
+                is_validated = n_instances_dedup >= 3
             )][, ":="(
-                isArtifact = nObserved == 1 & !isExpected & (
-                    jxnType == af_junctions$typeToIndex$translocation |
-                    svSize > 1e6
+                is_artifact = n_instances_dedup == 1 & (
+                    jxn_type == hf3_junctions$typeToBits["translocation"] |
+                    sv_size > 1e6
                 )
             )][, ":="(
                 jxnClass = ifelse(
-                    isIntergenome, af_junctionClasses$classToIndex$intergenome,
+                    is_intergenomic, hf3_junctionClasses$classToIndex$intergenome,
                     ifelse(
-                        isArtifact, af_junctionClasses$classToIndex$artifact,
+                        is_artifact, hf3_junctionClasses$classToIndex$artifact,
                         ifelse(
-                            isValidated, af_junctionClasses$classToIndex$validated,
+                            is_validated, hf3_junctionClasses$classToIndex$validated,
                             ifelse(
-                                isExpected, af_junctionClasses$classToIndex$expected,
-                                ifelse(
-                                    nObserved == 2, af_junctionClasses$classToIndex$unexpected2,
-                                    af_junctionClasses$classToIndex$unexpected1
-                                )
+                                n_instances_dedup == 2, hf3_junctionClasses$classToIndex$unexpected2,
+                                hf3_junctionClasses$classToIndex$unexpected1
                             )
                         )
                     )
                 ),
                 jxnStratum = ifelse(
-                    isValidated, af_junctionStrata$stratumToIndex$validated,
+                    is_validated, hf3_junctionStrata$stratumToIndex$validated,
                     ifelse(
-                        isExpected, af_junctionStrata$stratumToIndex$expected,
-                        ifelse(
-                            nObserved == 2, af_junctionStrata$stratumToIndex$unexpected2,
-                            af_junctionStrata$stratumToIndex$unexpected1
-                        )
+                        n_instances_dedup == 2, hf3_junctionStrata$stratumToIndex$unexpected2,
+                        hf3_junctionStrata$stratumToIndex$unexpected1
                     )
                 )
             )]
@@ -463,68 +479,26 @@ af_getJunctions_all_source <- function(sourceId){
     )
     persistentCache[[filePath]]$data
 }
-af_getJunctions_all_sources <- function(sourceIds){
+hf3_getJunctions_all_sources <- function(sourceIds){
     if(length(sourceIds) == 1){
-        af_getJunctions_all_source(sourceIds)
+        hf3_getJunctions_all_source(sourceIds)
     } else {
         fileType <- "svJunctions1Bgz"
         sessionCache$get(
             fileType, 
-            keyObject = list(sourceIds, "af_getJunctions_all_sources"), 
+            keyObject = list(sourceIds, "hf3_getJunctions_all_sources"), 
             permanent = TRUE,
             from = "ram",
-            create = af_jxnCreate,
+            create = hf3_jxnCreate,
             createFn = function(...) {
                 startSpinner(session, message = "parsing junctions")
-                x <- do.call(rbind, lapply(sourceIds, af_getJunctions_all_source))
+                x <- do.call(rbind, lapply(sourceIds, hf3_getJunctions_all_source))
                 x[, jxnI := 1:.N]
                 x
             }  
         )$value
     }
 }
-
-# # SV read paths
-# af_rpCreate <- "asNeeded"
-# af_getReadPaths_source <- function(sourceId){
-#     fileType <- "svReadPaths"
-#     filePath <- loadPersistentFile(
-#         sourceId = sourceId, # ... or source
-#         contentFileType = fileType,
-#         header = FALSE,
-#         force = FALSE,
-#         colClasses = unname(af_bgzColumns[[fileType]]), 
-#         col.names = names(af_bgzColumns[[fileType]]), # additional argument passed to fread
-#         quote = "", # additional argument passed to fread
-#         postProcess = function(rps){
-#             startSpinner(session, message = "post-process read paths")
-#             rps[, ":="(
-#                 sourceId = sourceId
-#             )]
-#         }
-#     )
-#     persistentCache[[filePath]]$data
-# }
-# af_getReadPaths_sources <- function(sourceIds){
-#     if(length(sourceIds) == 1){
-#         af_getReadPaths_source(sourceIds)
-#     } else {
-#         fileType <- "svReadPaths"
-#         sessionCache$get(
-#             fileType, 
-#             keyObject = list(sourceIds, "af_getReadPaths_sources"), 
-#             permanent = TRUE,
-#             from = "ram",
-#             create = af_rpCreate,
-#             createFn = function(...) {
-#                 startSpinner(session, message = "parsing read paths")
-#                 x <- do.call(rbind, lapply(sourceIds, af_getReadPaths_source))
-#                 # x[, rpI := 1:.N]
-#                 x
-#             }  
-#         )$value
-#     }
-# }
 
 # get a single SV-containing read path by qName
 getTaskFile <- function(sourceId, suffix){
@@ -534,7 +508,7 @@ getTaskFile <- function(sourceId, suffix){
     fileName  <- paste0(dataName, suffix)
     file.path(taskDir, fileName) %>% Sys.glob # wildcard expansion
 }
-af_getReadPath <- function(sourceId, qName){
+hf3_getReadPath <- function(sourceId, qName){
     req(sourceId, qName)
     bgzFile <- getTaskFile(sourceId, '.*.read_paths.txt.bgz')
     tabix   <- getCachedTabix(bgzFile)
@@ -546,36 +520,9 @@ af_getReadPath <- function(sourceId, qName){
     if(length(lines) == 1) lines <- paste0(lines, "\n")
     fread(
         text = lines,
-        col.names  =  names(af_bgzColumns$svReadPaths), 
-        colClasses = unname(af_bgzColumns$svReadPaths), 
+        col.names  =  names(hf3_bgzColumns$svReadPaths), 
+        colClasses = unname(hf3_bgzColumns$svReadPaths), 
         header = FALSE,
         sep = "\t"
     )
 }
-
-# get a single junction with SEQ and QUAL
-af_getFullJunction <- function(jxn){
-    req(jxn)
-    bgzFile <- getTaskFile(jxn$sourceId, '.*.final_junctions_1.txt.bgz')
-    tabix <- getCachedTabix(bgzFile)
-    gRange <- GenomicRanges::GRanges(
-        seqnames = jxn$chromIndex1_1,
-        ranges = IRanges::IRanges(start = jxn$refPos1_1 - 1, end = jxn$refPos1_1 + 1)
-    )
-    lines <- Rsamtools::scanTabix(tabix, param = gRange)[[1]]
-    if(length(lines) == 1) lines <- paste0(lines, "\n")
-    fjxns <- fread(
-        text = lines,
-        col.names  =  names(af_bgzColumns$svJunctions1Bgz), 
-        colClasses = unname(af_bgzColumns$svJunctions1Bgz), 
-        header = FALSE,
-        sep = "\t"
-    )
-    fjxns[
-        chromIndex1_1 == jxn$chromIndex1_1 & 
-        refPos1_1     == jxn$refPos1_1 & 
-        chromIndex1_2 == jxn$chromIndex1_2 & 
-        refPos1_2     == jxn$refPos1_2
-    ]
-}
-

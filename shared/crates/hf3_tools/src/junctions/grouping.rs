@@ -17,104 +17,114 @@ use std::error::Error;
 use rustc_hash::FxHashMap;
 use rayon::prelude::*;
 use genomex::{genome::Chroms, sam::SamRecord};
-use super::{OrderedJunction, JunctionInstances, FinalJunction};
+use super::{JunctionAnalysisTool, OrderedJunction, JunctionInstances, FinalJunction};
 
 // constants
-const LEFTWARD:  u8 = 0;
+const LEFTWARD:  u8 = 0; // directions an alignment extends away from a node
 const RIGHTWARD: u8 = 1;
 
-/// Write a vector of OrderedJunctions and associated JunctionInstances to a file, one row per
-/// unique OrderedJunctions with concatenated fields and a count.
+/// Group a set of OrderdJunctions by fuzzy matching their breakpoint nodes
+/// within specified tolerances. Commit groups as FinalJunction calls.
 pub fn fuzzy_match_junctions(
     mut jxns_in: FxHashMap<OrderedJunction, JunctionInstances>,
-    chroms:      &Chroms,
-    group_breakpoint_distance: usize, // matching tolerances
-    group_stem_distance:       u32,
+    tool:        &JunctionAnalysisTool
 ) -> Result<Vec<FinalJunction>, Box<dyn Error>> {
-    let mut jxns_out: Vec<FinalJunction> = Vec::new();
+    let mut jxns_out:    Vec<FinalJunction> = Vec::new();
+    let mut ont_cache:   FxHashMap<u32, FxHashMap<u8, Vec<usize>>> = FxHashMap::default();
+    let mut other_cache: FxHashMap<(isize, isize), Vec<usize>>     = FxHashMap::default();
 
-    // sort junctions based on first breakpoint node, ascending
+    // sort junctions by their first breakpoint node, ascending
     // bottom (-) strand sorts last chrom/pos to first, then top (+) strand sorts first chrom/pos to last
+    // this is fine for grouping, but requires care when comparing two positions to the tolerance distances
     let mut ordered_jxns: Vec<OrderedJunction> = jxns_in.keys().copied().collect();
     ordered_jxns.par_sort_unstable_by(|a, b| 
         a.node_aln5_end3.cmp(&b.node_aln5_end3)
     );
 
-    // group junctions by first breakpoint node
+    // group junctions by their first breakpoint node
     for node1_group in ordered_jxns.chunk_by_mut(|a, b| {
-        (b.node_aln5_end3.abs() - a.node_aln5_end3.abs()).unsigned_abs() <= group_breakpoint_distance
+        (b.node_aln5_end3.abs() - a.node_aln5_end3.abs()).unsigned_abs() <= tool.group_breakpoint_distance
     }){
 
-        // if only one junction in group, write it as is
+        // if only one OrderedJunction in the group, commit it as is
         if node1_group.len() == 1 {
-            commit_junction(node1_group, &mut jxns_in, &mut jxns_out, chroms)?;
+            commit_junction(node1_group, &mut jxns_in, &mut jxns_out, tool, &mut ont_cache, &mut other_cache)?;
             continue;
         }
 
-        // sort junctions based on second breakpoint node
+        // sort multiple node1_group OrderedJunctions by their second breakpoint node
         node1_group.sort_unstable_by(|a, b| {
             a.node_aln3_end5.cmp(&b.node_aln3_end5)
         });
 
-        // group junctions by second breakpoint node
+        // group junctions by their second breakpoint node
         for node2_group in node1_group.chunk_by_mut(|a, b| {
-            (b.node_aln3_end5.abs() - a.node_aln3_end5.abs()).unsigned_abs() <= group_breakpoint_distance
+            (b.node_aln3_end5.abs() - a.node_aln3_end5.abs()).unsigned_abs() <= tool.group_breakpoint_distance
         }){
 
-            // if only one junction in group, write it as is
+            // if only one OrderedJunction in the group, commit it as is
             if node2_group.len() == 1 {
-                commit_junction(node2_group, &mut jxns_in, &mut jxns_out, chroms)?;
+                commit_junction(node2_group, &mut jxns_in, &mut jxns_out, tool, &mut ont_cache, &mut other_cache)?;
                 continue;
             }
 
-            // sort junctions based on var_chrom_len statistic
+            // sort multiple node2_group OrderedJunctions by their variant_chrom_len statistic
             node2_group.sort_unstable_by(|a, b| {
-                var_chrom_len(a, chroms).cmp(&var_chrom_len(b, chroms))
+                variant_chrom_len(a, &tool.chroms).cmp(&variant_chrom_len(b, &tool.chroms))
             });
 
-            // group junctions by var_chrom_len statistic
-            for var_chrom_group in node2_group.chunk_by_mut(|a, b| {
-                (var_chrom_len(b, chroms) - var_chrom_len(a, chroms)).unsigned_abs() <= group_stem_distance
+            // group junctions by variant_chrom_len statistic
+            for variant_chrom_len_group in node2_group.chunk_by(|a, b| {
+                variant_chrom_len(b, &tool.chroms) - variant_chrom_len(a, &tool.chroms) <= tool.group_stem_distance
             }){
-                commit_junction(var_chrom_group, &mut jxns_in, &mut jxns_out, chroms)?;
+                commit_junction(variant_chrom_len_group, &mut jxns_in, &mut jxns_out, tool, &mut ont_cache, &mut other_cache)?;
             }
         }
     }
     Ok(jxns_out)
 }
 
-// commit one junction group from one or more fuzzy-matched OrderedJunctions
-// even if only one OrderedJunction is in the group, it may have multiple JunctionInstances
-// with different properties, e.g., different inserted bases, etc.
+// Commit one junction group from one or more fuzzy-matched OrderedJunctions.
+// Even if only one OrderedJunction is in the group, it may have multiple 
+// JunctionInstances with different properties, e.g., different inserted bases.
 fn commit_junction(
-    group_jxns: &[OrderedJunction],
-    jxns_in:    &mut FxHashMap<OrderedJunction, JunctionInstances>,
-    jxns_out:   &mut Vec<FinalJunction>,
-    chroms:     &Chroms,
+    group_jxns:  &[OrderedJunction],
+    jxns_in:     &mut FxHashMap<OrderedJunction, JunctionInstances>, // all junctions, not just the group jxns
+    jxns_out:    &mut Vec<FinalJunction>,
+    tool:        &JunctionAnalysisTool,
+    ont_cache:   &mut FxHashMap<u32, FxHashMap<u8, Vec<usize>>>,
+    other_cache: &mut FxHashMap<(isize, isize), Vec<usize>>,
 ) -> Result<(), Box<dyn Error>> {
 
-    // one junction in group, commit directly
+    // one OrderedJunction in the group, commit it as is
     let final_jxn = if group_jxns.len() == 1 {
         FinalJunction::from_best_junction(
             &group_jxns[0], 
-            jxns_in.get_mut(&group_jxns[0]).unwrap(),
-            chroms
+            jxns_in.remove(&group_jxns[0]).unwrap(),
+            tool,
+            ont_cache,
+            other_cache,
         )
 
     // pick the representative/best OrderedJunction as the one with the highest number of JunctionInstances
-    // collect all instances starting from the best junction and commit
+    // collect all JunctionInstances starting with the best OrderedJunction and commit
+    // downstream code is assured that the first JunctionInstance is from the best OrderedJunction
     } else {
         let best_jxn = group_jxns.iter().max_by_key(|jxn| {
-            jxns_in[jxn].read_data.len()
+            jxns_in[jxn].read_data.len() // doesen't matter which field Vec is counted
         }).unwrap();
-        let mut instances = jxns_in[best_jxn].clone();
-        for jxn in group_jxns.iter().filter(|jxn| *jxn != best_jxn) {
-            instances.extend(jxns_in.get_mut(jxn).unwrap());
-        }
+        let mut instances = jxns_in.remove(best_jxn).unwrap();
+        group_jxns.iter().for_each(|jxn| {
+            if jxn != best_jxn {
+                instances.extend(jxns_in.remove(jxn).unwrap());
+            }
+        });
         FinalJunction::from_best_junction(
-            &best_jxn, 
-            &mut instances,
-            chroms
+            best_jxn, 
+            instances,
+            tool,
+            ont_cache,
+            other_cache,
         )
     };
 
@@ -124,7 +134,7 @@ fn commit_junction(
     Ok(())
 }
 
-// estimate the number of genome bp still present as the chromosome stem length on each side of the junction
+// Estimate the number of genome bp still present as the chromosome stem length on each side of a junction.
 // 1     7                   9       1 (i.e., count rightward stems from the end of the chrom)
 // -----------------------------------
 //    1--> (7 bp stem)       <--1 (9 bp stem)
@@ -147,15 +157,15 @@ fn commit_junction(
 //    read 2 inappropriately clipped
 //    both read 1 and read 2 inappropriately clipped
 // demonstrating the resilience of this metric for accurate junction path matching
-// one cannot use only var_chrom_len since 
+// one cannot use only variant_chrom_len since 
 //    it would be computationally inefficient,
 //    wildly different junction positions could yield the same value
-// but once breakpoints are known to be roughly co-localized, var_chrom_len provides robust junction matching
+// but once breakpoints are known to be roughly co-localized, variant_chrom_len provides robust junction matching
 // the method is robust to inversions and all types of translocations
-fn var_chrom_len(
+fn variant_chrom_len(
     jxn:    &OrderedJunction,
     chroms: &Chroms,
-) -> i32 {
+) -> u32 {
     let (_, chrom_index_1, ref_pos1_1, is_reverse_1) = 
         SamRecord::unpack_signed_node(jxn.node_aln5_end3, chroms);
     let (_, chrom_index_2, ref_pos1_2, is_reverse_2) = 
@@ -172,7 +182,7 @@ fn var_chrom_len(
         if is_reverse_2 { LEFTWARD } else { RIGHTWARD },
         chroms,
     );
-    (chrom_stem_1 as i32 + chrom_stem_2 as i32 + jxn.offset as i32).abs() // should always be positive...
+    (chrom_stem_1 as i32 + chrom_stem_2 as i32 + jxn.offset as i32) as u32 // should always be positive
 }
 // get one chrom stem length
 fn chrom_stem_len(

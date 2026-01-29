@@ -19,7 +19,7 @@ pub_key_constants!{
     EXPECTING_ENDPOINT_RE_SITES
     REJECTING_JUNCTION_RE_SITES // can be true if EXPECTING_ENDPOINT_RE_SITES is false
     REJECT_JUNCTION_DISTANCE
-    FILTERING_SITES_FILE
+    FILTERING_SITES_FILE 
     // counter keys
     N_SITES
     N_MATCHES_BY_OUTCOME
@@ -60,7 +60,8 @@ impl SiteMatcher {
                 reject_junction_distance: 0,
             };
         }
-        w.cfg.set_string_env(&[ENZYME_NAME, BLUNT_RE_TABLE, OVERHANG5_RE_TABLE, FILTERING_SITES_FILE]);
+        w.cfg.set_string_env(&[ENZYME_NAME, BLUNT_RE_TABLE, OVERHANG5_RE_TABLE, 
+                                     FILTERING_SITES_FILE]);
         w.cfg.set_u32_env( &[REJECT_JUNCTION_DISTANCE]);
         w.ctrs.add_counters(&[
             (N_SITES, &format!("{} filtering sites being matched against", w.cfg.get_string(ENZYME_NAME))),
@@ -71,33 +72,37 @@ impl SiteMatcher {
         let mut site_matcher = SiteMatcher{
             is_matching_sites:      true,
             enzyme_name:            w.cfg.get_string(ENZYME_NAME).to_string(),
-            filtering_sites_file:   w.cfg.get_string(FILTERING_SITES_FILE).to_string(),
+            filtering_sites_file:    w.cfg.get_string(FILTERING_SITES_FILE).to_string(),
             filtering_sites:        FxHashMap::default(),
             n_sites:                0,
             correction5:            0,
             reject_junction_distance: *w.cfg.get_u32(REJECT_JUNCTION_DISTANCE) as i32,
         };
-        let n_sites = site_matcher.load_filtering_site();
-        site_matcher.n_sites = n_sites;
+        site_matcher.load_filtering_sites();
+        w.ctrs.add_to(N_SITES, site_matcher.n_sites);
         site_matcher.set_correction5(&w);
-        w.ctrs.add_to(N_SITES, n_sites);
         site_matcher
     }
+
     // load the filtering sites from the assembled file
-    fn load_filtering_site(&mut self) -> usize {
-        let mut site_i1 = 0; // 1-referenced site indices, so 0 means no site matched
+    fn load_filtering_sites(&mut self) {
+        eprint!("loading RE filtering sites from {}", self.filtering_sites_file);
         for line in InputFile::get_lines(&self.filtering_sites_file, false) {
-            site_i1 += 1; // 1-referenced
             let parts: Vec<&str> = line.split('\t').collect(); // chrom,sitePos1,inSilico,nObserved
             let chrom = parts[0];
+            if chrom == "chrom" { continue; } // skip header line
             let site_pos1: u32 = parts[1].parse().unwrap_or(0);
-            self.filtering_sites.entry(chrom.to_string()).or_insert_with(Vec::new).push(site_pos1);
+            self.filtering_sites
+                .entry(chrom.to_string())
+                .or_insert_with(Vec::new)
+                .push(site_pos1);
         }
         // ensure that each chrom's sites are sorted by site_pos1
+        self.n_sites = 0;
         for sites in self.filtering_sites.values_mut() {
             sites.par_sort_unstable();
+            self.n_sites += sites.len();
         }
-        site_i1
     }
     // load the RE site metadata to properly handle blunt vs. 5' overhanging sites
     // enzyme  strand  cut_site regex   offset  CpG_priority

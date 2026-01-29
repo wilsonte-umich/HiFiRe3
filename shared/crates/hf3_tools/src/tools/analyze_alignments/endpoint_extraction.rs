@@ -177,7 +177,7 @@ impl Endpoints {
     }
 
     /// Report all unique observed endpoint positions with counts.
-    pub fn write(&mut self, w: &mut Workflow, chroms: &Chroms) -> Result<(), Box<dyn Error>> {
+    pub fn write(mut self, w: &mut Workflow, chroms: &Chroms) -> Result<(), Box<dyn Error>> {
         if !self.collecting { return Ok(()); }
         w.log.print("printing endpoint tallies");
         let mut sorted_keys: Vec<(u8, u32)> = self.counter.keys().cloned().collect();

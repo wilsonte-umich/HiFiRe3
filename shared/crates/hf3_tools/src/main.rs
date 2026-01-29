@@ -5,11 +5,11 @@ use std::env;
 use std::error::Error;
 
 // modules
-mod tools;
 mod formats;
+mod inserts;
 mod junctions;
 mod sites;
-mod inserts;
+mod tools;
 
 // constants
 const TOOLS_NAME: &str = "hf3_tools";
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Err(format!("usage: {} <tool> [additional arguments]", TOOLS_NAME))?
     }
     let tool = args[0].clone(); // drop tool name
-    // args = args[1..].to_vec();
+    // args = args[1..].to_vec(); // uncomment if passing additional arguments to tools
 
     // dispatch to tool or command
     match tool.as_str() {

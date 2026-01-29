@@ -33,8 +33,8 @@ actions:
     SVs:
         order: 2
         optionFamilies:
+            - localization
             - targets
-        #     - target-restriction
         resources:
             required:
                 total-ram: 24G
@@ -44,11 +44,10 @@ actions:
         job-manager:
             recommended:
                 time-limit: 12:00:00
-        description: "parse prepared fragments to describe and count unique non-SV and SV paths"
+        description: "parse prepared fragments to describe and count unique SV and non-SV paths"
     SNVs:
         order: 3
         optionFamilies:
-            # - target-restriction
             - pileup
         resources:
             required:
@@ -67,50 +66,63 @@ package:
             chromsFile:
                 type: txt
                 file: $ANALYSIS_CHROMS_FILE
-            filteringSitesBgz:
-                type: txt.bgz
-                file: $FILTERING_SITES_BGZ
-            filteringSitesTbi:
-                type: txt.bgz.tbi
-                file: $FILTERING_SITES_BGZ.tbi
-            genesBed:
-                type: bed
-                file: $GENES_BED
             targetsBed:
                 type: bed
                 file: $TARGETS_BED
+            genesBed:
+                type: bed
+                file: $GENES_BED
             exclusionsBed:
                 type: bed
                 file: $GENOME_EXCLUSIONS_BED
-            svJunctions1Bgz:
+            filteringSitesBgz:
                 type: txt.bgz
-                file: $SV_MASKED_JUNCTIONS_FILE_1
-            svJunctions1Tbi:
+                file: $FILTERING_SITES_FILE
+            filteringSitesTbi:
                 type: txt.bgz.tbi
-                file: $SV_MASKED_JUNCTIONS_FILE_1.tbi
-            svJunctions2Bgz:
-                type: txt.bgz
-                file: $SV_MASKED_JUNCTIONS_FILE_2
-            svJunctions2Tbi:
-                type: txt.bgz.tbi
-                file: $SV_MASKED_JUNCTIONS_FILE_2.tbi
-            genomeTally:
-                type: txt
-                file: $GENOME_TALLY_FILE
-            junctionTally:
-                type: txt
-                file: $JUNCTION_TALLY_FILE
+                file: $FILTERING_SITES_FILE.tbi
             svAlignmentsBgz:
                 type: txt.bgz
                 file: $SV_ALIGNMENTS_FILE
-                maxSize: 500M
+                maxSize: 250M
             svAlignmentsTbi:
                 type: txt.bgz.tbi
                 file: $SV_ALIGNMENTS_FILE.tbi
-                maxSize: 500M
-            # svReadPaths:
-            #     type: txt.gz
-            #     file: $SV_READ_PATHS_FILE
+                maxSize: 250M
+            svCoverageBgz:
+                type: txt.bgz
+                file: $SV_COVERAGE_FILE
+                maxSize: 250M
+            svCoverageTbi:
+                type: txt.bgz.tbi
+                file: $SV_COVERAGE_FILE.tbi
+                maxSize: 250M
+            svReadPaths:
+                type: txt.bgz
+                file: $SV_READ_PATHS_FILE
+                maxSize: 250M
+            svReadPathsTbi:
+                type: txt.bgz.tbi
+                file: $SV_READ_PATHS_FILE.tbi
+                maxSize: 250M
+            svJunctions1Bgz:
+                type: txt.bgz
+                file: $SV_FINAL_JUNCTIONS_FILE_1
+            svJunctions1Tbi:
+                type: txt.bgz.tbi
+                file: $SV_FINAL_JUNCTIONS_FILE_1.tbi
+            svJunctions2Bgz:
+                type: txt.bgz
+                file: $SV_FINAL_JUNCTIONS_FILE_2
+            svJunctions2Tbi:
+                type: txt.bgz.tbi
+                file: $SV_FINAL_JUNCTIONS_FILE_2.tbi
+            # genomeTally:
+            #     type: txt
+            #     file: $GENOME_TALLY_FILE
+            # junctionTally:
+            #     type: txt
+            #     file: $JUNCTION_TALLY_FILE
     SNVs:
         uploadType: hf3AnalyzeSNVs
         files:

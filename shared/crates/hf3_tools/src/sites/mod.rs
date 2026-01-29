@@ -5,13 +5,14 @@ use rust_htslib::bam::record::Record as BamRecord;
 use genomex::bam::tags;
 use crate::formats::hf3_tags::*;
 
-/// SiteMatch structure to declare the best match of a genome position/strand
-/// to an RE filtering site.
+/// SiteMatch structure to declare the best match of a genome 
+/// position/strand to an RE filtering site.
 #[derive(Clone)]
 pub struct SiteMatch {
     // signed 1-based index in filtering_sites_file of the closest RE site to query.pos1
     // sign = direction from query.pos1 to site.pos1, + means query.pos1 >= site.pos1
     // 0 = no site matched
+    // indices reset to 1 at the beginning of each chromosome
     pub index1:   i32, 
     // 1-based site coordinate on the chromosome
     pub pos1:     u32, 
@@ -40,7 +41,7 @@ impl SiteMatches {
     pack and unpack sam tags
     ---------------------------------------------------------------------------- */
     /// Pack site matches into a string representation of i-type closest sites
-    /// as (site5, site3, site_proj3) for use as a value for tag prefix 'sc:B:i,'.
+    /// as (site5, site3, proj3) for use as a value for tag prefix 'sc:B:i,'.
     pub fn to_tag(&self) -> String {
         [   
             self.site5.index1.to_string(), // 5' site
@@ -54,31 +55,9 @@ impl SiteMatches {
             self.proj3.distance.to_string(),
         ].join(",")
     }
-
-    // /// Unpack site matches from a string representation of i-type closest sites
-    // /// from a tag prefix 'sc:B:i,' into (site5, site3, site_proj3).
-    // pub fn from_tag(tag_value: &str) -> SiteMatches {
-    //     let parts: Vec<&str> = tag_value.split(',').collect();
-    //     let site5 = SiteMatch {
-    //         index1:   parts[0].parse().unwrap_or(0),
-    //         pos1:     parts[1].parse().unwrap_or(0),
-    //         distance: parts[2].parse().unwrap_or(0),
-    //     };
-    //     let site3 = SiteMatch {
-    //         index1:   parts[3].parse().unwrap_or(0),
-    //         pos1:     parts[4].parse().unwrap_or(0),
-    //         distance: parts[5].parse().unwrap_or(0),
-    //     };
-    //     let proj3 = SiteMatch {
-    //         index1:   parts[6].parse().unwrap_or(0),
-    //         pos1:     parts[7].parse().unwrap_or(0),
-    //         distance: parts[8].parse().unwrap_or(0),
-    //     };
-    //     SiteMatches{site5, site3, proj3}
-    // }
     
     /// Unpack site matches from an alignment's 'sc:B:i,' tag 
-    /// into (site5, site3, site_proj3).
+    /// into SiteMatches{site5, site3, proj3}.
     pub fn from_bam_record(aln: &BamRecord) -> SiteMatches {
         let vals = tags::get_tag_i32_vec_opt(aln, CLOSEST_SITES);
         if let Some(vals) = vals {

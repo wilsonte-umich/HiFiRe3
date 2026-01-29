@@ -18,41 +18,27 @@ use crate::inserts::ReadLevelMetadata;
 // constants
 pub_key_constants!(
     // from environment variables
-    INDEX_FILE_PREFIX_WRK
-    SEQUENCING_PLATFORM
     EXPECTING_ENDPOINT_RE_SITES
     REJECTING_JUNCTION_RE_SITES
-    // derived variables
-    IS_ONT
-    // counter keys
-    N_READS
-    N_READS_ON_TARGET
-    N_UNIQ_ALNS
-    N_ALNS
-    N_REF_BASES
-    N_READ_BASES
-    N_READS_BY_GENOME
-    N_REF_BASES_BY_GENOME
-    N_READ_BASES_BY_GENOME
+    SEQUENCING_PLATFORM
+    INDEX_FILE_PREFIX_WRK
 );
 
 // process chromosomes received on the channel
 pub fn process_chrom <'a>(
-    chroms:        &'a Chroms,
-    rx_chrom:      Receiver<(String, u8)>,
-    tx_jxn:        Sender<(OrderedJunction, JunctionInstance)>,
-    tx_read_path:  Sender<SvReadPath>,
-    tx_distal_aln: Sender<AlignmentSegment>,
+    chroms:    &'a Chroms,
+    rx_chrom:  Receiver<(String, u8)>,
+    tx_data:   Sender<ChromWorkerData>,
 ) -> Result<(), Box<dyn Error>> {
 
     // get config from environment variables
     let mut cfg = Config::new();
-    cfg.set_string_env(&[INDEX_FILE_PREFIX_WRK, SEQUENCING_PLATFORM]);
     cfg.set_bool_env(&[EXPECTING_ENDPOINT_RE_SITES, REJECTING_JUNCTION_RE_SITES]);
+    cfg.set_string_env(&[SEQUENCING_PLATFORM, INDEX_FILE_PREFIX_WRK]);
     let chrom_file_prefix = cfg.get_string(INDEX_FILE_PREFIX_WRK);
 
     // process chromosomes received on the channel
-    for (_chrom_name, chrom_index) in rx_chrom.iter() {
+    for (chrom_name, chrom_index) in rx_chrom.iter() {
 
         // open the input BAM file
         // all reads are on-target and have first alignment on chrom
@@ -71,38 +57,41 @@ pub fn process_chrom <'a>(
             chrom_read_count     // uses 17 bytes per read, so 100M reads requires 1.7GB RAM, more than expected per chrom
         };
 
-        // assemble the tool
-        let mut tool = JunctionTool {
+        // assemble the chromosome worker tool
+        let mut tool = JunctionChromWorker {
             expecting_endpoint_re_sites,
             chroms,
             header,
-            first_alns:    Vec::with_capacity(first_alns_capacity), // pre-allocate for first alignments
-            tx_jxn:        &tx_jxn,
-            tx_read_path:  &tx_read_path,
-            tx_distal_aln: &tx_distal_aln,
+            first_alns: Vec::with_capacity(first_alns_capacity), // pre-allocate for first alignments
+            tx_data:    &tx_data,
         };
 
         // process alignment records by read
         // all alignments are in query read order
         let mut records = chrom_bam.records();
         let mut alns: Vec<BamRecord> = vec![records.next().unwrap()?]; // expect there to always be data
+        let mut chrom_read_count:usize = 0;
         for result in records {
             let record = result?;
             if record.qname() != alns[0].qname() { 
                 process_alns(&alns, &mut tool)?;
+                chrom_read_count += 1;
                 alns.clear();
             }
             alns.push(record);
         }
+        chrom_read_count += 1;
         process_alns(&alns, &mut tool)?;
 
         // sort and print first alignments per chromosome to limit memory overhead (merged later)
-        let first_alns_file = format!("{}.chr{}.first_alns.bgz", chrom_file_prefix, chrom_index_padded);
-        AlignmentSegment::write_sorted_with_count(
+        let first_alns_file = format!("{}.first_alns.chr{}.gz", chrom_file_prefix, chrom_index_padded);
+        AlignmentSegment::write_sorted(
             tool.first_alns, 
             &first_alns_file
         )?;
 
+        // send chrom read count to main thread
+        tx_data.send(ChromWorkerData::ChromReadCount((chrom_name, chrom_read_count)))?;
     }
     Ok(())
 }
@@ -110,13 +99,14 @@ pub fn process_chrom <'a>(
 // process all alignments for a single read
 fn process_alns(
     alns:   &[BamRecord], 
-    tool:   &mut JunctionTool,
+    tool:   &mut JunctionChromWorker,
 ) -> Result<(), Box<dyn Error>>{
     let n_alns = alns.len();
     let max_aln_i = n_alns - 1;
 
     // get read-level metadata from first alignment
     let read_data = ReadLevelMetadata::from_bam_records(alns);
+    let qlen = alns[0].seq_len() as u32;
 
     // has_committed_jxn is not the same as READ_HAS_PASSED_JXN or n_alns > 1
     // traversal failures, and only traversal failures, are skipped here; chimeras persist
@@ -124,27 +114,29 @@ fn process_alns(
     let mut has_committed_jxn = false; 
     let mut prev_jxn_type: u8 = JunctionType::Proper as u8;
 
-    // run the alns
+    // run the read's alns
     for aln_i in 0..=max_aln_i {
         let mut this_jxn_type: u8 = JunctionType::Proper as u8;
 
-        // handle the junctions
+        // assess any junctions
         if read_has_jxn && aln_i < max_aln_i {
-            let (ordered_jxn, jxn_instance) = get_junction(
+            let (ordered_jxn, jxn_instance) = extract_junction(
+                aln_i as u8,
                 &alns[aln_i],
                 &alns[aln_i + 1],
-                &read_data
+                &read_data,
+                qlen,
             );
             this_jxn_type = ordered_jxn.jxn_type;
             let jxn_failure_flag = tags::get_tag_u8_default(&alns[aln_i], JXN_FAILURE_FLAG, 0);
             let passed_traversal_delta = jxn_failure_flag & JxnFailureFlag::TraversalDelta as u8 == 0;
-            if passed_traversal_delta { // only record juctions that passed traversal delta
-                tool.tx_jxn.send((ordered_jxn, jxn_instance))?;
+            if passed_traversal_delta { // only commit junctions that passed traversal delta
+                tool.tx_data.send(ChromWorkerData::Junction((ordered_jxn, jxn_instance)))?;
                 has_committed_jxn = true;
             }
         }
 
-        // handle the alignment segments
+        // send assembled alignment segments to first_alns Vec or distal_alns main thread channel
         let aln_segment = AlignmentSegment::new(
             alns,
             aln_i,
@@ -154,15 +146,15 @@ fn process_alns(
         if aln_i == 0 {
             tool.first_alns.push(aln_segment);
         } else {
-            tool.tx_distal_aln.send(aln_segment)?;
+            tool.tx_data.send(ChromWorkerData::DistalAln(aln_segment))?;
         }
         prev_jxn_type = this_jxn_type;
     }
 
-    // print SV read paths
+    // send SV read paths to main thread channel
     if has_committed_jxn {
-        let read_path = SvReadPath::from_alns(alns, &tool.header, tool.chroms);
-        tool.tx_read_path.send(read_path)?;
+        let read_path = SvReadPath::from_alns(alns, &tool.header);
+        tool.tx_data.send(ChromWorkerData::ReadPath(read_path))?;
     }
     Ok(())
 }

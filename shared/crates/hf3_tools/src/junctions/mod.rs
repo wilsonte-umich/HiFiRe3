@@ -37,6 +37,7 @@ mod junction;
 mod read_path;
 mod alignment;
 mod grouping;
+mod deduplication;
 
 // re-exports
 pub use flag::*;
@@ -48,10 +49,20 @@ pub use grouping::*;
 // dependencies
 use crossbeam::channel::Sender;
 use rust_htslib::bam::HeaderView;
-use genomex::genome::Chroms;
+use genomex::genome::{Chroms, TargetRegions, Genes, Exclusions};
 
-/// JunctionTool collects structs and methods for SV analysis.
-pub struct JunctionTool <'a, 'b>{
+// ChromWorkerData enum allows difference types of data to be
+// trasmitted to the main thread for aggregation.
+pub enum ChromWorkerData {
+    ReadPath(SvReadPath),
+    DistalAln(AlignmentSegment),
+    Junction((OrderedJunction, JunctionInstance)),
+    ChromReadCount((String, usize)),
+}
+
+/// The JunctionChromWorker tool collects structs and methods 
+/// for SV analysis while processing a single chromosome.
+pub struct JunctionChromWorker <'a, 'b>{
 
     // global configuration parameters
     pub expecting_endpoint_re_sites: bool,
@@ -63,8 +74,32 @@ pub struct JunctionTool <'a, 'b>{
     // structures for aggregating over all reads
     pub first_alns: Vec<AlignmentSegment>,
 
-    // result channel senders
-    pub tx_jxn:        &'b Sender<(OrderedJunction, JunctionInstance)>,
-    pub tx_read_path:  &'b Sender<SvReadPath>,
-    pub tx_distal_aln: &'b Sender<AlignmentSegment>,
+    // result channel
+    pub tx_data: &'b Sender<ChromWorkerData>,
+}
+
+/// The JunctionAnalysisTool collects structs and methods for SV analysis
+/// at the genome level after all chromosomes have been processed.
+pub struct JunctionAnalysisTool {
+
+    // global configuration parameters
+    pub data_name: String,
+
+    // chromosomes and regions
+    pub chroms:     Chroms,
+    pub targets:    TargetRegions,
+    pub genes:      Genes,
+    pub exclusions: Exclusions,
+
+    // grouping parameters
+    pub group_breakpoint_distance: usize,
+    pub group_stem_distance:       u32,
+
+    // deduplication parameters
+    pub is_ont: bool,
+    pub deduplicate_reads: bool,
+
+    // final junction output files
+    pub final_jxns_file_1: String,
+    pub final_jxns_file_2: String,
 }

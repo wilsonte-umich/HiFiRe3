@@ -39,6 +39,7 @@ use genomex::genome::Chroms;
 use crate::formats::hf3_tags::*;
 use crate::junctions::JxnFailureFlag;
 use crate::sites::{SiteMatch, SiteMatches};
+use crate::inserts::ReadFailureFlag;
 use insert_sizes::InsertSizer;
 use outer_nodes::OuterNodes;
 use site_matching::{SiteMatcher, N_SITES, N_MATCHES_BY_OUTCOME};
@@ -129,7 +130,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
 
     // initialize the tool
     let mut w = Workflow::new(TOOL, cfg, ctrs);
-    w.log.print("initializing");
+    w.log.initializing();
 
     // build tool support resources, i.e. data workers
     let mut tool = Tool {
@@ -163,16 +164,12 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     tool.insert_sizer.print_insert_sizes(&mut w.cfg);
 
     // report counter values
-    let (n_sites, n_matches_by_outcome) = if tool.site_matcher.is_matching_sites { 
-        (vec![N_SITES], vec![N_MATCHES_BY_OUTCOME]) 
-    } else { 
-        (vec![], vec![] )
-    };
+    let null_ctr: Vec<&str> = vec![];
     w.ctrs.print_grouped(&[
+        if tool.site_matcher.is_matching_sites { &[N_SITES] } else { &null_ctr },
         &[N_READS_IN, N_ALNS],
         &[N_READS_BY_OUTCOME],
-        &n_sites,
-        &n_matches_by_outcome,
+        if tool.site_matcher.is_matching_sites { &[N_MATCHES_BY_OUTCOME] } else { &null_ctr },
         &[N_JXNS_BY_REASON],
         &[N_JXNS_BY_FAILURE_FLAG],
     ]);
@@ -186,7 +183,6 @@ fn record_parser(
     tool: &mut Tool,
 ) -> Result<Vec<usize>, Box<dyn Error>> {
     let n_alns = alns.len();
-    let print_all_alns = Ok((0..n_alns).collect());
     w.ctrs.increment(N_READS_IN);
     w.ctrs.add_to(N_ALNS, n_alns);
 
@@ -195,14 +191,12 @@ fn record_parser(
 
     // stop processing unmapped reads
     if alns[0].check_flag_any(flag::UNMAPPED) { 
-        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_UNMAPPED);
-        return print_all_alns;
+        return failed_read(alns, w, FAIL_UNMAPPED, ReadFailureFlag::Unmapped as u8);
     }
 
     // stop processing off-target reads, they will never call variants
     if alns[0].get_tag_value(READ_IS_OFF_TARGET).is_some() { 
-        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_OFF_TARGET);
-        return print_all_alns;
+        return failed_read(alns, w, FAIL_OFF_TARGET, ReadFailureFlag::OffTarget as u8);
     }
 
     // determine if this is an unmerged read pair
@@ -236,8 +230,7 @@ fn record_parser(
         // don't process reads further if any end of any alignment fails to match an RE site
         if tool.rejecting_junction_re_sites && 
            (site5.index1 == 0 || site3.index1 == 0) {
-            w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_LOOKUP);
-            return print_all_alns;
+            return failed_read(alns, w, FAIL_SITE_LOOKUP, ReadFailureFlag::SiteLookup as u8);
         }
         if i == 0 { // read 5' end
             // perform initial end-to-end status determination
@@ -255,8 +248,7 @@ fn record_parser(
                 alns[i].get_clip_left()
             };
             if clip5 > tool.clip_tolerance {
-                w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_CLIP_TOLERANCE);
-                return print_all_alns;
+                return failed_read(alns, w, FAIL_CLIP_TOLERANCE, ReadFailureFlag::ClipTolerance as u8);
             }
             if tool.expecting_endpoint_re_sites {
                 let dist5 = if is_reverse {
@@ -265,8 +257,7 @@ fn record_parser(
                     site5.distance - clip5 as i32
                 };
                 if dist5.abs() as u32 > tool.accept_endpoint_distance {
-                    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_DISTANCE);
-                    return print_all_alns;
+                    return failed_read(alns, w, FAIL_SITE_DISTANCE, ReadFailureFlag::SiteDistance as u8);
                 }
             }
         }
@@ -288,12 +279,10 @@ fn record_parser(
             };
             if is_end_to_end_read {
                 if clip3 > tool.clip_tolerance {
-                    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_CLIP_TOLERANCE);
-                    return print_all_alns;
+                    return failed_read(alns, w, FAIL_CLIP_TOLERANCE, ReadFailureFlag::ClipTolerance as u8);
                 }
                 if tool.expecting_endpoint_re_sites && dist3.abs() as u32 > tool.accept_endpoint_distance {
-                    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, FAIL_SITE_DISTANCE);
-                    return print_all_alns;
+                    return failed_read(alns, w, FAIL_SITE_DISTANCE, ReadFailureFlag::SiteDistance as u8);
                 }
             // promote incomplete sequences to end-to-end status if they got to the fragment end
             } else if tool.expecting_endpoint_re_sites && 
@@ -386,5 +375,20 @@ fn record_parser(
     }
 
     // print all alignments for the read, regardless of outcome
-    print_all_alns
+    Ok((0..n_alns).collect())
+}
+
+// add the 
+fn failed_read(
+    alns:   &mut [SamRecord],
+    w:      &mut Workflow,
+    reason: &str,
+    flag:   u8,
+) -> Result<Vec<usize>, Box<dyn Error>> {
+    let n_alns = alns.len();
+    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, reason);
+    for i in 0..n_alns {
+        alns[i].set_tag_value(READ_FAILURE_FLAG, &flag);
+    }
+    Ok((0..n_alns).collect()) 
 }

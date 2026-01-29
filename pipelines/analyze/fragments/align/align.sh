@@ -37,10 +37,10 @@ else
 # provide log feedback
 #------------------------------------------------------------------
 echo "aligning read sequences to $GENOME using minimap2"
-echo "  platform: $SEQUENCING_PLATFORM"
-echo "  library type: $LIBRARY_TYPE"
-echo "  aln mode: $ALIGNMENT_MODE" 
-echo "  bandwidth: $BANDWIDTH" 
+echo "  platform:         $SEQUENCING_PLATFORM"
+echo "  library type:     $LIBRARY_TYPE"
+echo "  aln mode:         $ALIGNMENT_MODE" 
+echo "  bandwidth:        $BANDWIDTH" 
 echo "  reference genome: $GENOME_FASTA"
 echo "  read files:"
 echo "$READ_1_FILES" | perl -ne 'print "    ".join("\n    ", split(" ", $_)),"\n"'
@@ -74,8 +74,8 @@ if [ "${RUN_PREALIGNMENT_FASTP}" != "" ]; then
     #   use buffered fastp until its memory leak is fixed: https://github.com/OpenGene/fastp/issues/392
     #   the leak was supposedly fixed in fastp v0.24 but memory climbing still occurs
     #   continue using buffered_fastp.pl as it adds little overhead since aligner is the slow step
-    export FASTP_STEP_COMMAND="perl $ACTION_DIR/buffered_fastp.pl"
-    export MERGE_STEP_COMMAND="perl $ACTION_DIR/adjust_merge_tags.pl"
+    export FASTP_STEP_COMMAND="perl $ALIGN_DIR/buffered_fastp.pl"
+    export MERGE_STEP_COMMAND="perl $ALIGN_DIR/adjust_merge_tags.pl"
     export FASTP_BUFFER=${TMP_DIR_WRK_SMALL}/FASTP_BUFFER.fastq
     export FASTP_BUFFER_N_READS=1000000
     export FASTP_COMMAND="fastp \
@@ -99,8 +99,7 @@ perl ${ACTION_DIR}/align/prepare_fastq.pl |
 # if needed for short reads, use fastp for one-pass adapter trimming, quality filtering, and read merging
 $FASTP_STEP_COMMAND | 
 
-# tweak the way read pair merge status is reported
-# report summary of fastp actions
+# move fastp merge outcomes to the fm:Z: tag and report summary of fastp actions
 $MERGE_STEP_COMMAND | 
 
 # align to genome
@@ -115,12 +114,9 @@ minimap2 \
     ${MINIMAP2_INDEX_WRK} - 2>${MINIMAP_LOG_FILE} |
 
 # process reads to determine if variants are present according to the reference genome
-# perl ${ACTION_DIR}/align/flag_variant_events.pl |
 ${SUITE_BIN_DIR}/hf3_tools analyze_alignments |
 samtools view -b -@ ${SAMTOOLS_CPU} -o ${NAME_BAM_FILE} -
 checkPipe
-
-# head -n 20000 > ${TASK_DIR}/debug.sam
 
 echo "done"
 

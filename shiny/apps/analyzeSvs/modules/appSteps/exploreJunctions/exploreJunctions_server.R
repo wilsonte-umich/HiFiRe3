@@ -35,52 +35,41 @@ junctions_all <- reactive({ # all junction from data source, prior to filtering
     sourceIds <- sourceIds()
     req(sourceIds)
     startSpinner(session, message = "loading junctions")
-    af_getJunctions_all_sources(sourceIds)[
-        jxnType == af_junctions$typeToIndex$translocation | 
-        svSize > 0 # suppress 0bp inversions
+    hf3_getJunctions_all_sources(sourceIds)[
+        jxn_type == hf3_junctions$typeToBits["translocation"] | 
+        sv_size > 0 # suppress 0bp inversions
     ]
 })
 junctions_filtered <- reactive({ # all junctions, filtered by top-level settings
     junctions_all <- junctions_all()
     req(junctions_all)
     startSpinner(session, message = "loading filtered junctions")
-    junctions_all %>% af_applyJunctionFilters(settings)
+    junctions_all %>% hf3_applyJunctionFilters(settings, input)
 })
-# readPaths <- reactive({
-#     sourceIds <- sourceIds()
-#     req(sourceIds)
-#     x <- af_getReadPaths_sources(sourceIds)
-#     stopSpinner(session)
-#     x
-# })
 
 #----------------------------------------------------------------------
 # count SV junctions
 #----------------------------------------------------------------------
 count_junctions_by_type <- function(jxns){
-    agg <- jxns[, .N, keyby = .(jxnType, isIntergenome)]
-    agg[, jxnTypeLabel := af_junctions$getJxnTypeLabels(jxnType)]
-    agg[isIntergenome == TRUE, ":="(jxnTypeLabel = "int-gen", jxnType = 5L)]
-    agg[, color := ifelse(
-        isIntergenome,
-        CONSTANTS$plotlyColors$purple,
-        af_junctions$getIndexColor(jxnType)
+    agg <- jxns[, .N, keyby = .(jxn_type, is_intergenomic)]
+    agg[,  ":="(
+        jxnTypeLabel = hf3_junctions$getTypeLabelsFromBits(jxn_type, is_intergenomic),
+        color        = hf3_junctions$getColorsFromBits(    jxn_type, is_intergenomic)
     )]
-    agg[order(jxnType)]
+    agg[order(jxn_type)]
 }
 count_junctions_by_class <- function(jxns){
     agg <- jxns[, .N, keyby = .(jxnClass)]
-    agg[, jxnClassName := af_junctions$getJxnClassLabels(jxnClass)]
-    agg[, color := af_junctionClasses$getClassColor(jxnClass)]
+    agg[, jxnClassName := hf3_junctions$getJxnClassLabels(jxnClass)]
+    agg[, color := hf3_junctionClasses$getClassColor(jxnClass)]
     agg
 }
 count_junctions_by_both <- reactive({
     jxns <- junctions_selected_both()
     req(nrow(jxns) > 0)
-    agg <- jxns[, .N, keyby = .(jxnType, isIntergenome, jxnClass)]
-    agg[, jxnTypeLabel := af_junctions$getJxnTypeLabels(jxnType)]
-    agg[isIntergenome == TRUE, ":="(jxnTypeLabel = "int-gen", jxnType = 5L)]
-    agg[, jxnClassName := af_junctionClasses$getJxnClassLabels(jxnClass)]
+    agg <- jxns[, .N, keyby = .(jxn_type, is_intergenomic, jxnClass)]
+    agg[, jxnTypeLabel := hf3_junctions$getTypeLabelsFromBits(jxn_type, is_intergenomic)]
+    agg[, jxnClassName := hf3_junctionClasses$getJxnClassLabels(jxnClass)]
     dcast(agg, jxnClassName ~ jxnTypeLabel, value.var = "N", fun.aggregate = sum, fill = 0)
 })
 
@@ -114,41 +103,31 @@ sizePlotJunctions <- reactive({ # all junctions, prior to filtering for offset s
     jxns <- junctions_filtered()
     req(nrow(jxns) > 0)
     startSpinner(session, message = "grouping SVs")
-    samples <- unique(jxns$sample)
-    jxns[, stratumLabel := af_junctionStrata$getJxnStratumLabels(jxnStratum)]
-    stratumLabels <- af_junctionStrata$indexToStratumLabel
+    samples <- unique(jxns$sample_names)
+    jxns[, stratumLabel := hf3_junctionStrata$getJxnStratumLabels(jxnStratum)]
+    stratumLabels <- hf3_junctionStrata$indexToStratumLabel
     strata <- 1:length(stratumLabels)
     names(strata) <- stratumLabels
     jitterAmount <- 0.4
     typeJitterAmount <- jitterAmount / 3
     jxns <- jxns[, {
         stratumI <- strata[stratumLabel]
-        jxnTypeI <- unlist(af_junctions$typeToIndex[jxnType + 1])
-        jxnTypeSubRowOffset <- ifelse(
-            isIntergenome,
-            1/3,
-            af_junctions$indexToRowOffset[jxnTypeI]
-        )
+        jxnTypeSubRowOffset <- hf3_junctions$getOffsetsFromBits(jxn_type, is_intergenomic)
         workingLog10Size <- ifelse(
-            jxnType == af_junctions$typeToIndex$translocation, 
+            jxn_type == hf3_junctions$typeToBits["translocation"], 
             jitter(rep(9.25, .N), amount = 0.75), 
-            svSize %>% log10
+            sv_size %>% log10
         )
-        pointColor <- ifelse(
-            isIntergenome,
-            CONSTANTS$plotlyColors$purple,
-            af_junctions$getIndexColor(jxnType)
-        )
+        pointColor <- hf3_junctions$getColorsFromBits(jxn_type, is_intergenomic)
         .(
             stratumI = stratumI,
             jxnI = jxnI, # for interactive selection and mapping to source data.table
             x = workingLog10Size,
             y_ = stratumI + jxnTypeSubRowOffset, 
             color = pointColor,
-            jxnType = jxnType,
-            isIntergenome = isIntergenome,
-            hasExcluded = isExcluded_1 == 1 | isExcluded_2 == 1,
-            hasAltAlignment = hasAltAlignment == 1
+            jxn_type = jxn_type,
+            is_intergenomic = is_intergenomic,
+            hasExcluded = is_excluded_1 == 1 | is_excluded_2 == 1
         )
     }, by = .(stratumLabel)]
     jxns[, y := jitter(y_, amount = typeJitterAmount)] # spread the subrow points through a y-axis jitter
@@ -196,10 +175,11 @@ createSizePlot <- function(settings, plot) {
     abline(h = 1:d$nStrata,       col = "grey60")
     abline(h = 1:d$nStrata + 1/3, col = "grey60")
     abline(h = 1:d$nStrata - 1/3, col = "grey60")
+    abline(h = 1:(d$nStrata - 1) + 0.5, col = "black")
 
     # add individual junction points
     colors <- ifelse(
-        d$jxns$hasExcluded | d$jxns$hasAltAlignment,
+        d$jxns$hasExcluded,
         CONSTANTS$plotlyColors$black,
         d$jxns$color
     )
@@ -272,12 +252,12 @@ createSizePlot <- function(settings, plot) {
     # event counts by class and type
     for (i in 1:d$nStrata) {
         agg <- count_junctions_by_type(d$jxns[stratumI == i])
-        for (jxnType_ in agg$jxnType) {
-            x <- agg[jxnType == jxnType_]
+        for (jxn_type_ in agg$jxn_type) {
+            x <- agg[jxn_type == jxn_type_]
             mtext(
                 text = x[, paste(jxnTypeLabel, sprintf("%5d", x$N), sep = " ")],
                 side = 4,
-                at   = i + d$jitterAmount - d$labelHeight * (x$jxnType - 1),
+                at   = i + d$jitterAmount - d$labelHeight * hf3_junctions$bitsToIndex[x$jxn_type],
                 line = 0.5,
                 las  = 1,
                 adj  = 0,
@@ -324,7 +304,7 @@ sizePlot <- mdiInteractivePlotBoxServer(
     defaults = list(
         Plot_Frame = list(
             Width_Inches  = 10,
-            Height_Inches = 5,
+            Height_Inches = 4, # was 5
             Font_Size     = 12,
             Bottom_Margin = 4.1,
             Left_Margin   = 6.6,
@@ -387,7 +367,7 @@ offsetPlotSettings <- list(
 createOffsetPlot <- function(settings, plot, v) {
 
     # get the data
-    d <- junctions_filtered()[!is.na(alnOffset)] # may be missing when SEQ was dropped for known SVs
+    d <- junctions_filtered()[!is.na(offset)] # may be missing when SEQ was dropped for known SVs
     if(length(selectedJxnI$sizePlot) > 0) {
         d <- d[jxnI %in% selectedJxnI$sizePlot]
     }
@@ -398,13 +378,17 @@ createOffsetPlot <- function(settings, plot, v) {
     startSpinner(session, message = "plotting offsets")
 
     # aggregate by offset
-    d <- d[, .(y = .N), keyby = .(x = alnOffset, jxnTypeI = jxnType + isIntergenome)]
+    d <- d[, .(y = .N), keyby = .(
+        x = offset, 
+        jxn_type = jxn_type, 
+        is_intergenomic = is_intergenomic,
+        jxnTypeI = hf3_junctions$bitsToIndex[jxn_type] + is_intergenomic)
+    ]
     dd <- d[, .(y = sum(y)), keyby = .(x)]
     xlim <- c(
         settings$get("Offset_Plot","Min_Offset"),
         settings$get("Offset_Plot","Max_Offset")
     )
-
     # initialize plot
     ylim <- c(0, max(dd$y, na.rm = TRUE) * 1.05)
     layout <- plot$initializePng() %>% plot$initializeFrame(
@@ -445,10 +429,11 @@ createOffsetPlot <- function(settings, plot, v) {
             for(jnxTypeI in jxnTypeIs){
                 ytop <- ybottom + d[i][[as.character(jnxTypeI)]]
                 if(ytop == ybottom) next
+                color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[jnxTypeI]]]
                 lines(# ensure at least a line is visible in case rectangle disappears in wide plot
                     x = c(d$x[i], d$x[i]),
                     y = c(ybottom, ytop),
-                    col = af_junctions$getIndexColor(jnxTypeI),
+                    col = color,
                     lwd = 1.5
                 )
                 rect(
@@ -456,7 +441,7 @@ createOffsetPlot <- function(settings, plot, v) {
                     xright  = d$x[i] + 0.5,
                     ybottom = ybottom,
                     ytop    = ytop,
-                    col     = af_junctions$getIndexColor(jnxTypeI),
+                    col     = color,
                     border  = NA
                 )
                 ybottom <- ytop
@@ -479,9 +464,10 @@ createOffsetPlot <- function(settings, plot, v) {
         d <- colSums(d[, .SD, .SDcols = jxnTypeIs_])
         inc <- ylim[2] / 10
         for(j in 1:length(jxnTypeIs_)) {
+            color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[jxnTypeIs[j]]]]
             mtext(
                 text = paste(
-                    af_junctions$getJxnTypeLabels(jxnTypeIs[j]),
+                    hf3_junctions$indexToTypeLabel[jxnTypeIs[j]],
                     sprintf("%5d", d[jxnTypeIs_[j]]),
                     sep = " "
                 ),
@@ -490,7 +476,7 @@ createOffsetPlot <- function(settings, plot, v) {
                 line = 0.5,
                 las  = 1,
                 adj  = 0,
-                col  = af_junctions$getIndexColor(jxnTypeIs[j]),
+                col  = color,
                 cex  = 0.8,
                 family = "monospace"
             )
@@ -535,10 +521,10 @@ offsetPlot <- function(id, xlim, lwd, v){
         minX <- min(coord$x1, coord$x2)
         maxX <- max(coord$x1, coord$x2)
         jxnI <- if(plot$plot$brush()$keys$shift) junctions_filtered()[
-            !(alnOffset %between% c(minX, maxX)),
+            !(offset %between% c(minX, maxX)),
             jxnI
         ] else junctions_filtered()[
-            alnOffset %between% c(minX, maxX),
+            offset %between% c(minX, maxX),
             jxnI
         ]
         offsetPlotSelection(list(x1 = minX, x2 = maxX))
@@ -585,15 +571,14 @@ junctionsTable <- bufferedTableServer(
 #----------------------------------------------------------------------
 junctionsTableData <- reactive({
     jxns <- junctions_selected_both()
-    x <- jxns[, .SD, .SDcols = names(af_bgzColumns_display[[jxnFileType]])]
-    setnames(x, af_bgzColumns_display[[jxnFileType]])
+    x <- jxns[, .SD, .SDcols = names(hf3_bgzColumns_display[[jxnFileType]])]
+    setnames(x, hf3_bgzColumns_display[[jxnFileType]])
     x[, ":="(
-        chrom1 = af_getChromNames(jxns$sourceId, chrom1),
-        chrom2 = af_getChromNames(jxns$sourceId, chrom2),
-        strand1 = ifelse(strand1 == 0, "+", "-"),
-        strand2 = ifelse(strand2 == 0, "+", "-"),
-        jxnType = af_junctions$getJxnTypeLabels(jxnType),
-        expected = ifelse(expected == 0, TRUE, FALSE)
+        chrom1   = hf3_getChromNames(jxns$sourceId, chrom1),
+        chrom2   = hf3_getChromNames(jxns$sourceId, chrom2),
+        strand1  = ifelse(strand1 == 0, "+", "-"),
+        strand2  = ifelse(strand2 == 0, "+", "-"),
+        jxnType  = hf3_junctions$getTypeLabelsFromBits(jxnType, interGen)
     )]
     stopSpinner(session)
     x
@@ -611,12 +596,7 @@ selectedJunction <- reactive({
     i <- junctionsTable$rows_selected()
     jxn <- if(isTruthy(i)) junctions_selected_both()[i] else NULL
     updateNumericInput(session, "currReadI1", value = 1)
-    fjxn <- af_getFullJunction(jxn) # get full junction with SEQ, QUAL and CIGAR
-    jxn[, ":="(
-        quals  = fjxn$quals,
-        seqs   = fjxn$seqs,
-        cigars = fjxn$cigars
-    )]
+    jxn
 })
 
 #----------------------------------------------------------------------
@@ -634,83 +614,85 @@ junctionExpandData <- reactive({
     jxn <- selectedJunction()
     req(jxn)
     summary <- jxn[, .(
-        sample_ = paste0("SV in ", sample),
+        sample_ = paste0("SV in ", sample_names),
         jxnType_ = paste0(
-            " is a ", commify(svSize), " bp ",
-            if(isValidated) "validated " else "",
-            if(isExpected) "expected " else "unexpected ",
-            if(isIntergenome) " inter-genomic " else "",
-            af_junctions$getJxnTypeNames(jxnType)
+            " is a ", commify(sv_size), " bp ",
+            if(is_validated) "validated " else "",
+            if(is_intergenomic) " inter-genomic " else "",
+            hf3_junctions$getTypesFromBits(jxn_type, is_intergenomic)
         ),
         nodes_ = paste0(
             " from ",
-            paste0(af_getChromNames(sourceId, chromIndex1_1), ":", commify(refPos1_1), if(strandIndex0_1 == TOP_STRAND0) "+" else "-" ),
+            paste0(hf3_getChromNames(sourceId, chrom_index1_1), ":", commify(ref_pos1_1), if(strand_index0_1 == TOP_STRAND0) "+" else "-" ),
             " to ",
-            paste0(af_getChromNames(sourceId, chromIndex1_2), ":", commify(refPos1_2), if(strandIndex0_2 == TOP_STRAND0) "+" else "-" )
+            paste0(hf3_getChromNames(sourceId, chrom_index1_2), ":", commify(ref_pos1_2), if(strand_index0_2 == TOP_STRAND0) "+" else "-" )
         ),
         observed_ = paste0(
-            " observed ", nObserved, " times out of coverage ",
-            bkptCoverage_1, "/", bkptCoverage_2
+            " observed ", n_instances_dedup, " times out of coverage ",
+            bkpt_coverage_1, "/", bkpt_coverage_2
         ), 
         jxn_ = paste0(
             " with a ", 
-            if(alnOffset < 0) {
-                paste0(-alnOffset, " bp junction microhomology = ", jxnBases)
-            } else if (alnOffset > 0) {
-                paste0(alnOffset, " bp junction insertion = ", jxnBases)
+            if(offset < 0) {
+                paste0(-offset, " bp junction microhomology = ", jxn_seq)
+            } else if (offset > 0) {
+                paste0(offset, " bp junction insertion = ", jxn_seq)
             } else {
                 "blunt junction"
             }
         ),
         target1_ = paste0(
             " where ",
-            " node 1 is ", commify(targetDist1), " bp from center of target ", target1, " in gene ", genes1
+            " node 1 is ", commify(target_dist_1), " bp from center of target ", target_1, " in gene ", genes_1
         ),
         target2_ = paste0(
             " and ", 
-            " node 2 is ", commify(targetDist2), " bp from center of target ", target2, " in gene ", genes2
+            " node 2 is ", commify(target_dist_2), " bp from center of target ", target_2, " in gene ", genes_2
         ),
         quality_ = paste0(
-            " with min flanking MAPQ = ",  mapQ, 
-            " and max base divergence = ", deTag
+            " with min flanking MAPQ = ",  max_min_mapq, 
+            " and max base divergence = ", min_max_divergence
         ),
-        qName = strsplit(qNames, ",")[[1]], # one or more source reads per output row
-        seq   = strsplit(seqs,   ",")[[1]], # seq and qual match read aln1, i.e., the first of the two conjoined cigar strings
-        qual  = strsplit(quals,  ",")[[1]],
-        cigars = strsplit(cigars, ",")[[1]], # alignments were not flipped upstream, always come to us in original read order
-        orientation = as.integer(strsplit(orientations, ",")[[1]]), # whether the alignments were/should be flipped for this read to match the junction canonical node order
-        strands = .(c(strandIndex0_1, strandIndex0_2)), # junction strands _after_ junction was flipped to canonical order
-        alnOffset = alnOffset,
-        jxnColor = ifelse(isIntergenome, CONSTANTS$plotlyColors$purple, af_junctions$getIndexColor(jxnType))
+        qName = strsplit(sub(",", "", q_names), ",")[[1]], # one or more source reads per output row
+        aln5I0 = as.integer(strsplit(sub(",", "", aln5_is), ",")[[1]]), # alignment index (0-based) of 5' side of junction within read
+        orientation = as.integer(strsplit(sub(",", "", jxn_orientations), ",")[[1]]), # whether the alignments were/should be flipped for this read to match the junction canonical node order
+        strands = .(c(strand_index0_1, strand_index0_2)), # junction strands _after_ junction was flipped to canonical order
+        offset = offset,
+        jxnColor = hf3_junctions$getColorsFromBits(jxn_type, is_intergenomic)
     )]
     stopSpinner(session)
     summary
 })
 selectedReadPath <- reactive({
     jxn <- selectedJunction()
-    # rps <- readPaths()
-    qName_ <- junctionExpandData()$qName[currReadI1()]
-    # rps[sourceId == jxn$sourceId & qName == qName_]
-    af_getReadPath(jxn$sourceId, qName_)
+    qName <- junctionExpandData()$qName[currReadI1()]
+    hf3_getReadPath(jxn$sourceId, qName)
 })
 readPathExpandData <- reactive({
     rp <- selectedReadPath()
-    x <- rp[, .(
-        qName       = qName,
-        qLen        = qLen,
-        chroms      = .(strsplit(chroms, ",")[[1]]),
-        pos1s       = .(as.integer(strsplit(pos1s, ",")[[1]])),
-        strand0s    = .(as.integer(strsplit(strand0s, ",")[[1]])),
-        blockNs     = .(as.integer(strsplit(blockNs, ",")[[1]])),
-        nRefBases   = .(as.integer(strsplit(nRefBases, ",")[[1]])),
-        qryStart0s  = .(as.integer(strsplit(qryStart0s, ",")[[1]])),
-        qryEnd1s    = .(as.integer(strsplit(qryEnd1s, ",")[[1]])),
-        cigars      = .(strsplit(cigars, ",")[[1]]),
-        qual        = .(sapply(strsplit(qual, "")[[1]], function(x) as.integer(charToRaw(x)) - 33L))
+    if(nrow(rp) == 0){
+        stopSpinner(session)
+        req(FALSE)
+    }
+    rp[, .(
+        qName      = qname,
+        qLen       = read_len,
+        chroms     = .(strsplit(chroms, ",")[[1]]),
+        pos1s      = .(as.integer(strsplit(pos1s, ",")[[1]])),
+        strand0s   = .(as.integer(strsplit(strand0s, ",")[[1]])),
+        nRefBases  = .(as.integer(strsplit(n_ref_bases, ",")[[1]])),
+        qryStart0s = .(as.integer(strsplit(qry_start0s, ",")[[1]])),
+        qryEnd1s   = .(as.integer(strsplit(qry_end1s, ",")[[1]])),
+        blockNs    = .(as.integer(strsplit(block_ns, ",")[[1]])),
+        mapqs      = .(sapply(strsplit(mapqs, ",")[[1]], function(x) as.integer(x))),
+        divergences= .(sapply(strsplit(divergences, ",")[[1]], function(x) as.numeric(x))),
+        alnFailureFlags = .(as.integer(strsplit(aln_failure_flags, ",")[[1]])),
+        jxnFailureFlags = .(as.integer(strsplit(jxn_failure_flags, ",")[[1]])),
+        cigars     = .(strsplit(cigars, ",")[[1]]),
+        seqStrand0 = seq_strand0,
+        seq        = seq,
+        qual       = .(sapply(strsplit(qual, "")[[1]], function(x) as.integer(charToRaw(x)) - 33L))
     )]
-    stopSpinner(session)
-    req(nrow(x) > 0)
-    x
 })
 output$nExpansionReads <- renderText({
     paste("out of ", nrow(junctionExpandData()), "reads")
@@ -730,24 +712,12 @@ observeEvent(input$nextReadI1, {
     req(i1 < nrow(junctionExpandData()))
     updateNumericInput(session, "currReadI1", value = i1 + 1)
 })
-# parseExtendeQName <- function(qName){
-#     qName <- strsplit(qName, ":")[[1]]
-#     n <- length(qName) - N_QNAME_EXTENSIONS
-#     extensions <- qName[(n+1):length(qName)]
-#     qName <- qName[1:n]
-#     list(
-#         qName = qName,
-#         extensions = extensions
-#     )
-#     #AV241004:Aviti2_Run_073_12_19_24:2414452353:2:21201:3910:1360 - 0:0:0:0:0:0:0:1
-# }
-output$expandedReadSummary <- renderText({
+output$expandedReadQname <- renderText({
+    i <- currReadI1()
+    req(i)
     junctionExpandData()$qName[currReadI1()]
-    # qName <- junctionExpandData()$qName[currReadI1()]
-    # x <- parseExtendeQName(qName)
-    # paste(paste(x$qName, collapse = ":"), " - ", paste(x$extensions, collapse = ":"))
 })
-parseCigar <- function(cigar, strand0_jxn, wasFlipped, alnI0 = NULL) {
+parseCigar <- function(cigar, strand0, alnI0 = NULL) {
     ops <- data.table(
         n  = as.numeric(unlist(regmatches(cigar, gregexpr('\\d+', cigar)))),
         op =            unlist(regmatches(cigar, gregexpr('\\D',  cigar)))
@@ -755,15 +725,13 @@ parseCigar <- function(cigar, strand0_jxn, wasFlipped, alnI0 = NULL) {
     n_read_bases_total <- ops[op %in% c("S", "M", "I"), sum(n)]
     n_read_bases_aln   <- ops[op %in% c("M", "I"),      sum(n)]
     n_ref_bases_aln    <- ops[op %in% c("M", "D"),      sum(n)]
-    strand0_read <- if(wasFlipped == INT_TRUE) 1 - strand0_jxn else strand0_jxn
-    if(strand0_read == BOTTOM_STRAND0) ops <- ops[.N:1]
+    if(strand0 == BOTTOM_STRAND0) ops <- ops[.N:1]
     list(
         n_read_bases_total = n_read_bases_total,
         n_read_bases_aln   = n_read_bases_aln,
         n_ref_bases_aln    = n_ref_bases_aln,
         ops = ops,
-        strand0_jxn  = strand0_jxn,
-        strand0_read = strand0_read,
+        strand0  = strand0,
         breakpointV = if(is.null(alnI0)) NULL else if(alnI0 == ALNI0_1){
             n_read_bases_aln + (if(ops[1, op == "S"]) ops[1, n] else 0) + 0.5
         } else {
@@ -772,38 +740,34 @@ parseCigar <- function(cigar, strand0_jxn, wasFlipped, alnI0 = NULL) {
     )
 }
 cigars_jxn <- reactive({
-    jxn <- junctionExpandData()
-    readI1 <- currReadI1()
-    cigars <- strsplit(jxn[readI1, cigars], "::")[[1]] # aln1 and aln2 in read order
-    wasFlipped <- jxn[readI1, orientation]
-    cigars <- lapply(ALNI0_1:ALNI0_2, function(alnI0) {
-        strandI0 <- if(wasFlipped == INT_TRUE) 1 - alnI0 else alnI0
-        parseCigar( 
-            cigars[alnI0 + 1], 
-            jxn[readI1, strands[[1]][strandI0 + 1]],
-            wasFlipped,
-            alnI0
+    jxn <- junctionExpandData()[currReadI1()]
+    rp <- readPathExpandData()
+    lapply(jxn$aln5I0 + 0:1, function(alnI0) {
+        parseCigar(
+            rp$cigars[[1]][alnI0 + 1], 
+            rp$strand0s[[1]][alnI0 + 1],
+            alnI0 - jxn$aln5I0
         )
     })
-    cigars
 })
 cigars_rp <- reactive({
     rp <- readPathExpandData()
     lapply(1:length(rp$cigars[[1]]), function(alnI1) {
         parseCigar(
             rp$cigars[[1]][alnI1], 
-            rp$strand0s[[1]][alnI1],
-            FALSE
+            rp$strand0s[[1]][alnI1]
         )
     })
 })
 
 output$readQualPlot <- renderPlot({
     rp <- readPathExpandData()
+    qual <- rp$qual[[1]]
+    if (rp$seqStrand0 == BOTTOM_STRAND0) qual <- rev(qual)
     par(mar = c(0.1, 4.1, 0.1, 0.1))
     plot(
         x = 1:rp$qLen,
-        y = pmin(rp$qual[[1]], 50), 
+        y = jitter(qual, a = 2), 
         xlim = c(0.5, rp$qLen + 0.5),
         ylim = c(0, 50),
         type = "p", 
@@ -837,12 +801,12 @@ output$refAlnPlot <- renderPlot({
     )
     abline(v = c(rp$qryStart0s[[1]] + 1 - 0.5, rp$qryEnd1s[[1]] + 0.5), col = "black")
     for(alnI1 in ALNI1_1:ALNI1_2){
-        abline(v = cigars_jxn[[alnI1]]$breakpointV, col = jxn$jxnColor)
+        abline(v = cigars_jxn[[alnI1]]$breakpointV, col = jxn$jxnColor, lwd = 2)
     }
     for (alnI1 in 1:length(cigars_rp)){
         cg <- cigars_rp[[alnI1]]
         readOffset0 <- 0
-        if(cg$strand0_jxn == TOP_STRAND0) {
+        if(cg$strand0 == TOP_STRAND0) {
             refOffset0 <- 0
             refMultiplier <- 1
         } else {
@@ -893,9 +857,10 @@ rc <- function(SEQ){
 }
 output$expandedSequences <- renderUI({
     summary <- junctionExpandData()[currReadI1()] 
+    rp <- readPathExpandData()
     cigars <- cigars_jxn()
     seq <- strsplit(
-        if(cigars[[ALNI1_1]]$strand0_read == BOTTOM_STRAND0) rc(summary$seq) else summary$seq,
+        if(rp$seqStrand0 == BOTTOM_STRAND0) rc(rp$seq) else rp$seq,
         ""
     )[[1]]
     nBases <- length(seq)
@@ -915,10 +880,10 @@ output$expandedSequences <- renderUI({
         tagList(
             if(nClip5_1 > 0) subSeq(seq[1:nClip5_1], "5' clip") else NULL,
             subSeq(seq[nClip5_1 + (1:nBases_1)], "alignment 1"),
-            if(summary$alnOffset < 0) {
-                subSeq(seq[nClip5_1 + ((nBases_1 + summary$alnOffset + 1):nBases_1)], "junction microhomology")
-            } else if(summary$alnOffset > 0) {
-                subSeq(seq[nClip5_1 + nBases_1 + 1:summary$alnOffset], "junction insertion")
+            if(summary$offset < 0) {
+                subSeq(seq[nClip5_1 + ((nBases_1 + summary$offset + 1):nBases_1)], "junction microhomology")
+            } else if(summary$offset > 0) {
+                subSeq(seq[nClip5_1 + nBases_1 + 1:summary$offset], "junction insertion")
             } else NULL,
             subSeq(seq[nClip5_2 + (1:cigars[[ALNI1_2]]$n_read_bases_aln)], "alignment 2"),
             if(nClip3 > 0) subSeq(seq[(nBases - nClip3 + 1):nBases], "3' clip") else NULL,
@@ -933,14 +898,14 @@ chromExpandData <- reactive({
     req(jxn)
     summary <- jxn[, .(
         sourceId      = sourceId,
-        chromIndex1_1 = chromIndex1_1,
-        refPos1_1     = refPos1_1,
-        chromIndex1_2 = chromIndex1_2,
-        refPos1_2     = refPos1_2,
-        chrom_1       = af_getChromNames(sourceId, chromIndex1_1),
-        chrom_2       = af_getChromNames(sourceId, chromIndex1_2),
-        chromSize_1   = af_getChromSize(sourceId, chromIndex1_1),
-        chromSize_2   = af_getChromSize(sourceId, chromIndex1_2)
+        chromIndex1_1 = chrom_index1_1,
+        refPos1_1     = ref_pos1_1,
+        chromIndex1_2 = chrom_index1_2,
+        refPos1_2     = ref_pos1_2,
+        chrom_1       = hf3_getChromNames(sourceId, chrom_index1_1),
+        chrom_2       = hf3_getChromNames(sourceId, chrom_index1_2),
+        chromSize_1   = hf3_getChromSize( sourceId, chrom_index1_1),
+        chromSize_2   = hf3_getChromSize( sourceId, chrom_index1_2)
     )]
     stopSpinner(session)
     summary
@@ -954,10 +919,9 @@ createChromPlot <- function(jxn, chromIndex1, refPos1, chrom_, chromSize){
 
     # collect all filtered junction breakpoints on the chromosome
     jxns <- junctions_filtered()
-    # jxns <- junctions_selected_both()
     bkpts <- data.table(bin = floor(c(
-        jxns[chromIndex1_1 == chromIndex1, refPos1_1],
-        jxns[chromIndex1_2 == chromIndex1, refPos1_2]
+        jxns[chrom_index1_1 == chromIndex1, ref_pos1_1],
+        jxns[chrom_index1_2 == chromIndex1, ref_pos1_2]
     ) / chromBinSize) * chromBinSize + chromBinSize / 2)
     bkpts <- bkpts[, .N, keyby = .(bin)]
 
@@ -973,7 +937,7 @@ createChromPlot <- function(jxn, chromIndex1, refPos1, chrom_, chromSize){
     )
 
     # denote exclusion regions as grey areas
-    excls <- af_getExcludedRegions(jxn$sourceId)[chrom == chrom_]
+    excls <- hf3_getExcludedRegions(jxn$sourceId)[chrom == chrom_]
     rect(
         xleft   = excls$start0 + 1,
         xright  = excls$end1,
@@ -985,7 +949,7 @@ createChromPlot <- function(jxn, chromIndex1, refPos1, chrom_, chromSize){
 
     # highlight this junction breakpoint
     jxn <- junctionExpandData()[currReadI1()]
-    abline(v = refPos1, col = jxn$jxnColor, lwd = 1.5)
+    abline(v = refPos1, col = jxn$jxnColor, lwd = 2)
 
     # draw the chrom bin points
     points(
@@ -1034,6 +998,7 @@ list(
         offsetPlotNarrowSettings = offsetPlotNarrow$settings$all_()
     ) }),
     settingsObject = settings,
+    junctions_filtered = junctions_filtered,
     # isReady = reactive({ getStepReadiness(options$source, ...) }),
     NULL
 )

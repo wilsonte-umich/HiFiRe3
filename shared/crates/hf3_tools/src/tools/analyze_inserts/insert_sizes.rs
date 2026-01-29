@@ -190,10 +190,11 @@ impl InsertSizer {
         if !passed_1n_2n { insert_size = -insert_size; }
 
         // assess junction stem lengths, alignment-level properties
+        let qlen = alns[0].seq.len() as u32;
         let query_start0 = alns[0].get_query_start0() as i32;
-        let query_end1   = alns[n_alns - 1].get_query_end1() as i32; // may not be the end of the insert
+        let query_end1   = alns[n_alns - 1].get_query_end1(qlen) as i32; // may not be the end of the insert
         let stem_lengths: Vec<StemLengths> = alns.iter().map(|aln| {
-            let mut stem5 = aln.get_query_end1() as i32 - query_start0;
+            let mut stem5 = aln.get_query_end1(qlen) as i32 - query_start0;
             let passed_stem5 = !self.is_size_selected || stem5 <= self.min_allowed_size;
             if !passed_stem5 { stem5 = -stem5; }
             let stem3 = if is_end_to_end_read {
