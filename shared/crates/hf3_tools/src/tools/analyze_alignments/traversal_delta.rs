@@ -41,15 +41,15 @@ pub_key_constants!{
 /// Traversal structure for assessing low quality internal spans
 /// with likely erroneous alignments.
 pub struct Traversal {
-    delta: usize,
+    min_traversal_delta: u32,
 }
 impl Traversal {
 
     /// Initialize traversal delta checks.
     pub fn new(w: &mut Workflow) -> Traversal {
-        w.cfg.set_usize_env(&[MIN_TRAVERSAL_DELTA]);
+        w.cfg.set_u32_env(&[MIN_TRAVERSAL_DELTA]);
         Traversal {
-            delta: *w.cfg.get_usize(MIN_TRAVERSAL_DELTA),
+            min_traversal_delta: *w.cfg.get_u32(MIN_TRAVERSAL_DELTA),
         }
     }
 
@@ -68,11 +68,11 @@ impl Traversal {
         if is_reverse5 != is_reverse3 { return false; } // inversion, always a passing traversal delta
         let ref_pos1_aln5_end3 = if is_reverse5 { aln5.pos1 } else { aln5.get_end1() }; // i.e., the inner node positions flanking the junction(s)
         let ref_pos1_aln3_end5 = if is_reverse3 { aln3.get_end1() } else { aln3.pos1 }; 
-        let qry_pos1_aln5_end3 = aln5.get_query_end1();
+        let qry_pos1_aln5_end3 = aln5.get_query_end1(aln5.seq.len() as u32);
         let qry_pos1_aln3_end5 = aln3.get_query_start0() + 1;
         let ref_traversal = if is_reverse5 { ref_pos1_aln5_end3 - ref_pos1_aln3_end5 } 
                                              else { ref_pos1_aln3_end5 - ref_pos1_aln5_end3 };
         let qry_traversal = qry_pos1_aln3_end5 - qry_pos1_aln5_end3;
-        (ref_traversal).abs_diff(qry_traversal) < self.delta
+        (ref_traversal).abs_diff(qry_traversal) < self.min_traversal_delta
     }
 }

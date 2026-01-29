@@ -1,3 +1,3 @@
 
 // modules
-pub mod hf_tags;
+pub mod hf3_tags;

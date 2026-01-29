@@ -1,2 +1,2 @@
 
-Visualize blunt RE fragment size distributions for a reference genome.
+Visualize RE fragment size distributions for a reference genome.

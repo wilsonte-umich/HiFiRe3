@@ -14,7 +14,7 @@
 use mdi::pub_key_constants;
 use mdi::workflow::Workflow;
 use genomex::sam::SamRecord;
-use crate::formats::hf_tags::ALN_FAILURE_FLAG;
+use crate::formats::hf3_tags::ALN_FAILURE_FLAG;
 
 // constants
 pub_key_constants!{
@@ -48,9 +48,9 @@ pub enum AlnFailureFlag {
 /// Traversal structure for assessing low quality internal spans
 /// with likely erroneous alignments.
 pub struct AlnFailure {
-    min_mapq: u8,
-    max_divergence: f64,
-    min_flank_len: usize,
+    min_mapq:          u8,
+    max_divergence:    f64,
+    min_flank_len:     u32,
     min_avg_base_qual: f64,
     has_base_accuracy: bool,
 }
@@ -60,7 +60,7 @@ impl AlnFailure {
     pub fn new(w: &mut Workflow) -> AlnFailure {
         w.cfg.set_u8_env(&[MIN_MAPQ]);
         w.cfg.set_f64_env(&[MAX_DIVERGENCE, MIN_AVG_BASE_QUAL]);
-        w.cfg.set_usize_env(&[MIN_FLANK_LEN]);
+        w.cfg.set_u32_env(&[MIN_FLANK_LEN]);
         w.ctrs.add_keyed_counters(&[
             (N_ALNS_BY_REASON, "alignments failure counts by reason")
         ]);
@@ -70,7 +70,7 @@ impl AlnFailure {
         AlnFailure{
             min_mapq:          *w.cfg.get_u8(MIN_MAPQ),
             max_divergence:    *w.cfg.get_f64(MAX_DIVERGENCE),
-            min_flank_len:     *w.cfg.get_usize(MIN_FLANK_LEN),
+            min_flank_len:     *w.cfg.get_u32(MIN_FLANK_LEN),
             min_avg_base_qual: *w.cfg.get_f64(MIN_AVG_BASE_QUAL),
             has_base_accuracy: *w.cfg.get_bool(super::HAS_BASE_ACCURACY),
         }

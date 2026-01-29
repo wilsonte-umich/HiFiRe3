@@ -43,34 +43,35 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
 
     # get RE sites in window
     startSpinner(session, message = "building SVs reads.")
-    sites <- af_getSites_padded(sourceId, coord)
+    sites <- hf3_getSites_padded(sourceId, coord)
     if(nrow(sites) == 0) return(trackInfo(track, coord, layout, "no RE sites in window"))
-    # if(nrow(sites) == 0) sites <- data.table(sitePos1 = integer())
 
     # get alignments in window
     startSpinner(session, message = "building SVs reads..")
     tryCatch({ if(coord$width <= maxWidth_alignments) {
-        alignments <- af_getAlignments(sourceId, coord)
+        alignments <- hf3_getAlignments(sourceId, coord)
         if(nrow(alignments) == 0) return(trackInfo(track, coord, layout, "no alignments to plot"))
-
-# TODO: add support for plotting non-RE libraries
 
         # stack the boxes
         # top strand reads
         startSpinner(session, message = "building SVs reads...")
         siteY_F <- sites[, .(refPos1 = sitePos1, ybottom = 0)]
         blocks_F <- alignments[
-            strandIndex0_5 == af_strands$top,
-            .(
-                jxnType,
-                nObserved,
-                xleft      = refPos1_5, # matching a RE site, except for distal SV alignments on top strand
-                xright_aln = refPos1_2,
-                xright_prj = ifelse(refPos1_3 > 0 & refPos1_2 != refPos1_3, refPos1_3, NA)
-            )
-        ][, ":="(
-            xMax = pmax(xright_aln, xright_prj, na.rm = TRUE)
-        )][
+            strand_index0 == hf3_strands$top,
+            {
+                is_site_overrun <- ref_proj3 > 0 & ref_pos3 - ref_proj3 >= 1 & ref_pos3 - ref_proj3 <= 5
+                xright_aln <- ifelse(is_site_overrun, ref_proj3, ref_pos3)
+                xright_prj <- ifelse(ref_proj3 > 0 & xright_aln < ref_proj3, ref_proj3, NA)
+                .(
+                    jxn_types  = jxn_types,
+                    n_observed = n_observed,
+                    xleft      = ref_pos5, # matching a RE site, except for distal SV alignments on top strand
+                    xright_aln = xright_aln,
+                    xright_prj = xright_prj,
+                    xMax       = pmax(xright_aln, xright_prj, na.rm = TRUE)
+                )
+            }
+        ][
             order(xleft, -xMax, -xright_aln)
         ]
         for(i in seq_len(nrow(blocks_F))){
@@ -78,24 +79,27 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
             siteLeft <- if(block$xleft %in% siteY_F$refPos1) block$xleft
                         else siteY_F$refPos1[max(which(siteY_F$refPos1 <= block$xleft))]
             blocks_F[i, ybottom := siteY_F[refPos1 == siteLeft, ybottom]]
-            siteY_F[refPos1 %between% c(siteLeft, block$xMax), ybottom := ybottom + block$nObserved]
+            siteY_F[refPos1 %between% c(siteLeft, block$xMax), ybottom := ybottom + block$n_observed]
         }
 
         # bottom strand reads
         siteY_R <- sites[, .(refPos1 = sitePos1 - 1, ytop = 0)]
         startSpinner(session, message = "building SVs reads....")
         blocks_R <- alignments[
-            strandIndex0_5 == af_strands$bottom,
-            .(
-                jxnType,
-                nObserved,
-                xright    = refPos1_5,
-                xleft_aln = refPos1_2,
-                xleft_prj = ifelse(refPos1_3 > 0 & refPos1_2 != refPos1_3, refPos1_3, NA)
-            )
-        ][, ":="(
-            xMin = pmin(xleft_aln, xleft_prj, na.rm = TRUE)
-        )][
+            strand_index0 == hf3_strands$bottom, {
+                is_site_overrun <- ref_proj3 > 0 & ref_proj3 - ref_pos3 >= 1 & ref_proj3 - ref_pos3 <= 5
+                xleft_aln <- ifelse(is_site_overrun, ref_proj3, ref_pos3)
+                xleft_prj <- ifelse(ref_proj3 > 0 & xleft_aln > ref_proj3, ref_proj3, NA)
+                .(
+                    jxn_types  = jxn_types,
+                    n_observed = n_observed,
+                    xright    = ref_pos5,
+                    xleft_aln = ref_pos3,
+                    xleft_prj = xleft_prj,
+                    xMin      = pmin(xleft_aln, xleft_prj, na.rm = TRUE)
+                )
+            }
+        ][
             order(-xright, xMin, xleft_aln)
         ]
         for(i in seq_len(nrow(blocks_R))){
@@ -103,7 +107,7 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
             siteRight <- if(block$xright %in% siteY_R$refPos1) block$xright
                         else siteY_R$refPos1[max(which(siteY_R$refPos1 >= block$xright))]
             blocks_R[i, ytop := siteY_R[refPos1 == siteRight, ytop]]
-            siteY_R[refPos1 %between% c(block$xMin, siteRight), ytop := ytop - block$nObserved]
+            siteY_R[refPos1 %between% c(block$xMin, siteRight), ytop := ytop - block$n_observed]
         }
         ylim <- c(siteY_R[, min(ytop)], siteY_F[, max(ybottom)])
         yaxt <- NULL
@@ -134,32 +138,32 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
                 xleft   = blocks_F$xleft, 
                 ybottom = blocks_F$ybottom, 
                 xright  = blocks_F$xright_prj, 
-                ytop    = blocks_F$ybottom + blocks_F$nObserved, 
-                col     = af_alignments$typeToColor$projection, 
+                ytop    = blocks_F$ybottom + blocks_F$n_observed, 
+                col     = hf3_alignments$typeToColor$projection, 
                 border  = NA
             )
             rect(
                 xleft   = blocks_F$xleft, 
                 ybottom = blocks_F$ybottom, 
                 xright  = blocks_F$xright_aln, 
-                ytop    = blocks_F$ybottom + blocks_F$nObserved, 
-                col     = af_junctions$getIndexColor(blocks_F$jxnType), 
+                ytop    = blocks_F$ybottom + blocks_F$n_observed, 
+                col     = hf3_junctions$getColorsFromBits_no_intergenomic(blocks_F$jxn_types), 
                 border  = NA
             )
             rect(
                 xleft   = blocks_R$xleft_prj, 
-                ybottom = blocks_R$ytop - blocks_R$nObserved, 
+                ybottom = blocks_R$ytop - blocks_R$n_observed, 
                 xright  = blocks_R$xright, 
                 ytop    = blocks_R$ytop, 
-                col     = af_alignments$typeToColor$projection, 
+                col     = hf3_alignments$typeToColor$projection, 
                 border  = NA
             )
             rect(
                 xleft   = blocks_R$xleft_aln, 
-                ybottom = blocks_R$ytop - blocks_R$nObserved, 
+                ybottom = blocks_R$ytop - blocks_R$n_observed, 
                 xright  = blocks_R$xright, 
                 ytop    = blocks_R$ytop,
-                col     = af_junctions$getIndexColor(blocks_R$jxnType), 
+                col     = hf3_junctions$getColorsFromBits_no_intergenomic(blocks_R$jxn_types), 
                 border  = NA
             )            
         }
@@ -171,7 +175,6 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
                 lines(
                     rep(sites[i, sitePos1 - 0.5], 2), 
                     ylim, 
-                    # col = af_haplotypes$getHaplotypeColor(sites[i, haplotypes]),
                     lwd = siteLineWidth
                 )
             }

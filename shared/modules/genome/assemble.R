@@ -52,9 +52,9 @@ message("parsing restriction fragments")
 frags <- sapply(res$reKey, function(reKey_){
     message(paste("", reKey_, sep = "\t"))
     filePrefix <- paste(env$GENOME, "digest", reKey_, sep = ".")
-    sitesFile <- paste(filePrefix, "txt.gz", sep = ".")
+    sitesFile <- paste(filePrefix, "txt.bgz", sep = ".")
     sitesFile <- file.path(env$GENOME_REMAPS_DIR, sitesFile)
-    rePositions <- fread(sitesFile)
+    rePositions <- fread(cmd = paste("zcat", sitesFile))[, 1:2]
     names(rePositions) <- c("chrom","pos1")
     rePositions[
         !grepl("_.+_", chrom) # for composite genomes, only consider the primary chromosomes (o/w overruns memory)

@@ -17,7 +17,7 @@
 use std::error::Error;
 use mdi::RecordStreamer;
 use genomex::sam::{SamRecord, SamQual};
-use crate::formats::hf_tags::{TRIM_LENGTHS, StageTags};
+use crate::formats::hf3_tags::{TRIM_LENGTHS, StageTags};
 
 // main ONT trim function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {

@@ -22,6 +22,7 @@ export FILTERED_STEM_LENGTHS_FILE=${DATA_FILE_PREFIX}.stem_lengths.filtered.txt
 # SV analysis output
 export SV_READ_PATHS_FILE=${ANALYSIS_PREFIX}.read_paths.txt.bgz # one line per read with a map of all junctions
 export SV_ALIGNMENTS_FILE=${ANALYSIS_PREFIX}.alignments.txt.bgz
+export SV_COVERAGE_FILE=${ANALYSIS_PREFIX}.coverage.bed.bgz
 export SV_UNIQUE_JUNCTIONS_FILE=${ANALYSIS_PREFIX}.unique_junctions.txt.gz
 export SV_JUNCTION_SOURCES_FILE=${ANALYSIS_PREFIX}.junction_sources.txt.gz
 export SV_FINAL_JUNCTIONS_FILE_1=${ANALYSIS_PREFIX}.final_junctions_1.txt.bgz # sorted and indexed on node1

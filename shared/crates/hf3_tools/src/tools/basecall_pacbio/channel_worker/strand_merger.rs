@@ -2,7 +2,7 @@
 //! duplex consensus read.
 
 // dependencies
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use crossbeam::channel::Sender;
 use minimap2::{Aligner as Minimap2, Built, Strand};
 use faimm::IndexedFasta;
@@ -47,7 +47,7 @@ pub struct StrandMerger{
     prev_offset:    usize,
     ident_len:      usize,
     dd_ops:         Vec<(&'static str, String)>,
-    is_fusable_op:  HashMap<&'static str, bool>,
+    is_fusable_op:  FxHashMap<&'static str, bool>,
     outcomes:       u8,
 }
 impl StrandMerger {
@@ -64,7 +64,7 @@ impl StrandMerger {
             prev_offset:  0,
             ident_len:    0,
             dd_ops:       Vec::with_capacity(DD_CAPACITY),
-            is_fusable_op: HashMap::from([
+            is_fusable_op: FxHashMap::from_iter([
                 (DD_CLIP_OP,        true),
                 (DD_IDENTITY_OP,    false),
                 (DD_INSERTION_OP,   true),

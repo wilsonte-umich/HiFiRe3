@@ -36,14 +36,13 @@ rUtilDir <- file.path(env$MODULES_DIR, 'utilities', 'R')
 source(file.path(rUtilDir, 'workflow.R'))
 checkEnvVars(list(
     string = c(
-        'GENOME_SITES_GZ',
+        'GENOME_SITES_BGZ',
         'GENOME',
         'BLUNT_RE_TABLE',
         'ENZYME_NAME',
         'OBSERVED_ENDPOINTS_FILE',
         'PLOT_PREFIX',
-        'APP_ENDPOINTS_FILE',
-        'FILTERING_SITES_FILE'
+        'APP_ENDPOINTS_FILE'
     ),
     integer = c(
         'ACCEPT_ENDPOINT_DISTANCE',
@@ -120,8 +119,8 @@ message("gathering cut site positions from in silico digestion")
 res <- fread(env$BLUNT_RE_TABLE)
 res[, reKey := paste(gsub("\\s", "", enzyme), toupper(cut_site), sep = "_")]
 reKey <- res[enzyme == env$ENZYME_NAME, reKey]
-sitesFile <- env$GENOME_SITES_GZ
-inSilicoPositions <- fread(sitesFile)
+sitesFile <- env$GENOME_SITES_BGZ
+inSilicoPositions <- fread(cmd = paste("zcat", sitesFile))[, 1:2]
 names(inSilicoPositions) <- sitePosCols
 inSilicoPositions[, inSilico := TRUE]
 #=====================================================================================
@@ -357,14 +356,15 @@ allSites[is.na(nObserved), nObserved := 0L]
 allSites[is.na(isFilteringSite), isFilteringSite := inSilico]
 allSites[, observed  := nObserved > 0]
 allSites[, passedCov := nObserved >= env$MIN_RFLP_EVIDENCE]
-print(allSites[
+capture.output(print(allSites[
     !(chrom %in% c("chrY","chrM","chrEBV")), 
     .(
         nSites = .N,
         medianNObs = median(nObserved)
     ), 
     keyby = .(inSilico, observed, passedCov, isFilteringSite)
-])
+]), file = stderr())
+
 #=====================================================================================
 
 #=====================================================================================
@@ -384,12 +384,11 @@ saveRDS(
 # filtering sites as txt.gz for use in various types of downstream code
 fwrite(
     filteringSites, 
-    file = env$FILTERING_SITES_FILE, 
+    file = "", 
     quote = FALSE,
     sep = "\t",
     logical01 = TRUE,
     scipen = 999L,
-    nThread = env$N_CPU,
-    compress = "gzip"
+    nThread = env$N_CPU
 )
 #=====================================================================================

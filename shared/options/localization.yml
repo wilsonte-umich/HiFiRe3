@@ -6,18 +6,18 @@ options:
         type: integer
         required: false
         default: 3
-        description: "locate genome positions matching this many read ends as RFLP sites"
-    skip-rflp-detection: # setting --skip-rflp-detection reverts to in silico sites only unless site-override-dir is provided
+        description: "locate genome positions matching this many read outer endpoints as RFLP sites"
+    skip-rflp-detection: # setting --skip-rflp-detection reverts to in silico sites only unless site-override-file is provided
         order: 2
         short: X
         type: boolean
         required: false
         default: false
-        description: "do not locate non-reference RFLP sites, use in silico sites only"
-    site-override-dir: # user override has highest precedence 
+        description: "do not locate non-reference RFLP sites, use in silico RE sites only"
+    site-override-file: # user override has highest precedence 
         order: 3
         short: o
         type: string
         required: false
         default: NA
-        description: "do not locate RFLP sites, use filtering_sites files from --site-override-dir"
+        description: "do not locate RFLP sites, use RE filtering sites from --site-override-file"

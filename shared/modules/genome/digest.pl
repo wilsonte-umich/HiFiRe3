@@ -62,11 +62,11 @@ my @reIs = 0..$#reSites;
 # initialize the process
 my ($prevLen, $prevCumLength, $chrom, $prevLine) = (0, 0);
 my ($genomeSize, %siteCounts);
+my @files = map { "$GENOME_REMAPS_DIR/$GENOME.digest.$_.txt.bgz" } @reKeys;
 my @fileHs = map {
-    my $file = "$GENOME_REMAPS_DIR/$GENOME.digest.$_.txt.gz";
-    open my $fileH, "|-", "gzip -c > $file" or die "could not open stream: $file\n";
+    open my $fileH, "|-", "bgzip -c > $_" or die "could not open stream: $_\n";
     $fileH;
-} @reKeys;
+} @files;
 
 # handle site finding
 sub findSites {
@@ -81,7 +81,7 @@ sub findSites {
             # the 1-indexed first base AFTER the cleaved phosphodiester bond on the top strand of the genome
             my $sitePos1 = $prevCumLength + $queryPos + $reOffsets[$reI] + 1;
             my $fH = $fileHs[$reI];
-            print $fH join("\t", $chrom, $sitePos1), "\n";
+            print $fH join("\t", $chrom, $sitePos1, 1, 0), "\n"; # chrom, sitePos1, inSilico, nObserved
             $siteCounts{$reKeys[$reI]}++;
         }
     }
@@ -110,6 +110,9 @@ while (my $line = <STDIN>){
 $chrom and $prevLine and findSites("");
 foreach my $fileH(@fileHs){
     close $fileH;
+}
+foreach my $file(@files){
+    system("tabix --sequence 1 --begin 2 --end 2 $file");
 }
 
 # print the final tallies

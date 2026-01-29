@@ -28,14 +28,14 @@ map { require "$perlUtilDir/sequence/$_.pl" } qw(general);
 resetCountFile();
 
 # environment variables
-fillEnvVar(\my $READ_PAIR_TYPE,     'READ_PAIR_TYPE');
-fillEnvVar(\my $READ_LENGTH_TYPE,   'READ_LENGTH_TYPE');
+fillEnvVar(\my $READ_PAIR_TYPE,      'READ_PAIR_TYPE');
+fillEnvVar(\my $READ_LENGTH_TYPE,    'READ_LENGTH_TYPE');
 fillEnvVar(\my $IS_FIXED_READ_LENGTH,'IS_FIXED_READ_LENGTH');
-fillEnvVar(\my $FIXED_READ_LENGTH,  'FIXED_READ_LENGTH');
-fillEnvVar(\my $READ_FILE_TYPE,     'READ_FILE_TYPE');
-fillEnvVar(\my $READ_1_FILES,       'READ_1_FILES');
-fillEnvVar(\my $READ_2_FILES,       'READ_2_FILES');
-fillEnvVar(\my $PLATFORM_MIN_INSERT_SIZE, 'PLATFORM_MIN_INSERT_SIZE');
+fillEnvVar(\my $FIXED_READ_LENGTH,   'FIXED_READ_LENGTH');
+fillEnvVar(\my $READ_FILE_TYPE,      'READ_FILE_TYPE');
+fillEnvVar(\my $READ_1_FILES,        'READ_1_FILES');
+fillEnvVar(\my $READ_2_FILES,        'READ_2_FILES');
+fillEnvVar(\my $PLATFORM_MIN_INSERT_SIZE,     'PLATFORM_MIN_INSERT_SIZE');
 fillEnvVar(\my $UNFILTERED_INSERT_SIZES_FILE, 'UNFILTERED_INSERT_SIZES_FILE');
 $READ_1_FILES =~ s/[\n|\r]/ /g;
 $READ_2_FILES =~ s/[\n|\r]/ /g;
@@ -59,8 +59,11 @@ if($READ_FILE_TYPE eq "unaligned.bam" or $READ_FILE_TYPE eq "bam"){
     } else {
         $keepQnameTags = 1;
         foreach my $ubamFile(split(" ", $READ_1_FILES)){
+            my $modTags    = "ML,MM"; # tags do not need to be present
+            my $ontTags    = "ch,rn,fn,tl";
+            my $pacBioTags = "ff,ec,dd,sk,dt"; # not ip,pw
             open my $inH, "-|", "samtools view $ubamFile | ".
-                                "samtools fastq -T ML,MM,ch,rn,fn,tl,ff,ec,dd,sk,dt -  2>/dev/null" 
+                                "samtools fastq -T $modTags,$ontTags,$pacBioTags -  2>/dev/null" 
                 or throwError("could not open $ubamFile: $!");
             runSingleReads($inH);
             close $inH;

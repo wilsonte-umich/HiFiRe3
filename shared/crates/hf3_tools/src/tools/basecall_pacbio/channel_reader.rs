@@ -6,27 +6,28 @@ mod usable;
 // dependencies
 use std::error::Error;
 use std::path::Path;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::str::from_utf8_unchecked;
 use crossbeam::channel::Sender;
 use rust_htslib::{bam::{Read, Reader, Record as BamRecord}};
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
-use crate::formats::hf_tags::*;
-use super::{BufferedStrand, StrandPair, MergeResult, bam};
+use genomex::bam::tags;
+use crate::formats::hf3_tags::*;
+use super::{BufferedStrand, StrandPair, MergeResult};
 
 /// StrandBuffer structure for caching PacBio strands
 /// while waiting for their matching strand.
 struct StrandBuffer {
     movies: Vec<String>,
-    pub strand_buffer: HashMap<usize, BufferedStrand>,  
+    pub strand_buffer: FxHashMap<usize, BufferedStrand>,  
 }
 impl StrandBuffer {
     /// Create a new, empty StrandBuffer structure.
     pub fn new() -> Self {
         StrandBuffer {
             movies: Vec::new(),
-            strand_buffer: HashMap::new(),
+            strand_buffer: FxHashMap::default(),
         }
     }
     /// Convert a movie name and ZMW hole number into a unique usize strand buffer key.
@@ -47,8 +48,8 @@ impl StrandBuffer {
             ec,
             seq:      strand.seq().as_bytes().iter().map(|&c| c as char).collect(),
             qual:     strand.qual().to_vec(),
-            ip:       bam::get_tag_u8_vec_opt(strand, INTER_PULSE_DURATION),
-            pw:       bam::get_tag_u8_vec_opt(strand, PULSE_WIDTH),
+            ip:       tags::get_tag_u8_vec_opt(strand, INTER_PULSE_DURATION),
+            pw:       tags::get_tag_u8_vec_opt(strand, PULSE_WIDTH),
         });
     }
     /// Attempt to remove a first strand from the buffer for merging to a second strand.
@@ -128,7 +129,7 @@ fn parse_record(
     let (this_usable, this_ff, this_ec) = usable::is_usable(this_strand);
 
     // process the second strand of a matching by-strand read pair
-    // remove the cached data from the HashMap for memory management
+    // remove the cached data from the map for memory management
     if let Some(prev_strand) = strand_buffer.remove(&buffer_key){
         let qname = format!("{}/{}/ccs", parts[0], zmw).into_bytes();
         let ff = prev_strand.ff | this_ff; // read reports both strands' fail flags
@@ -145,8 +146,8 @@ fn parse_record(
                     ec:     this_ec,
                     seq:    this_strand.seq().as_bytes().iter().map(|&c| c as char).collect(),
                     qual:   this_strand.qual().to_vec(),
-                    ip:     bam::get_tag_u8_vec_opt(this_strand, INTER_PULSE_DURATION),
-                    pw:     bam::get_tag_u8_vec_opt(this_strand, PULSE_WIDTH),
+                    ip:     tags::get_tag_u8_vec_opt(this_strand, INTER_PULSE_DURATION),
+                    pw:     tags::get_tag_u8_vec_opt(this_strand, PULSE_WIDTH),
                 },
                 prev: prev_strand,
             })?;

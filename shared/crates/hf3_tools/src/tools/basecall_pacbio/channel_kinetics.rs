@@ -7,7 +7,7 @@ pub mod kinetics;
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use crossbeam::channel::Receiver;
@@ -48,7 +48,7 @@ pub fn collect_kinetics(
     )?;
 
     // remember how many instances have been printed by context type
-    let mut context_counts: HashMap<StrandMetadata, usize> = HashMap::new();
+    let mut context_counts: FxHashMap<StrandMetadata, usize> = FxHashMap::default();
 
     // process kinetics instances as they arrive
     for kinetics_instance in rx_kinetics.iter() {

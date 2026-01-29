@@ -21,16 +21,28 @@ uploadTypes:
         contentFileTypes: # anything not listed will not be available to the app
             chromsFile:
                 required: true
+            targetsBed:
+                required: false
+            genesBed:
+                required: true
+            exclusionsBed:
+                required: true
             filteringSitesBgz:
                 required: false
             filteringSitesTbi:
                 required: false
-            genesBed:
-                required: true
-            targetsBed:
+            svAlignmentsBgz:
                 required: false
-            exclusionsBed:
-                required: true
+            svAlignmentsTbi:
+                required: false
+            svCoverageBgz:
+                required: false
+            svCoverageTbi:
+                required: false
+            svReadPaths:
+                required: false
+            svReadPathsTbi:
+                required: false
             svJunctions1Bgz:
                 required: true
             svJunctions1Tbi:
@@ -39,17 +51,10 @@ uploadTypes:
                 required: true
             svJunctions2Tbi:
                 required: true
-            genomeTally:
-                required: true
-            junctionTally:
-                required: true
-            svAlignmentsBgz:
-                required: false
-            svAlignmentsTbi:
-                required: false
-            # svReadPaths:
-            #     required: false
-
+            # genomeTally:
+            #     required: true
+            # junctionTally:
+            #     required: true
 #----------------------------------------------------------------------
 # labels and definitions for all sequential analysis steps shown in sidebar
 #----------------------------------------------------------------------
