@@ -65,7 +65,7 @@ unless($envVars{SUPPORTED_PLATFORMS} =~ /\|$ENV{SEQUENCING_PLATFORM}\|/){
 
 # set derived environment variables
 $envVars{RUN_PREALIGNMENT_FASTP} = 
-    ($envVars{READ_PAIR_TYPE} eq "paired" or $envVars{TRIM_POLY_X} or $ENV{TRIM_ADAPTERS}) ? 
+    ($envVars{READ_PAIR_TYPE} eq "paired" or $envVars{TRIM_POLY_X} or $envVars{TRIM_ADAPTERS}) ? 
     "TRUE" : 
     "";
 $envVars{FASTP_PAIRED_END_OPTIONS} = 
@@ -77,7 +77,7 @@ $envVars{FASTP_POLY_X_OPTIONS} =
     "--trim_poly_x --poly_x_min_len $envVars{POLY_X_MIN_LEN}" : 
     "";
 $envVars{FASTP_ADAPTER_OPTIONS} = 
-    $ENV{TRIM_ADAPTERS} ? join(" ", 
+    $envVars{TRIM_ADAPTERS} ? join(" ", 
         (
             $envVars{ADAPTER_SEQUENCE} ? 
             "--adapter_sequence $envVars{ADAPTER_SEQUENCE}" : 

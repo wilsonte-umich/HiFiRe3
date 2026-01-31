@@ -40,26 +40,74 @@ exploreJunctionsUI <- function(id, options) {
                 solidHeader = FALSE,
                 status = "primary",
                 collapsible = FALSE,
-                fluidRow(
-                    column(
-                        style = "text-align: right;",
-                        width = 4,
-                        hf3_flagFilterModeUI(ns("alnFlagFilterMode"), "Aln Flag Mode", "any_pass")
+                column(
+                    width = 10,
+                    fluidRow(
+                        column(
+                            style = "text-align: right;",
+                            width = 5,
+                            hf3_flagFilterModeUI(ns("alnFlagPassMode"), "pass", "Aln Flag Mode")
+                        ),
+                        column(
+                            width = 7,
+                            hf3_alnFailureBitsUI(ns("alnFlagPassBits"), TRUE)
+                        )
                     ),
-                    column(
-                        width = 8,
-                        hf3_alnFailureBitsUI(ns("alnFailureBits"))
+                    fluidRow(
+                        column(
+                            style = "text-align: right;",
+                            width = 5,
+                            hf3_flagFilterModeUI(ns("alnFlagFailMode"), "fail")
+                        ),
+                        column(
+                            width = 7,
+                            hf3_alnFailureBitsUI(ns("alnFlagFailBits"))
+                        )
+                    ),
+                    fluidRow(
+                        style = "margin-top: 7px;",
+                        column(
+                            style = "text-align: right;",
+                            width = 5,
+                            hf3_flagFilterModeUI(ns("jxnFlagPassMode"), "pass", "Jxn Flag Mode")
+                        ),
+                        column(
+                            width = 7,
+                            hf3_jxnFailureBitsUI(ns("jxnFlagPassBits"), TRUE)
+                        )
+                    ),
+                    fluidRow(
+                        column(
+                            style = "text-align: right;",
+                            width = 5,
+                            hf3_flagFilterModeUI(ns("jxnFlagFailMode"), "fail")
+                        ),
+                        column(
+                            width = 7,
+                            hf3_jxnFailureBitsUI(ns("jxnFlagFailBits"))
+                        )
                     )
                 ),
-                fluidRow(
-                    column(
-                        style = "text-align: right;",
-                        width = 4,
-                        hf3_flagFilterModeUI(ns("jxnFlagFilterMode"), "Jxn Flag Mode", "any_pass")
+                column(
+                    width = 2,
+                    numericInput(
+                        ns("maxPlottedPoints"), 
+                        "Max Plotted Points", 
+                        value = 0, 
+                        min = 0, 
+                        step = 5000
                     ),
-                    column(
-                        width = 8,
-                        hf3_jxnFailureBitsUI(ns("jxnFailureBits"))
+                    numericInput(
+                        ns("maxTableRows"), 
+                        "Max Table Rows", 
+                        value = 1000, 
+                        min = 0, 
+                        step = 500
+                    ),
+                    checkboxInput(
+                        ns("suspendPlotting"), 
+                        "Suspend Plotting", 
+                        value = FALSE
                     )
                 )
             )
@@ -123,6 +171,8 @@ exploreJunctionsUI <- function(id, options) {
                 ns("junctionsTable"),
                 title = "Final Junctions, Filtered",
                 width = 12,
+                solidHeader = TRUE,
+                status = "primary",
                 collapsible = TRUE
             )
         ),
@@ -155,7 +205,17 @@ exploreJunctionsUI <- function(id, options) {
                 ),
                 plotOutput(ns("readQualPlot"), height = 96 * 0.75),
                 plotOutput(ns("refAlnPlot"),   height = 96 * 3),
-                uiOutput(ns("expandedJunctionSummary")),
+                fluidRow(
+                    style = "margin: 10px; font-size: 1.2em;",
+                    column(
+                        width = 6,
+                        uiOutput(ns("expandedJunctionSummary"))
+                    ),
+                    column(
+                        width = 6,
+                        uiOutput(ns("expandedJunctionFlagBits"))
+                    )
+                ),
                 uiOutput(ns("expandedSequences")),
                 plotOutput(ns("chrom1Plot"), height = 96 * 1.5),
                 plotOutput(ns("chrom2Plot"), height = 96 * 1.5),

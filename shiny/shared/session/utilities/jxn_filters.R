@@ -1,57 +1,69 @@
-# for a read, a single READ_FAILURE_FLAG is assembled sequentially as stated below
+# for a read, a single READ_FAILURE_FLAG was assembled sequentially as stated below
 # included here for completeness; failed reads were not used during SV analysis
-# however, note that a READ may be on target due to one/the first alignment 
+# however, a READ may be on target due to one/the first alignment 
 #      but carry a distal off-target JUNCTION that is tabulated,
-#      i.e., on-target filtering in the pipeline is a read, not a junction, property
+#      i.e., on-target filtering in the pipeline is a read, not a junction-level, property
+# read failure flag bits were enforced sequentially with short-circuiting 
+#     i.e., later bits will never be set if earlier bits failed and were set
+# outer endpoint criteria reject entire reads, but otherwise have no bearing on junctions
 hf3_readFailureBits <- list(
-    Unmapped      = 1, # flag bits are enforced sequentially with short-circuiting 
-    OffTarget     = 2, #     later bits are not set if earlier bits fail and are set
-    SiteLookup    = 4,
-    ClipTolerance = 8, # outer endpoint criteria reject entire reads, but otherwise have no bearing on junctions
-    SiteDistance  = 16
+    Unmapped      = 1,  # minimap2 failed to align the read to the reference genome
+    OffTarget     = 2,  # the first (ONT) or all (other platforms) alignments were off-target
+    SiteLookup    = 4,  # one or more alignment nodes failed lookup in the closest RE site list (not common)
+    ClipTolerance = 8,  # one or both read outer clips exceeded the maximum allowed clip tolerance
+    SiteDistance  = 16  # one or both read outer nodes were too far from a restriction enzyme site (ligFree only)
 )
-# for an alignment, a single ALN_FAILURE_FLAG is assembled sequentially as stated below
-# for a junction instance, it is a bitwise OR of two ALN_FAILURE_FLAGs from the flanking alignments
-# for a final Junction, it is a bitwise OR of that value over all junction instances
+# for an alignment, a single ALN_FAILURE_FLAG was assembled sequentially as stated below
+# for a junction instance, the value is a bitwise OR of two ALN_FAILURE_FLAGs from the flanking alignments
+# for a final Junction, the value is a bitwise OR of the values over all junction instances
+# alignment failure flag bits were enforced sequentially with short-circuiting 
+#     i.e., later bits will never be set if earlier bits failed and were set
 hf3_alnFailureBits <- list( 
-    Mapq        = 1, # flag bits are enforced sequentially with short-circuiting 
-    Divergence  = 2, #     later bits are not set if earlier bits fail and are set
-    FlankLen    = 4, # only set on junction reads
-    BaseQual = 8  # only set on ONT junctions reads
+    Mapq        = 1, # the minimap2 mapping quality (MAPQ) was below the minimum threshold
+    Divergence  = 2, # the alignment divergence tag (de:f:) value was above the maximum threshold
+    FlankLen    = 4, # the alignment was shorter than the allowed flank length
+    BaseQual    = 8  # the average base quality was below the minimum threshold
 )
-# for a junction instance, a single JXN_FAILURE_FLAG is assembled sequentially as stated below
-# for a final junction, it is a bitwise OR of JXN_FAILURE_FLAGs over all junction instances
+# for a junction instance, a single JXN_FAILURE_FLAG was assembled sequentially as stated below
+# for a final junction, the value is a bitwise OR of the JXN_FAILURE_FLAGs over all junction instances
 # traversal failures, and only traversal failures, were not processed as candidate junctions
-#     (traversal failures are not considered "real", all others are true, if artifactual, junctions in reads)
+#     traversal failures are not considered "real", others are true, if artifactual, junctions in reads
+# the first group of junction failure flag bits were enforced sequentially with short-circuiting 
+#     i.e., later bits will never be set if earlier bits failed and were set
+# the second group (SiteMatch and StemLength) were both checked on all junctions and OR'ed together with first group
 hf3_jxnFailureBits <- list( 
-    Traversal = 1,  # the first group of bits are enforced sequentially with short-circuiting 
-    Noncanonical   = 2,  #     later bits are not set if earlier bits fail and are set
-    FoldbackInv    = 4,
-    OntFollowOn    = 8, 
-    HasAdapter     = 16,
+    # Traversal    = 1,  # the number of base traversed on reference and read between breakpoints was too similar
+    # Noncanonical = 2,  # one alignment was to a non-nuclear chromosome, e.g., an unplaced contig
+    FoldbackInv    = 4,  # the junction was classified as a foldback inversion consistent with sequence two strands of one duplex
+    OntFollowOn    = 8,  # the junction had inserted bases with a low quality stretch as seen in ONT follow-on artifacts; ONT only
+    "HasAdapter ||"     = 16, # the junction had inserted bases that aligned to known adapter sequences
     #-------------------
-    SiteMatch      = 32, # the second group of bits are all checked on all junctions and OR'ed together with first group
-    StemLength     = 64
-    # InsertSize     = 128 # this flag if never set, kept here for legacy reasons
+    SiteMatch      = 32, # one or both junction breakpoints were too close to a filtering RE site
+    StemLength     = 64  # both junction breakpoints were too far from the read end, i.e., failed the <1N filter
+    # InsertSize   = 128 # the read carring the junction failed the 1N to 2N size filter; never set, listed for legacy reasons
 )
-hf3_alnFailureBitsUI <- function(inputId) checkboxGroupInput(
-    inputId,
-    "Aln Flag Bits",
-    inline = TRUE,
-    choices = hf3_alnFailureBits
-)
-hf3_jxnFailureBitsUI <- function(inputId) checkboxGroupInput(
-    inputId,
-    "Jxn Flag Bits",
-    inline = TRUE,
-    choices = hf3_jxnFailureBits
-)
-hf3_flagFilterModeUI <- function(inputId, label, selected) radioButtons(
+
+
+# construct the filtering UI
+hf3_flagFilterModeUI <- function(inputId, passFail, label = NULL) radioButtons(
     inputId, 
     label, 
     inline = TRUE,
-    choices = c("show_all", "any_pass", "all_pass", "any_fail", "all_fail"), 
-    selected = selected
+    choices = if(passFail == "pass") c("show_all", "any_pass", "all_pass")
+                               else  c("show_all", "any_fail", "all_fail"), 
+    selected = "show_all"
+)
+hf3_alnFailureBitsUI <- function(inputId, label = FALSE) checkboxGroupInput(
+    inputId,
+    if(label) "Aln Failure Flag (<=1 one set, in order)" else NULL,
+    inline = TRUE,
+    choices = hf3_alnFailureBits
+)
+hf3_jxnFailureBitsUI <- function(inputId, label = FALSE) checkboxGroupInput(
+    inputId,
+    if(label) "Jxn Failure Flag (group 1: <=1 one set, in order; group 2: both can be set)" else NULL,
+    inline = TRUE,
+    choices = hf3_jxnFailureBits
 )
 
 # filter junction clusters based on track or other settings
@@ -97,7 +109,6 @@ hf3_enforceFlagFilters <- function(failure_flags, failure_bits, filter_mode){
     )
     sapply(readFlagsList, fn, flagBits)
 }
-
 hf3_applyJunctionFilters <- function(jxns, settings, input){
 
     startSpinner(session, message = paste("filtering junctions"))
@@ -113,25 +124,39 @@ hf3_applyJunctionFilters <- function(jxns, settings, input){
         bkpt_coverage_1 >= filters$Min_Breakpoint_Coverage | 
         bkpt_coverage_2 >= filters$Min_Breakpoint_Coverage
     ]
+    startSpinner(session, message = paste("filtering junctions."))
     oneEndInGenome <- trimws(filters$One_End_In_Genome)
-    if(oneEndInGenome != "any" && oneEndInGenome != ""){
+    if(length(jxns) > 0 && oneEndInGenome != "any" && oneEndInGenome != ""){
         oneEndInGenome <- paste0("_", oneEndInGenome)
         jxns <- jxns[
             endsWith(hf3_getChromNames(sourceId, chrom_index1_1), oneEndInGenome) |
             endsWith(hf3_getChromNames(sourceId, chrom_index1_2), oneEndInGenome)
         ]
     }
-    if(!filters$Allow_Excluded_Regions) jxns <- jxns[
+    startSpinner(session, message = paste("filtering junctions..."))
+    if(length(jxns) > 0 && !filters$Allow_Excluded_Regions) jxns <- jxns[
         is_excluded_1 == 0 & is_excluded_2 == 0
     ]
 
     # enforce filters from inputs specifying failure flag bits
-    if(input$alnFlagFilterMode != "show_all" && !is.null(input$alnFailureBits)){
-        keep <- hf3_enforceFlagFilters(jxns$aln_failure_flags, input$alnFailureBits, input$alnFlagFilterMode)
+    startSpinner(session, message = paste("filtering junctions...."))
+    if(length(jxns) > 0 && input$alnFlagPassMode != "show_all" && !is.null(input$alnFlagPassBits)){
+        keep <- hf3_enforceFlagFilters(jxns$aln_failure_flags, input$alnFlagPassBits, input$alnFlagPassMode)
         jxns <- jxns[keep]
     }
-    if(input$jxnFlagFilterMode != "show_all" && !is.null(input$jxnFailureBits)){
-        keep <- hf3_enforceFlagFilters(jxns$jxn_failure_flags, input$jxnFailureBits, input$jxnFlagFilterMode)
+    startSpinner(session, message = paste("filtering junctions....."))
+    if(length(jxns) > 0 && input$alnFlagFailMode != "show_all" && !is.null(input$alnFlagFailBits)){
+        keep <- hf3_enforceFlagFilters(jxns$aln_failure_flags, input$alnFlagFailBits, input$alnFlagFailMode)
+        jxns <- jxns[keep]
+    }
+    startSpinner(session, message = paste("filtering junctions......"))
+    if(length(jxns) > 0 && input$jxnFlagPassMode != "show_all" && !is.null(input$jxnFlagPassBits)){
+        keep <- hf3_enforceFlagFilters(jxns$jxn_failure_flags, input$jxnFlagPassBits, input$jxnFlagPassMode)
+        jxns <- jxns[keep]
+    }
+    startSpinner(session, message = paste("filtering junctions......."))
+    if(length(jxns) > 0 && input$jxnFlagFailMode != "show_all" && !is.null(input$jxnFlagFailBits)){
+        keep <- hf3_enforceFlagFilters(jxns$jxn_failure_flags, input$jxnFlagFailBits, input$jxnFlagFailMode)
         jxns <- jxns[keep]
     }
     jxns
