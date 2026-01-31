@@ -30,7 +30,7 @@ dpi <- 96
 #----------------------------------------------------------------------
 # load SV junctions
 #----------------------------------------------------------------------
-sourceIds <- dataSourceTableServer("dataSource", selection = "multiple") 
+sourceIds <- dataSourceTableServer("dataSource", selection = "single") 
 junctions_all <- reactive({ # all junction from data source, prior to filtering
     sourceIds <- sourceIds()
     req(sourceIds)
@@ -54,7 +54,8 @@ count_junctions_by_type <- function(jxns){
     agg <- jxns[, .N, keyby = .(jxn_type, is_intergenomic)]
     agg[,  ":="(
         jxnTypeLabel = hf3_junctions$getTypeLabelsFromBits(jxn_type, is_intergenomic),
-        color        = hf3_junctions$getColorsFromBits(    jxn_type, is_intergenomic)
+        color        = hf3_junctions$getColorsFromBits(    jxn_type, is_intergenomic),
+        labelOffset  = hf3_junctions$bitsToIndex[jxn_type] + is_intergenomic
     )]
     agg[order(jxn_type)]
 }
@@ -142,6 +143,7 @@ sizePlotJunctions <- reactive({ # all junctions, prior to filtering for offset s
     )
 })
 createSizePlot <- function(settings, plot) {
+    req(!input$suspendPlotting)
     d <- sizePlotJunctions()
     if(length(selectedJxnI$offsetPlot) > 0) {
         d$jxns <- d$jxns[jxnI %in% selectedJxnI$offsetPlot]
@@ -177,15 +179,20 @@ createSizePlot <- function(settings, plot) {
     abline(h = 1:d$nStrata - 1/3, col = "grey60")
     abline(h = 1:(d$nStrata - 1) + 0.5, col = "black")
 
-    # add individual junction points
+    # add individual junction points, with downsampling for speed
+    plot_jxns <- if(input$maxPlottedPoints > 0 && nrow(d$jxns) > input$maxPlottedPoints){
+        d$jxns[sample(1:nrow(d$jxns), input$maxPlottedPoints)]
+    } else {
+        d$jxns
+    }
     colors <- ifelse(
-        d$jxns$hasExcluded,
+        plot_jxns$hasExcluded,
         CONSTANTS$plotlyColors$black,
-        d$jxns$color
+        plot_jxns$color
     )
     plot$addPoints(
-        x   = d$jxns$x,
-        y   = d$jxns$y,
+        x   = plot_jxns$x,
+        y   = plot_jxns$y,
         col = colors %>% addAlphaToColors(settings$get("Junctions_Plot","Point_Alpha"))
     )
 
@@ -257,7 +264,7 @@ createSizePlot <- function(settings, plot) {
             mtext(
                 text = x[, paste(jxnTypeLabel, sprintf("%5d", x$N), sep = " ")],
                 side = 4,
-                at   = i + d$jitterAmount - d$labelHeight * hf3_junctions$bitsToIndex[x$jxn_type],
+                at   = i + d$jitterAmount - d$labelHeight * x$labelOffset,
                 line = 0.5,
                 las  = 1,
                 adj  = 0,
@@ -365,6 +372,7 @@ offsetPlotSettings <- list(
     )
 )
 createOffsetPlot <- function(settings, plot, v) {
+    req(!input$suspendPlotting)
 
     # get the data
     d <- junctions_filtered()[!is.na(offset)] # may be missing when SEQ was dropped for known SVs
@@ -556,11 +564,15 @@ observeEvent(input$clearSelections, {
     offsetPlotSelection(NULL)
     stopSpinner(session)
 })
+summaryTableData <- reactive({
+    req(!input$suspendPlotting)
+    count_junctions_by_both()
+})
 junctionsTable <- bufferedTableServer(
     "selectionSummaryTable",
     id,
     input,
-    count_junctions_by_both,
+    summaryTableData,
     selection = 'single',
     selectionFn = function(selectedRows) NULL,
     options = list()
@@ -570,7 +582,11 @@ junctionsTable <- bufferedTableServer(
 # junctionsTable table, filtered by both sizePlot and offsetPlot selections
 #----------------------------------------------------------------------
 junctionsTableData <- reactive({
+    req(!input$suspendPlotting)
     jxns <- junctions_selected_both()
+    if (input$maxTableRows > 0 && nrow(jxns) > input$maxTableRows) {
+        jxns <- jxns[sample(1:nrow(jxns), input$maxTableRows)]
+    }
     x <- jxns[, .SD, .SDcols = names(hf3_bgzColumns_display[[jxnFileType]])]
     setnames(x, hf3_bgzColumns_display[[jxnFileType]])
     x[, ":="(
@@ -634,9 +650,9 @@ junctionExpandData <- reactive({
         jxn_ = paste0(
             " with a ", 
             if(offset < 0) {
-                paste0(-offset, " bp junction microhomology = ", jxn_seq)
+                paste0(-offset, " bp junction microhomology")
             } else if (offset > 0) {
-                paste0(offset, " bp junction insertion = ", jxn_seq)
+                paste0(offset, " bp junction insertion")
             } else {
                 "blunt junction"
             }
@@ -658,7 +674,9 @@ junctionExpandData <- reactive({
         orientation = as.integer(strsplit(sub(",", "", jxn_orientations), ",")[[1]]), # whether the alignments were/should be flipped for this read to match the junction canonical node order
         strands = .(c(strand_index0_1, strand_index0_2)), # junction strands _after_ junction was flipped to canonical order
         offset = offset,
-        jxnColor = hf3_junctions$getColorsFromBits(jxn_type, is_intergenomic)
+        jxnColor = hf3_junctions$getColorsFromBits(jxn_type, is_intergenomic),
+        aln_failure_flag,
+        jxn_failure_flag
     )]
     stopSpinner(session)
     summary
@@ -841,12 +859,41 @@ output$refAlnPlot <- renderPlot({
 output$expandedJunctionSummary <- renderUI({
     summary <- junctionExpandData()[1] # relevant values are the same in all summary rows
     req(summary)
-    fluidRow(
-        style = "margin: 10px; font-size: 1.2em;",
+    tags$div(
         lapply(c("sample_", "jxnType_", "nodes_", "observed_", 
                     "jxn_", "target1_", "target2_","quality_"), function(x) {
             tags$p(summary[[x]], style = "margin: 0px; padding: 0px;")
         })
+    )
+})
+output$expandedJunctionFlagBits <- renderUI({
+    summary <- junctionExpandData()[1] # relevant values are the same in all summary rows
+    req(summary)
+    fluidRow(
+        column(
+            width = 6,
+            tags$p(tags$strong("Alignment Failure Flag")),
+            lapply(names(hf3_alnFailureBits), function(flagName) {
+                failed <- bitwAnd(summary$aln_failure_flag, hf3_alnFailureBits[[flagName]]) != 0
+                color <- if(failed) CONSTANTS$plotlyColors$red else CONSTANTS$plotlyColors$black
+                tags$p(style = paste0("margin: 0px; padding: 0px; color: ", color, ";"), paste(
+                    flagName, ":", 
+                    if(failed) "failed" else "passed/NA"
+                ))
+            })
+        ),
+        column(
+            width = 6,
+            tags$p(tags$strong("Junction Failure Flag")),
+            lapply(names(hf3_jxnFailureBits), function(flagName) {
+                failed <- bitwAnd(summary$jxn_failure_flag, hf3_jxnFailureBits[[flagName]]) != 0
+                color <- if(failed) CONSTANTS$plotlyColors$red else CONSTANTS$plotlyColors$black
+                tags$p(style = paste0("margin: 0px; padding: 0px; color: ", color, ";"), paste(
+                    flagName, ":", 
+                    if(failed) "failed" else "passed/NA"
+                ))
+            })
+        )
     )
 })
 

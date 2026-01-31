@@ -33,7 +33,7 @@ hf3_junctions <- list(
         "duplication",
         "inversion",
         "translocation",
-        "intergenomic" # translocation + 1
+        "intergenome" # translocation + 1
     ),
     indexToTypeLabel = c(
         "del",

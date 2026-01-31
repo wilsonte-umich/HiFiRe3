@@ -86,7 +86,7 @@ impl SiteMatcher {
 
     // load the filtering sites from the assembled file
     fn load_filtering_sites(&mut self) {
-        eprint!("loading RE filtering sites from {}", self.filtering_sites_file);
+        eprintln!("loading RE filtering sites from {}", self.filtering_sites_file);
         for line in InputFile::get_lines(&self.filtering_sites_file, false) {
             let parts: Vec<&str> = line.split('\t').collect(); // chrom,sitePos1,inSilico,nObserved
             let chrom = parts[0];

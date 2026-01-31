@@ -3,8 +3,8 @@ platform_matching,SUPPORTED_PLATFORMS,|Illumina_2x150|Aviti_2x150|Aviti_1x300|,|
 pre-alignment processing (fastp),ADAPTER_SEQUENCE,CTGTCTCTTATACACATCT,AGATCGGAAGAGCACACGTCTGAACTCCAGTCA,,,ACTTCGTTCAGTTACGTATTGCT,AGATGTGTATAAGAGACAG,,read1 adapter sequence
 ,ADAPTER_SEQUENCE_R2,CTGTCTCTTATACACATCT,AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT,,,,,,read2 adapter sequence for paired end libraries
 RE fragment analysis,INSERTION_ADAPTER_SEQUENCE,CTGTCTCTTATACACATCT,AGATCGGAAGAGC,,,ACTTCGTTCAGTTACGTATTGCT,AGATGTGTATAAGAGACAG,,adapter common sequence used for chimera splitting at adapter insertions
-,MIN_ADAPTER_LENGTH,20,20,20,20,20,20,20,minimum junction insertion length required to perform chimera splitting at adapter insertions
-,MAX_ADAPTER_LENGTH,120,120,120,120,120,120,120,maximum junction insertion length allowed to perform chimera splitting at adapter insertions
+,MIN_ADAPTER_LENGTH,19,20,20,20,20,20,20,minimum junction insertion length required to perform chimera splitting at adapter insertions
+,MAX_ADAPTER_LENGTH,150,150,150,150,150,150,150,maximum junction insertion length allowed to perform chimera splitting at adapter insertions
 ,MIN_ADAPTER_SCORE,12,10,12,12,12,12,12,SW scores greater than this threshold are considered to have adapter sequences and split as chimeras
 ,LIBRARY_MAX_INSERT_SIZE,1000,1000,1000,1000,5000000,5000000,100000,maximum insert size expected/allowed for library or considered a potential proper insert
 ,CHECK_ENDPOINT_RE_MATCH,,TRUE,TRUE,TRUE,TRUE,,TRUE,TRUE if outer insert alignment nodes should match RE sites when --enzyme-name != NA
