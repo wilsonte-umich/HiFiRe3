@@ -31,6 +31,7 @@ mod outer_nodes;
 
 // dependencies
 use std::error::Error;
+use crossbeam::channel::{Sender, Receiver, bounded};
 use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
 use mdi::RecordStreamer;
@@ -44,7 +45,7 @@ use insert_sizes::InsertSizer;
 use outer_nodes::OuterNodes;
 use site_matching::{SiteMatcher, N_SITES, N_MATCHES_BY_OUTCOME};
 
-// Tool structure, for passing data workers to record processing functions.
+// Tool structure for passing data workers to record processing functions.
 struct Tool {
     chroms:                      Chroms,
     site_matcher:                SiteMatcher,
@@ -56,13 +57,40 @@ struct Tool {
     is_paired_reads:             bool,
     is_ont:                      bool,
     clip_tolerance:              u32,
-    accept_endpoint_distance:    u32,
+    accept_endpoint_distance:    u32
+}
+
+// Outcomes enum for worker threads to transmit different kind of read outcomes.
+enum Outcome {
+    Read(ReadOutcome),
+    SiteMatch(&'static str),
+    Junction(&'static str),
+    InsertSize(InsertSizeOutcome),
+    StemLength(StemLengthOutcome),
+}
+// ReadOutcome structure for collecting read outcomes and alignment counts.
+struct ReadOutcome {
+    pub reason: &'static str,
+    pub n_alns: usize,
+}
+// InsertSize structure for passing insert size counts.
+struct InsertSizeOutcome {
+    pub read_type:     &'static str,
+    pub read_type_str: Option<String>, // for custom assembled keys
+    pub size_bin:      usize,
+}
+// StemLength structure for passing stem length counts.
+struct StemLengthOutcome {
+    pub read_type:     &'static str,
+    pub read_type_str: Option<String>,
+    pub size_bin:      usize,
 }
 
 // constants 
 const TOOL: &str = "analyze_inserts";
 pub_key_constants!(
     // from environment variables
+    N_CPU
     SEQUENCING_PLATFORM
     IS_END_TO_END_READ
     READ_PAIR_TYPE
@@ -79,7 +107,6 @@ pub_key_constants!(
     N_ALNS
     N_READS_BY_OUTCOME
     N_JXNS_BY_REASON
-    N_JXNS_BY_FAILURE_FLAG
     // read outcomes
     FAIL_UNMAPPED
     FAIL_OFF_TARGET
@@ -102,12 +129,14 @@ pub_key_constants!(
 );
 const TRIM5: usize = 0;
 const TRIM3: usize = 1;
+const CHANNEL_CAPACITY: usize = 1_000;
 
 // tool function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {
 
     // get config from environment variables
     let mut cfg = Config::new();
+    cfg.set_usize_env(&[N_CPU]);
     cfg.set_string_env(&[SEQUENCING_PLATFORM, READ_PAIR_TYPE]);
     cfg.set_bool_env(&[IS_END_TO_END_READ, EXPECTING_ENDPOINT_RE_SITES, REJECTING_JUNCTION_RE_SITES]);
     cfg.set_u32_env(&[CLIP_TOLERANCE, ACCEPT_ENDPOINT_DISTANCE]);
@@ -125,7 +154,6 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     ctrs.add_keyed_counters(&[
         (N_READS_BY_OUTCOME,     "number of reads by outcome"),
         (N_JXNS_BY_REASON,       "junction failure counts by reason (non-exclusive)"),
-        (N_JXNS_BY_FAILURE_FLAG, "junction outcome counts by failure flag"),
     ]);
 
     // initialize the tool
@@ -133,9 +161,11 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     w.log.initializing();
 
     // build tool support resources, i.e. data workers
-    let mut tool = Tool {
+    let (insert_sizer, insert_size_counts, stem_length_counts) = 
+        InsertSizer::new(&mut w); 
+    let tool = Tool {
         chroms:                       Chroms::new(&mut w.cfg),
-        insert_sizer:                 InsertSizer::new(&mut w),
+        insert_sizer:                 insert_sizer,
         site_matcher:                 SiteMatcher::new(&mut w),
         incoming_tags:                StageTags::AlignmentAnalysis.tags_after_stage(),
         expecting_endpoint_re_sites: *w.cfg.get_bool(EXPECTING_ENDPOINT_RE_SITES),
@@ -144,59 +174,68 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
         is_ont:                      *w.cfg.get_bool(IS_ONT),
         is_paired_reads:             *w.cfg.get_bool(IS_PAIRED_READS),
         clip_tolerance:              *w.cfg.get_u32(CLIP_TOLERANCE),
-        accept_endpoint_distance:    *w.cfg.get_u32(ACCEPT_ENDPOINT_DISTANCE),
+        accept_endpoint_distance:    *w.cfg.get_u32(ACCEPT_ENDPOINT_DISTANCE)
     };
 
-    // process groups of SAM records for each read in a stream
+    // process records in parallel threads
+    let (tx_outcome, rx_outcome) = 
+        bounded::<Outcome>(CHANNEL_CAPACITY);
+    let n_workers = (*w.cfg.get_usize(N_CPU)).max(3) - 2; // leave one thread for streamer and outcome collector
     w.log.print("matching alignments to RE sites and analyzing insert sizes");
-    let mut rs = RecordStreamer::new();
-    rs
-        .comment(b'@')
-        .no_trim()
-        .flexible()
-        .group_by_in_place_serial(|alns: &mut [SamRecord]| record_parser(
-            alns, 
-            &mut w,
-            &mut tool,
-        ), &["qname"]); // suffixed by /1 or /2 for unmerged paired reads
+    crossbeam::scope(|scope| {
 
-    // print insert sizes and stem lengths summary for plotting
-    tool.insert_sizer.print_insert_sizes(&mut w.cfg);
+        // collect and increment outcome counters in a separate thread
+        scope.spawn(move |_| {
+            count_events(
+                rx_outcome,
+                w,
+                insert_size_counts,
+                stem_length_counts,
+                tool.site_matcher.is_matching_sites,
+                tool.insert_sizer.size_plot_bin_size,
+            );
+        });
 
-    // report counter values
-    let null_ctr: Vec<&str> = vec![];
-    w.ctrs.print_grouped(&[
-        if tool.site_matcher.is_matching_sites { &[N_SITES] } else { &null_ctr },
-        &[N_READS_IN, N_ALNS],
-        &[N_READS_BY_OUTCOME],
-        if tool.site_matcher.is_matching_sites { &[N_MATCHES_BY_OUTCOME] } else { &null_ctr },
-        &[N_JXNS_BY_REASON],
-        &[N_JXNS_BY_FAILURE_FLAG],
-    ]);
+        // process groups of SAM records for each read in a stream (blocks main thread until finished)
+        let mut rs = RecordStreamer::new();
+        rs
+            .comment(b'@')
+            .no_trim()
+            .flexible()
+            .group_by_in_place_parallel(
+                |alns: &mut [SamRecord]| record_parser(
+                    alns, 
+                    &tx_outcome,
+                    &tool,
+                ), 
+                &["qname"], // suffixed by /1 or /2 for unmerged paired reads
+                n_workers, // leave one thread for outcome collector
+                CHANNEL_CAPACITY,
+            );
+        drop(tx_outcome);
+    }).unwrap();
     Ok(())
 }
 
 // process all alignments for one read (paired reads are handled separately)
 fn record_parser(
-    alns: &mut [SamRecord], 
-    w: &mut Workflow,
-    tool: &mut Tool,
-) -> Result<Vec<usize>, Box<dyn Error>> {
+    alns:       &mut [SamRecord], 
+    tx_outcome: &Sender<Outcome>,
+    tool:       &Tool,
+) -> Result<Vec<usize>, Box<dyn Error + Send + Sync>> {
     let n_alns = alns.len();
-    w.ctrs.increment(N_READS_IN);
-    w.ctrs.add_to(N_ALNS, n_alns);
 
     // reset tags in case this is a re-application of analyze_inserts to NAME_BAM_FILE
     alns.iter_mut().for_each(|aln| aln.tags.retain(&tool.incoming_tags));
 
     // stop processing unmapped reads
     if alns[0].check_flag_any(flag::UNMAPPED) { 
-        return failed_read(alns, w, FAIL_UNMAPPED, ReadFailureFlag::Unmapped as u8);
+        return failed_read(alns, tx_outcome, FAIL_UNMAPPED, ReadFailureFlag::Unmapped as u8);
     }
 
     // stop processing off-target reads, they will never call variants
     if alns[0].get_tag_value(READ_IS_OFF_TARGET).is_some() { 
-        return failed_read(alns, w, FAIL_OFF_TARGET, ReadFailureFlag::OffTarget as u8);
+        return failed_read(alns, tx_outcome, FAIL_OFF_TARGET, ReadFailureFlag::OffTarget as u8);
     }
 
     // determine if this is an unmerged read pair
@@ -225,12 +264,12 @@ fn record_parser(
     let mut is_end_to_end_read = false;
     let mut aln_sites: Vec<SiteMatches> = Vec::with_capacity(n_alns);
     for i in 0..n_alns {
-        let (site5, site3) = tool.site_matcher.match_aln_sites(&alns[i], w);
+        let (site5, site3) = tool.site_matcher.match_aln_sites(tx_outcome, &alns[i]);
         // we expect the RE site lookup to succeed even if the ends don't match RE sites
         // don't process reads further if any end of any alignment fails to match an RE site
         if tool.rejecting_junction_re_sites && 
            (site5.index1 == 0 || site3.index1 == 0) {
-            return failed_read(alns, w, FAIL_SITE_LOOKUP, ReadFailureFlag::SiteLookup as u8);
+            return failed_read(alns, tx_outcome, FAIL_SITE_LOOKUP, ReadFailureFlag::SiteLookup as u8);
         }
         if i == 0 { // read 5' end
             // perform initial end-to-end status determination
@@ -248,7 +287,7 @@ fn record_parser(
                 alns[i].get_clip_left()
             };
             if clip5 > tool.clip_tolerance {
-                return failed_read(alns, w, FAIL_CLIP_TOLERANCE, ReadFailureFlag::ClipTolerance as u8);
+                return failed_read(alns, tx_outcome, FAIL_CLIP_TOLERANCE, ReadFailureFlag::ClipTolerance as u8);
             }
             if tool.expecting_endpoint_re_sites {
                 let dist5 = if is_reverse {
@@ -257,7 +296,7 @@ fn record_parser(
                     site5.distance - clip5 as i32
                 };
                 if dist5.abs() as u32 > tool.accept_endpoint_distance {
-                    return failed_read(alns, w, FAIL_SITE_DISTANCE, ReadFailureFlag::SiteDistance as u8);
+                    return failed_read(alns, tx_outcome, FAIL_SITE_DISTANCE, ReadFailureFlag::SiteDistance as u8);
                 }
             }
         }
@@ -279,10 +318,10 @@ fn record_parser(
             };
             if is_end_to_end_read {
                 if clip3 > tool.clip_tolerance {
-                    return failed_read(alns, w, FAIL_CLIP_TOLERANCE, ReadFailureFlag::ClipTolerance as u8);
+                    return failed_read(alns, tx_outcome, FAIL_CLIP_TOLERANCE, ReadFailureFlag::ClipTolerance as u8);
                 }
                 if tool.expecting_endpoint_re_sites && dist3.abs() as u32 > tool.accept_endpoint_distance {
-                    return failed_read(alns, w, FAIL_SITE_DISTANCE, ReadFailureFlag::SiteDistance as u8);
+                    return failed_read(alns, tx_outcome, FAIL_SITE_DISTANCE, ReadFailureFlag::SiteDistance as u8);
                 }
             // promote incomplete sequences to end-to-end status if they got to the fragment end
             } else if tool.expecting_endpoint_re_sites && 
@@ -311,7 +350,7 @@ fn record_parser(
         is_unmerged_pair,
         paired_outer_node,
         tool,
-        w,
+        tx_outcome,
     );
 
     // assess the insert sizes and stem lengths of all alignments
@@ -325,6 +364,7 @@ fn record_parser(
     );
 
     // collect the distributions of insert sizes of on-target reads
+    let reason: &'static str;
     let read_has_passed_jxn = if read_has_jxn {
         let mut any_jxn_passed = false;
         let mut jxn_failure_flag: u8 = 0;
@@ -332,26 +372,25 @@ fn record_parser(
             let aln5_i = aln3_i - 1;
             jxn_failure_flag = alns[aln5_i].get_tag_value_parsed::<u8>(JXN_FAILURE_FLAG_INIT).unwrap_or(0);
             if jxn_failure_flag != 0 {
-                w.ctrs.increment_keyed(N_JXNS_BY_REASON, JXN_FAIL_UPSTREAM);
+                tx_outcome.send(Outcome::Junction(JXN_FAIL_UPSTREAM))?;
             }
-            jxn_failure_flag |= tool.site_matcher.check_jxn(&aln_sites,    aln5_i, aln3_i, w) as u8;
-            jxn_failure_flag |= tool.insert_sizer.check_jxn(&insert_sizes, aln5_i, aln3_i, w) as u8;
+            jxn_failure_flag |= tool.site_matcher.check_jxn(tx_outcome, &aln_sites,    aln5_i, aln3_i) as u8;
+            jxn_failure_flag |= tool.insert_sizer.check_jxn(tx_outcome, &insert_sizes, aln5_i, aln3_i) as u8;
             if jxn_failure_flag != JxnFailureFlag::None as u8 {
                 alns[aln5_i].set_tag_value(JXN_FAILURE_FLAG, &jxn_failure_flag);
             }
-            w.ctrs.increment_keyed(N_JXNS_BY_FAILURE_FLAG, &jxn_failure_flag.to_string());
             any_jxn_passed = any_jxn_passed || jxn_failure_flag == 0;
         }
-        tool.insert_sizer.record_sv_sizes(&insert_sizes, &alns, jxn_failure_flag, &tool.chroms);
+        tool.insert_sizer.record_sv_sizes(tx_outcome, &insert_sizes, &alns, jxn_failure_flag, &tool.chroms).unwrap();
         if any_jxn_passed {
-            w.ctrs.increment_keyed(N_READS_BY_OUTCOME, KEEP_WITH_PASSED_JXN);
+            reason = KEEP_WITH_PASSED_JXN;
         } else {
-            w.ctrs.increment_keyed(N_READS_BY_OUTCOME, KEEP_ALL_FAILED_JXNS);
+            reason = KEEP_ALL_FAILED_JXNS;
         }
         any_jxn_passed
     } else {
-        tool.insert_sizer.record_non_sv_sizes(&insert_sizes, &aln_sites);
-        w.ctrs.increment_keyed(N_READS_BY_OUTCOME, KEEP_NO_JXNS);
+        tool.insert_sizer.record_non_sv_sizes(tx_outcome, &insert_sizes, &aln_sites).unwrap();
+        reason = KEEP_NO_JXNS;
         false
     };
 
@@ -375,20 +414,86 @@ fn record_parser(
     }
 
     // print all alignments for the read, regardless of outcome
+    tx_outcome.send(Outcome::Read(ReadOutcome{
+        reason,
+        n_alns,
+    }))?;
     Ok((0..n_alns).collect())
 }
 
-// add the 
+// short-circuit a failed read
 fn failed_read(
     alns:   &mut [SamRecord],
-    w:      &mut Workflow,
-    reason: &str,
+    tx_outcome: &Sender<Outcome>,
+    reason: &'static str,
     flag:   u8,
-) -> Result<Vec<usize>, Box<dyn Error>> {
+) -> Result<Vec<usize>, Box<dyn Error + Send + Sync>> {
     let n_alns = alns.len();
-    w.ctrs.increment_keyed(N_READS_BY_OUTCOME, reason);
     for i in 0..n_alns {
         alns[i].set_tag_value(READ_FAILURE_FLAG, &flag);
     }
+    tx_outcome.send(Outcome::Read(ReadOutcome{
+        reason,
+        n_alns,
+    }))?;
     Ok((0..n_alns).collect()) 
+}
+
+// thread for aggregating and reporting read metadata
+fn count_events(
+    rx_outcome:             Receiver<Outcome>,
+    mut w:                  Workflow,
+    mut insert_size_counts: Counters,
+    mut stem_length_counts: Counters,
+    is_matching_sites:      bool,
+    size_plot_bin_size:     f64,
+){
+    // aggregate outcomes while threads are processing records
+    for outcome in rx_outcome {
+        match outcome {
+            Outcome::Read(read_outcome) => {
+                w.ctrs.increment(N_READS_IN);
+                w.ctrs.add_to(N_ALNS, read_outcome.n_alns);
+                w.ctrs.increment_keyed(N_READS_BY_OUTCOME, read_outcome.reason);
+            },
+            Outcome::SiteMatch(reason) => {
+                w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, reason);
+            },
+            Outcome::Junction(reason) => {
+                w.ctrs.increment_keyed(N_JXNS_BY_REASON, reason);
+            },
+            Outcome::InsertSize(insert_size) => {
+                if let Some(ref read_type) = insert_size.read_type_str {
+                    insert_size_counts.increment_indexed(read_type, insert_size.size_bin);
+                } else { 
+                    insert_size_counts.increment_indexed(insert_size.read_type, insert_size.size_bin);
+                }
+            },
+            Outcome::StemLength(stem_length) => {
+                if let Some(ref read_type) = stem_length.read_type_str {
+                    stem_length_counts.increment_indexed(read_type, stem_length.size_bin);
+                } else { 
+                    stem_length_counts.increment_indexed(stem_length.read_type, stem_length.size_bin);
+                }
+            },
+        }
+    }
+
+    // print insert sizes and stem lengths summary for plotting
+    InsertSizer::print_insert_sizes(
+        &mut w.cfg, 
+        insert_size_counts, 
+        stem_length_counts, 
+        size_plot_bin_size
+    );
+
+    // report counter values
+    let null_ctr: Vec<&str> = vec![];
+    w.ctrs.print_grouped(&[
+        if is_matching_sites { &[N_SITES] } else { &null_ctr },
+        &[N_READS_IN, N_ALNS],
+        &[N_READS_BY_OUTCOME],
+        if is_matching_sites { &[N_MATCHES_BY_OUTCOME] } else { &null_ctr },
+        &[N_JXNS_BY_REASON],
+    ]);
 }

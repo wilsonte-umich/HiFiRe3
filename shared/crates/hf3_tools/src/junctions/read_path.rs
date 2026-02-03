@@ -109,10 +109,11 @@ impl SvReadPath {
     /// unique sorted segment with a count.
     pub fn write_sorted(
         mut read_paths: Vec<SvReadPath>, 
-        filepath: &str
+        filepath: &str,
+        ncpu:     u32,
     ) -> Result<(), Box<dyn Error>> {
         read_paths.par_sort_unstable();
-        let writer = OutputCsv::open(filepath);
+        let writer = OutputCsv::open(filepath, Some(ncpu));
         writer.serialize_all(&read_paths);
         Ok(())
     }  

@@ -98,6 +98,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // create the junction analysis tool
     let mut tool = JunctionAnalysisTool {
         data_name:  w.cfg.get_string(DATA_NAME).to_string(),
+        n_cpu:      *w.cfg.get_usize(N_CPU) as u32,
         chroms:     chroms,
         targets:    targets,
         genes:      Genes::from_env(     &mut w, false, 0),
@@ -135,6 +136,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     &tool.chroms,
                     rx_chrom,
                     tx_data,
+                    tool.n_cpu
                 ).unwrap();
             });
         }
@@ -167,18 +169,22 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }).expect("Crossbeam scope panicked");
 
     // sort and print aggregated SV read paths
+    w.log.print("sorting and printing aggregated SV read paths");
     w.ctrs.add_to(N_SV_READS, read_paths.len());
     SvReadPath::write_sorted(
         read_paths, 
-        w.cfg.get_string(SV_READ_PATHS_FILE)
+        w.cfg.get_string(SV_READ_PATHS_FILE),
+        tool.n_cpu,
     )?;
 
     // fuzzy group final junctions
+    w.log.print("fuzzy grouping final junctions");
     let mut final_jxns = fuzzy_match_junctions(jxns, &mut tool)?;
     w.ctrs.add_to(N_FINAL_JUNCTIONS, final_jxns.len());
 
     // merge distal alignments into first alignments
     // use AlignmentSegments to update final junction breakpoint coverage fields
+    w.log.print("merging distal alignments into first alignments");
     let (n_first_alns, n_uniq_first_alns, n_distal_alns, n_uniq_distal_alns)
          = AlignmentSegment::write_merged(
         distal_alns,
@@ -187,6 +193,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
              w.cfg.get_string(SV_COVERAGE_FILE),
         &tool.chroms,
         &mut final_jxns,
+        tool.n_cpu,
     )?;
     w.ctrs.add_to(N_FIRST_ALNS,       n_first_alns);
     w.ctrs.add_to(N_UNIQ_FIRST_ALNS,  n_uniq_first_alns);
@@ -194,6 +201,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     w.ctrs.add_to(N_UNIQ_DISTAL_ALNS, n_uniq_distal_alns);
 
     // collect final junction statistics
+    w.log.print("collecting final junction statistics");
     for jxn in &final_jxns {
         let key = jxn.get_offset_type();
         w.ctrs.increment_keyed(N_JXNS_BY_OFFSET,      key);
@@ -213,6 +221,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // write final junctions files in two sort orders
+    w.log.print("sorting and writing final junctions");
     FinalJunction::write_sorted(final_jxns, &tool);
 
     // print counts

@@ -188,9 +188,16 @@ impl JunctionInstances {
                     acc
                 });
         }
+        if counts.is_empty() { // handle extreme edge case where no reads have the best_offset_abs length (?)
+            counts = self.jxn_seqs.iter()
+                .fold(FxHashMap::default(), |mut acc, seq| {
+                    *acc.entry(seq).or_insert(0_u16) += 1;
+                    acc
+                });
+        }
         counts.into_iter() // guaranteed to have at least one entry here
             .max_by_key(|&(_, count)| count)
-            .map(|(seq, _)| seq.clone()) // Clone to return String
+            .map(|(seq, _)| seq.clone())
             .unwrap()
     }
 
@@ -512,7 +519,7 @@ impl FinalJunction {
                   (a.chrom_index1_1, a.ref_pos1_1, a.strand_index0_1)
             .cmp(&(b.chrom_index1_1, b.ref_pos1_1, b.strand_index0_1))
         );
-        let writer = OutputCsv::open(&tool.final_jxns_file_1);
+        let writer = OutputCsv::open(&tool.final_jxns_file_1, Some(tool.n_cpu));
         writer.serialize_all(&jxns);
 
         // print sorted by breakpoint 2
@@ -520,7 +527,7 @@ impl FinalJunction {
                   (a.chrom_index1_2, a.ref_pos1_2, a.strand_index0_2)
             .cmp(&(b.chrom_index1_2, b.ref_pos1_2, b.strand_index0_2))
         );
-        let writer = OutputCsv::open(&tool.final_jxns_file_2);
+        let writer = OutputCsv::open(&tool.final_jxns_file_2, Some(tool.n_cpu));
         writer.serialize_all(&jxns);
     }
 

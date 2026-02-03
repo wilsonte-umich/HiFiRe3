@@ -77,7 +77,7 @@ if [ "${RUN_PREALIGNMENT_FASTP}" != "" ]; then
     export FASTP_STEP_COMMAND="perl $ALIGN_DIR/buffered_fastp.pl"
     export MERGE_STEP_COMMAND="perl $ALIGN_DIR/adjust_merge_tags.pl"
     export FASTP_BUFFER=${TMP_DIR_WRK_SMALL}/FASTP_BUFFER.fastq
-    export FASTP_BUFFER_N_READS=1000000
+    export FASTP_BUFFER_N_READS=10000000
     export FASTP_COMMAND="fastp \
         --thread 3 --stdin --stdout --dont_eval_duplication \
         --length_required $PLATFORM_MIN_INSERT_SIZE \
@@ -97,7 +97,8 @@ fi
 perl ${ACTION_DIR}/align/prepare_fastq.pl |
 
 # if needed for short reads, use fastp for one-pass adapter trimming, quality filtering, and read merging
-$FASTP_STEP_COMMAND | 
+# $FASTP_STEP_COMMAND | 
+$FASTP_COMMAND |
 
 # move fastp merge outcomes to the fm:Z: tag and report summary of fastp actions
 $MERGE_STEP_COMMAND | 

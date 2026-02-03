@@ -29,6 +29,7 @@ pub fn process_chrom <'a>(
     chroms:    &'a Chroms,
     rx_chrom:  Receiver<(String, u8)>,
     tx_data:   Sender<ChromWorkerData>,
+    n_cpu:     u32,
 ) -> Result<(), Box<dyn Error>> {
 
     // get config from environment variables
@@ -66,10 +67,17 @@ pub fn process_chrom <'a>(
             tx_data:    &tx_data,
         };
 
+        // short-circuit empty chromosomes with no alignments
+        let mut records = chrom_bam.records();
+        let first_aln = records.next();
+        if first_aln.is_none() {
+            tx_data.send(ChromWorkerData::ChromReadCount((chrom_name, 0)))?;
+            continue;
+        }
+
         // process alignment records by read
         // all alignments are in query read order
-        let mut records = chrom_bam.records();
-        let mut alns: Vec<BamRecord> = vec![records.next().unwrap()?]; // expect there to always be data
+        let mut alns: Vec<BamRecord> = vec![first_aln.unwrap()?];
         let mut chrom_read_count:usize = 0;
         for result in records {
             let record = result?;
@@ -87,7 +95,8 @@ pub fn process_chrom <'a>(
         let first_alns_file = format!("{}.first_alns.chr{}.gz", chrom_file_prefix, chrom_index_padded);
         AlignmentSegment::write_sorted(
             tool.first_alns, 
-            &first_alns_file
+            &first_alns_file,
+            n_cpu,
         )?;
 
         // send chrom read count to main thread

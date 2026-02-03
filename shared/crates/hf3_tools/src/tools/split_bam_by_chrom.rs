@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io::Write;
 use rustc_hash::FxHashMap;
 use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, Header, Format};
+use rust_htslib::tpool::ThreadPool;
 use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
 use genomex::genome::{Chroms, TargetRegions};
@@ -23,6 +24,7 @@ use crate::inserts::{UniqueInsertSpan, ChannelAlignment};
 const TOOL: &str = "split_by_chrom";
 pub_key_constants!(
     // from environment variables
+    N_CPU
     DEDUPLICATE_READS
     IS_COMPOSITE_GENOME
     NAME_BAM_FILE
@@ -55,6 +57,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
     // get config from environment variables
     let mut cfg = Config::new();
+    cfg.set_u32_env(&[N_CPU]);
     cfg.set_bool_env(&[DEDUPLICATE_READS, IS_COMPOSITE_GENOME]);
     cfg.set_string_env(&[NAME_BAM_FILE, INDEX_FILE_PREFIX_WRK]);
 
@@ -82,10 +85,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let targets = TargetRegions::from_env(&mut w, false);
     let on_target_chroms = targets.get_region_chroms(&chroms);
 
+    // use a thread pool for BAM reading and writing
+    let tpool = ThreadPool::new(w.cfg.get_u32(N_CPU) - 1)?;
+
     // initialize the output BAM writers, one per target chromosome
     let name_bam_path     = w.cfg.get_string(NAME_BAM_FILE);
     let chrom_file_prefix = w.cfg.get_string(INDEX_FILE_PREFIX_WRK);
     let mut name_bam = Reader::from_path(&name_bam_path)?;
+    name_bam.set_thread_pool(&tpool)?;
     let header_view = name_bam.header(); // for TID lookups
     let header = Header::from_template(header_view); // shared header for each output BAM writer
     let mut writers:     FxHashMap<u32, Writer> = FxHashMap::default(); // TID -> file writer named by our padded chrom index
@@ -96,11 +103,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             .tid(chrom.as_bytes())
             .expect(format!("{} not found in BAM header", chrom).as_str()) as u32;
         let chrom_index_padded = format!("{:02}", chrom_index);
-        writers.insert(tid, Writer::from_path(
+        let mut writer = Writer::from_path(
             format!("{}.chr{}.bam", chrom_file_prefix, chrom_index_padded),
             &header,
             Format::Bam
-        ).expect(&format!("Failed to create BAM writer for chrom {}", chrom)));
+        ).expect(&format!("Failed to create BAM writer for chrom {}", chrom));
+        writer.set_thread_pool(&tpool)?;
+        writers.insert(tid, writer);
         read_counts.insert(tid, 0); 
         chrom_map.insert(tid, chrom_index_padded);
     }
