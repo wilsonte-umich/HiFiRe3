@@ -169,8 +169,7 @@ impl AlignmentSegment {
 
             // write entries to the begraph coverage file, omitting zero-coverage regions
             let mut chrom_offset0 = 0;
-            let coverage_chunks: Vec<_> = coverage_map.par_chunk_by(|a, b| a == b).collect();
-            for coverage_chunk in coverage_chunks{
+            for coverage_chunk in coverage_map.chunk_by(|a, b| a == b){
                 let n_pos = coverage_chunk.len();
                 if coverage_chunk[0] > 0 {
                     cvg_writer.serialize(&BedGraphU16{

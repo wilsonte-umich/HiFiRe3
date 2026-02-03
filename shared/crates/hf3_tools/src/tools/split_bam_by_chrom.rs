@@ -11,6 +11,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 use rustc_hash::FxHashMap;
+use rayon::prelude::*;
 use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, Header, Format};
 use rust_htslib::tpool::ThreadPool;
 use mdi::pub_key_constants;
@@ -34,23 +35,13 @@ pub_key_constants!(
     N_USABLE_READS
     N_UNIQ_ALNS
     N_ALNS
-    N_REF_BASES
-    N_READ_BASES
+    N_BASES
     N_READS_BY_GENOME
-    N_REF_BASES_BY_GENOME
-    N_READ_BASES_BY_GENOME
+    N_BASES_BY_GENOME
 );
 const READ_FAILURE: &[u8] = READ_FAILURE_FLAG.as_bytes();
 const OFF_TARGET: &[u8]   = READ_IS_OFF_TARGET.as_bytes(); 
-
-/// ChannelAlignmentCounts holds (deduplicated) tallies for a ChannelAlignment. The 
-/// value is a count or sum when DEDUPLICATE_READS is false, otherwise n_alns==1  
-/// and n_ref_bases and n_read_bases are for the first encountered alignment.
-struct ChannelAlignmentCounts {
-    n_alns:      usize,
-    n_ref_bases:  usize,
-    n_read_bases: usize,
-}
+const COUNTER_CAPACITY: usize = 100_000_000;
 
 // main function called by xxx_tools main()
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -63,17 +54,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
     // initialize counters
     let mut ctrs = Counters::new(TOOL, &[
-        (N_READS,           "reads processed"),
+        (N_READS,        "reads processed"),
         (N_USABLE_READS, "usable on-target reads in output"),
-        (N_UNIQ_ALNS,       "unique (deduplicated) alignments in on-target reads"),
-        (N_ALNS,            "total  (deduplicated) alignments in on-target reads"),
-        (N_REF_BASES,       "(deduplicated) reference bases in on-target alignments"),
-        (N_READ_BASES,      "(deduplicated) read bases in on-target alignments"),
+        (N_UNIQ_ALNS,    "unique (deduplicated) alignments in on-target reads"),
+        (N_ALNS,         "total  (deduplicated) alignments in on-target reads"),
+        (N_BASES,        "(deduplicated) reference bases in on-target alignments"),
     ]);
     ctrs.add_keyed_counters(&[
-        (N_READS_BY_GENOME,      "on-target reads by genome"),
-        (N_REF_BASES_BY_GENOME,  "reference bases in on-target alignments by genome"),
-        (N_READ_BASES_BY_GENOME, "read bases in on-target alignments by genome"),
+        (N_READS_BY_GENOME, "on-target reads by genome"),
+        (N_BASES_BY_GENOME, "reference bases in on-target alignments by genome"),
     ]);
 
     // initialize the tool
@@ -115,8 +104,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // initialize the deduplication counter
-    let deduplicating = *w.cfg.get_bool(DEDUPLICATE_READS);
-    let mut insert_counts: FxHashMap<ChannelAlignment, ChannelAlignmentCounts> = FxHashMap::default();
+    let mut channel_alns: Vec<(ChannelAlignment, u32)> = Vec::with_capacity(COUNTER_CAPACITY);
 
     // process input BAM records
     w.log.print("streaming BAM records");
@@ -125,15 +113,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     for result in records {
         let record = result?;
         if record.qname() != alns[0].qname() { 
-            print_alns(&alns, &mut writers, &mut read_counts, &mut w.ctrs, deduplicating, &mut insert_counts)?;
+            print_alns(&alns, &mut writers, &mut read_counts, &mut w.ctrs, &mut channel_alns)?;
             alns.clear();
         }
         alns.push(record);
     }
-    print_alns(&alns, &mut writers, &mut read_counts, &mut w.ctrs, deduplicating, &mut insert_counts)?;
+    print_alns(&alns, &mut writers, &mut read_counts, &mut w.ctrs, &mut channel_alns)?;
 
     // write chrom read count files, for setting capacity in downstream tools
-    w.log.print("writing read count files");
+    w.log.print("writing chromosome read count files");
     for (tid, count) in &read_counts {
         let chrom_index_padded = chrom_map.get(tid).unwrap();
         let count_file_path = format!("{}.chr{}.read_count", chrom_file_prefix, chrom_index_padded);
@@ -142,14 +130,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
     
     // report counter values
-    w.log.print("tallying coverage statistics");
-    tally_read_bases(&insert_counts, &chroms, &mut w);
+    w.log.print("calling tally_read_bases");
+    tally_read_bases(&mut channel_alns, &chroms, &mut w);
     w.ctrs.print_grouped(&[
         &[N_READS, N_USABLE_READS],
-        &[N_UNIQ_ALNS, N_ALNS, N_REF_BASES, N_READ_BASES],
+        &[N_UNIQ_ALNS, N_ALNS, N_BASES],
         &[N_READS_BY_GENOME],
-        &[N_REF_BASES_BY_GENOME],
-        &[N_READ_BASES_BY_GENOME],
+        &[N_BASES_BY_GENOME],
     ]);
     Ok(())
 }
@@ -160,8 +147,7 @@ fn print_alns(
     writers:       &mut FxHashMap<u32, Writer>,
     read_counts:   &mut FxHashMap<u32, usize>,
     ctrs:          &mut Counters,
-    deduplicating: bool,
-    insert_counts: &mut FxHashMap<ChannelAlignment, ChannelAlignmentCounts>
+    channel_alns:  &mut Vec<(ChannelAlignment, u32)>,
 ) -> Result<(), Box<dyn Error>> {
 
     // skip unmapped, off-target, or failed reads
@@ -182,31 +168,19 @@ fn print_alns(
         *read_counts.get_mut(&(tid as u32)).unwrap() += 1; // count reads, not alns
 
         // collect deduplicated alignment counts
+        // rather than a CPU-intensive HashMap, uses a memory-intensive Vec sorted and chunked below
         let (unique_insert_span, was_reordered) = 
             UniqueInsertSpan::from_bam_record(&alns[0]);
         let n_alns = alns.len();
         for i in 0..n_alns {
-            let channel_aln = ChannelAlignment {
-                aln_i: (if was_reordered { n_alns - 1 - i } else { i }) as u8,
-                unique_insert_span,
-            };
-            let counts = insert_counts.entry(channel_aln)
-                .or_insert(ChannelAlignmentCounts {
-                    n_alns:       0,
-                    n_ref_bases:  0,
-                    n_read_bases: 0,
-                });
-            if !deduplicating || counts.n_alns == 0 {
-                let cigar_view = alns[i].cigar();
-                counts.n_alns       += 1;
-                counts.n_ref_bases  += cigar_view.end_pos() as usize - alns[i].pos() as usize;
-                counts.n_read_bases += cigar_view.iter().fold(0usize, |acc, cig| {
-                    match cig.char() {
-                        'M' | '=' | 'X' | 'I' => acc + cig.len() as usize,
-                        _ => acc,
-                    }
-                });
-            }
+            let cigar_view = alns[i].cigar();
+            channel_alns.push((
+                ChannelAlignment {
+                    unique_insert_span,
+                    aln_i: (if was_reordered { n_alns - 1 - i } else { i }) as u8,
+                },
+                cigar_view.end_pos() as u32 - alns[i].pos() as u32
+            ));
         }
     }
     Ok(())
@@ -214,31 +188,56 @@ fn print_alns(
 
 // calculate on-target read and base counts over a (deduplicated) library
 fn tally_read_bases(
-    insert_counts: &FxHashMap<ChannelAlignment, ChannelAlignmentCounts>,
+    channel_alns: &mut Vec<(ChannelAlignment, u32)>,
     chroms: &Chroms,
     w: &mut Workflow,
 ){
+    let deduplicate_reads   = *w.cfg.get_bool(DEDUPLICATE_READS);
     let is_composite_genome = *w.cfg.get_bool(IS_COMPOSITE_GENOME);
-    for (channel_aln, counts) in insert_counts.iter() {
+
+    w.log.print("sorting alignments for deduplication");
+    channel_alns.par_sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+    w.log.print("tallying coverage statistics");
+    for chunk in channel_alns.chunk_by(|a, b| a.0 == b.0) {
+
+        // get deduplicated counts
+        let (n_dedup_instances, n_dedup_bases) = get_chunk_vals(chunk, deduplicate_reads);
         w.ctrs.increment(N_UNIQ_ALNS);
-        w.ctrs.add_to(N_ALNS,       counts.n_alns);
-        w.ctrs.add_to(N_REF_BASES,  counts.n_ref_bases);
-        w.ctrs.add_to(N_READ_BASES, counts.n_read_bases);
+        w.ctrs.add_to(N_ALNS,  n_dedup_instances);
+        w.ctrs.add_to(N_BASES, n_dedup_bases);
 
         // count reads and bases per genome to determine the observed mixing ratio
         if is_composite_genome {
+            let channel_aln = &chunk[0].0;
             let ( chrom1, chrom_index1, _, _) = 
                 SamRecord::unpack_signed_node(channel_aln.unique_insert_span.node1, &chroms);
             let (_chrom2, chrom_index2, _, _) = 
                 SamRecord::unpack_signed_node(channel_aln.unique_insert_span.node2, &chroms);
             if chrom_index1 == chrom_index2 { // only count reads whose outer nodes map to the same genome
                 let genome_name = chrom1.split_once('_').unwrap().1; // e.g., chr1_hs1
-                if channel_aln.aln_i == 0 {
+                if channel_aln.aln_i == 0 { // count reads, not alns
                     w.ctrs.increment_keyed(N_READS_BY_GENOME, genome_name);
                 }
-                w.ctrs.add_to_keyed(N_REF_BASES_BY_GENOME,  genome_name, counts.n_ref_bases);
-                w.ctrs.add_to_keyed(N_READ_BASES_BY_GENOME, genome_name, counts.n_read_bases);
+                w.ctrs.add_to_keyed(N_BASES_BY_GENOME,  genome_name, n_dedup_bases);
             }
         }
+    }
+}
+
+// get (deduplicated) counts for a chunk of identical ChannelAlignments
+fn get_chunk_vals(
+    chunk: &[(ChannelAlignment, u32)],
+    deduplicate_reads: bool,
+) -> (usize, usize){ // n_dedup_instances, n_dedup_bases
+    let n_instances = chunk.len();
+    if deduplicate_reads || n_instances == 1 {
+        (1, chunk[0].1 as usize)
+    } else {
+        let mut n_bases = 0_u32;
+        for (_channel_aln, n_bases_aln) in chunk {
+            n_bases += *n_bases_aln;
+        }
+        (n_instances, n_bases as usize)
     }
 }
