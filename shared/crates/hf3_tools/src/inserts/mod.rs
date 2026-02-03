@@ -28,7 +28,7 @@ pub enum ReadFailureFlag {
 /// 
 /// UniqueInsertSpan is a read not an alignment-level property and only 
 /// needs to be assessed once per read.
-#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct UniqueInsertSpan {
     pub node1:   isize, // (re)ordered nodes in the canonical orientation
     pub node2:   isize,
@@ -61,10 +61,10 @@ impl UniqueInsertSpan {
 /// Thus, an instance identifies "the nth alignment of a read after 
 /// (re)ordering into the canonical orientation of the two outer nodes 
 /// (for an insert on a specific ONT channel)".
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ChannelAlignment {
-    pub aln_i: u8, // up to 256 alignments per read
     pub unique_insert_span: UniqueInsertSpan,
+    pub aln_i:              u8, // up to 256 alignments per read
 }
 
 /// ReadLevelMetadata holds metadata that is the same for all alignments and

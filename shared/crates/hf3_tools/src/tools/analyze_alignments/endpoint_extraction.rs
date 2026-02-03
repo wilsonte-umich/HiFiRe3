@@ -156,6 +156,7 @@ impl Endpoints {
         };
 
         // adjust sitePos1 based on terminal alignment clips
+        // clamp to minimum position 1 to prevent underflow, especially on circular chrM
         let clip_dir = match (end, strand) {
             (5, FORWARD) => -1,
             (5, REVERSE) =>  1,
@@ -163,12 +164,13 @@ impl Endpoints {
             (3, REVERSE) => -1,
             _ => unreachable!(),
         };
-        site_pos1 = (site_pos1 as i32 + clip_dir * clip_len as i32) as u32; // concern for possible overflow
+        site_pos1 = (site_pos1 as i32 + clip_dir * clip_len as i32).max(1) as u32;
 
         // use a typical trim value to adjust clips on ONT trim failures, to account for adapter bases still present
         // only applicable to 5' ends here, untrimmed 3' ends were filtered above as uninformative
+        // prevent underflow as above
         if self.is_ont && end == 5 && trims[TRIM5] == 0 {
-            site_pos1 = (site_pos1 as i32 - clip_dir * ONT_ADAPTER_LEN5) as u32;
+            site_pos1 = (site_pos1 as i32 - clip_dir * ONT_ADAPTER_LEN5).max(1) as u32;
         }
 
         // keep a tally of all genome positions nominated as RE sites

@@ -71,13 +71,7 @@ source ${MODULES_DIR}/align/create_mm2_index.sh # sets variable ${MINIMAP2_INDEX
 export FASTP_STEP_COMMAND=cat
 export MERGE_STEP_COMMAND=cat
 if [ "${RUN_PREALIGNMENT_FASTP}" != "" ]; then
-    #   use buffered fastp until its memory leak is fixed: https://github.com/OpenGene/fastp/issues/392
-    #   the leak was supposedly fixed in fastp v0.24 but memory climbing still occurs
-    #   continue using buffered_fastp.pl as it adds little overhead since aligner is the slow step
-    export FASTP_STEP_COMMAND="perl $ALIGN_DIR/buffered_fastp.pl"
-    export MERGE_STEP_COMMAND="perl $ALIGN_DIR/adjust_merge_tags.pl"
-    export FASTP_BUFFER=${TMP_DIR_WRK_SMALL}/FASTP_BUFFER.fastq
-    export FASTP_BUFFER_N_READS=1000000
+    rm -f $FASTP_LOG_PREFIX.*
     export FASTP_COMMAND="fastp \
         --thread 3 --stdin --stdout --dont_eval_duplication \
         --length_required $PLATFORM_MIN_INSERT_SIZE \
@@ -85,8 +79,19 @@ if [ "${RUN_PREALIGNMENT_FASTP}" != "" ]; then
         --qualified_quality_phred $QUALIFIED_QUALITY_PHRED --unqualified_percent_limit $UNQUALIFIED_PERCENT_LIMIT \
         --average_qual $AVERAGE_QUAL \
         --html $FASTP_LOG_PREFIX.html --json $FASTP_LOG_PREFIX.json \
-        --report_title \"$DATA_NAME\" 2>$FASTP_LOG_PREFIX.txt"
-    # --disable_quality_filtering
+        --report_title \"$DATA_NAME\""
+    if [ "$READ_PAIR_TYPE" == "paired" ]; then
+        #   use buffered fastp until its memory leak is fixed: https://github.com/OpenGene/fastp/issues/392
+        #   the leak was supposedly fixed in fastp v0.24 but memory climbing still occurs for paired end reads
+        #   continue using buffered_fastp.pl as it adds little overhead since aligner is the slow step
+        export FASTP_BUFFER=${TMP_DIR_WRK_SMALL}/FASTP_BUFFER.fastq
+        export FASTP_BUFFER_N_READS=10000000
+        export FASTP_COMMAND="${FASTP_COMMAND} 2>>$FASTP_LOG_PREFIX.buffered.txt"
+        export FASTP_STEP_COMMAND="perl $ALIGN_DIR/buffered_fastp.pl"
+    else 
+        export FASTP_STEP_COMMAND=${FASTP_COMMAND}
+    fi  
+    export MERGE_STEP_COMMAND="perl $ALIGN_DIR/adjust_merge_tags.pl"
 fi
 
 #------------------------------------------------------------------
@@ -97,9 +102,9 @@ fi
 perl ${ACTION_DIR}/align/prepare_fastq.pl |
 
 # if needed for short reads, use fastp for one-pass adapter trimming, quality filtering, and read merging
-$FASTP_STEP_COMMAND | 
+$FASTP_STEP_COMMAND 2>$FASTP_LOG_PREFIX.txt | 
 
-# move fastp merge outcomes to the fm:Z: tag and report summary of fastp actions
+# move fastp merge outcomes to the fm:Z: tag and report summary of fastp actions (all short-read even if not paired)
 $MERGE_STEP_COMMAND | 
 
 # align to genome

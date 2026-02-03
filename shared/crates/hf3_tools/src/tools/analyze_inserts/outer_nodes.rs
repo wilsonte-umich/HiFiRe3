@@ -1,10 +1,10 @@
 //! Codify the outermost nodes of reads to establish molecule identity.
 
 // dependencies
-use mdi::workflow::Workflow;
+use crossbeam::channel::Sender;
 use genomex::sam::SamRecord;
-use super::Tool;
 use crate::sites::SiteMatches;
+use super::{Tool, Outcome};
 
 /// OuterNodes structure for determining read molecule identity.
 pub struct OuterNodes {
@@ -19,7 +19,7 @@ impl OuterNodes {
         is_unmerged_pair:  bool,
         paired_outer_node: Option<isize>,
         tool:              &Tool,
-        w:                 &mut Workflow,
+        tx_outcome:        &Sender<Outcome>,
     ) -> OuterNodes {
         let n_alns = alns.len();
         let (node5, node3): (isize, isize);
@@ -49,7 +49,7 @@ impl OuterNodes {
             node3 = if is_unmerged_pair {
                 let (chrom, _chrom_index, pos1, is_reverse) = 
                     SamRecord::unpack_signed_node(paired_outer_node.unwrap(), &tool.chroms);
-                let closest_site = tool.site_matcher.find_closest_site(&chrom, pos1, w);
+                let closest_site = tool.site_matcher.find_closest_site(tx_outcome, &chrom, pos1);
                 SamRecord::pack_signed_node(&chrom, closest_site.pos1, !is_reverse, &tool.chroms) // invert the strand orientation of paired 5' ends to match the behavior of single or merged reads
             } else { // using projected 3' ends allows best deduplication of partially sequenced RE fragments
                 alns[n_alns - 1].pack_signed_node_at_pos(aln_sites[n_alns - 1].proj3.pos1, false, &tool.chroms)

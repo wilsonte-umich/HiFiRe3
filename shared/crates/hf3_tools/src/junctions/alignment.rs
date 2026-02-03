@@ -4,7 +4,6 @@
 
 // dependencies
 use std::error::Error;
-use std::mem::take;
 use rust_htslib::bam::{record::Record as BamRecord};
 use rayon::prelude::*;
 use serde::{Serialize, Deserialize};
@@ -86,9 +85,10 @@ impl AlignmentSegment {
     pub fn write_sorted(
         mut aln_segments: Vec<AlignmentSegment>, 
         filepath: &str,
+        n_cpu:    u32,
     ) -> Result<(), Box<dyn Error>> {
         aln_segments.par_sort_unstable();
-        let mut writer = OutputCsv::open_csv(filepath, b'\t', false);
+        let mut writer = OutputCsv::open_csv(filepath, b'\t', false, Some(n_cpu));
         for chunk in aln_segments.chunk_by_mut(|a, b| a == b) {
             chunk[0].n_observed = chunk.len() as u16;
             writer.serialize(&chunk[0]);
@@ -106,23 +106,23 @@ impl AlignmentSegment {
         cvg_filepath:      &str,
         chroms:            &Chroms,
         final_jxns:        &mut Vec<FinalJunction>,
+        n_cpu:             u32,
     ) -> Result<(usize, usize, usize, usize), Box<dyn Error>> {
 
         // initialize iteration over sorted distal alignments
         distal_alns.par_sort_unstable();
-        let mut uniq_distal_alns = Vec::new();
-        for chunk in distal_alns.chunk_by_mut(|a, b| a == b) {
-            chunk[0].n_observed = chunk.len() as u16;
-            uniq_distal_alns.push(take(&mut chunk[0]));
-        }
-        let mut distal_iter = uniq_distal_alns.iter();
-        let mut next_distal_aln = distal_iter.next();
         let n_distal_alns = distal_alns.len();
-        let n_uniq_distal_alns = uniq_distal_alns.len();
+        let mut distal_aln_chunks: Vec<_> = distal_alns.par_chunk_by_mut(|a, b| a == b).collect();
+        let n_uniq_distal_alns = distal_aln_chunks.len();
+        for distal_aln_chunk in distal_aln_chunks.iter_mut() {
+            distal_aln_chunk[0].n_observed = distal_aln_chunk.len() as u16;
+        }
+        let mut distal_iter = distal_aln_chunks.iter();
+        let mut next_distal_aln_chunk = distal_iter.next();
 
         // intialize output writers and first alignment count
-        let mut aln_writer = OutputCsv::open_csv(aln_filepath, b'\t', false);
-        let mut cvg_writer = OutputCsv::open_csv(cvg_filepath, b'\t', false);
+        let mut aln_writer = OutputCsv::open_csv(aln_filepath, b'\t', false, Some(n_cpu));
+        let mut cvg_writer = OutputCsv::open_csv(cvg_filepath, b'\t', false, Some(n_cpu));
         let mut n_first_alns: usize = 0;
         let mut n_uniq_first_alns: usize = 0;
 
@@ -131,6 +131,7 @@ impl AlignmentSegment {
             let chrom_index_padded = format!("{:02}", chrom_index);
             let first_alns_file = format!("{}.first_alns.chr{}.gz", chrom_file_prefix, chrom_index_padded);
             if !std::path::Path::new(&first_alns_file).exists() { continue; }
+            eprintln!("    {}", chroms.rev_index[chrom_index]);
             let mut first_alns = InputCsv::open_file(&first_alns_file, b'\t', false);
 
             // initialize coverage map for this chromosome
@@ -139,11 +140,12 @@ impl AlignmentSegment {
             // run the chromosome's first alignments, merge in distal alignments, increment coverage map
             for first_aln in first_alns.deserialize::<AlignmentSegment>() {
                 let first_aln = first_aln.expect(DESERIALIZATION_ERROR);
-                while let Some(distal_aln) = next_distal_aln {
+                while let Some(distal_aln_chunk) = next_distal_aln_chunk {
+                    let distal_aln = &distal_aln_chunk[0];
                     if distal_aln < &first_aln {
                         if distal_aln.chrom_index1 == *chrom_index { distal_aln.add_to_map(&mut coverage_map); }
                         aln_writer.serialize(distal_aln);
-                        next_distal_aln = distal_iter.next();
+                        next_distal_aln_chunk = distal_iter.next();
                     } else {
                         break;
                     }
@@ -167,14 +169,14 @@ impl AlignmentSegment {
 
             // write entries to the begraph coverage file, omitting zero-coverage regions
             let mut chrom_offset0 = 0;
-            for coverage in coverage_map.chunk_by(|a, b| a == b){
-                let n_pos = coverage.len();
-                if coverage[0] > 0 {
+            for coverage_chunk in coverage_map.chunk_by(|a, b| a == b){
+                let n_pos = coverage_chunk.len();
+                if coverage_chunk[0] > 0 {
                     cvg_writer.serialize(&BedGraphU16{
                         chrom_index: *chrom_index,
                         start0:      chrom_offset0 as u32,
                         end1:        (chrom_offset0 + n_pos) as u32,
-                        coverage:    coverage[0],
+                        coverage:    coverage_chunk[0],
                     });
                 }
                 chrom_offset0 += n_pos;
@@ -182,9 +184,10 @@ impl AlignmentSegment {
         }
 
         // write any remaining distal alignments at the end of the last chromosome
-        while let Some(distal_aln) = next_distal_aln {
+        while let Some(distal_aln_chunk) = next_distal_aln_chunk {
+            let distal_aln = &distal_aln_chunk[0];
             aln_writer.serialize(&distal_aln);
-            next_distal_aln = distal_iter.next();
+            next_distal_aln_chunk = distal_iter.next();
         }
 
         // close the writer and return the number of first alignments written

@@ -9,9 +9,9 @@ pre-alignment processing (fastp),PLATFORM_MIN_INSERT_SIZE,50,50,50,50,250,250,re
 ,TRIM_POLY_X,TRUE,,,,,,instruct fastp to remove poly-G (and other poly-X) tails for minimap2 alignment efficiency
 ,POLY_X_MIN_LEN,20,,,,,,length threshold for TRIM_POLY_X
 ,TRIM_ADAPTERS,TRUE,TRUE,TRUE,,,,TRUE to instruct fastp to trim adapters (others trimmed by other tools)
-,QUALIFIED_QUALITY_PHRED,30,35,35,30,18,30,same as the similarly named fastp option
+,QUALIFIED_QUALITY_PHRED,30,32,30,30,18,30,same as the similarly named fastp option
 ,UNQUALIFIED_PERCENT_LIMIT,25,25,25,25,25,25,same as the similarly named fastp option
-,AVERAGE_QUAL,30,35,35,30,18,30,same as the similarly named fastp option
+,AVERAGE_QUAL,30,32,30,30,18,30,same as the similarly named fastp option
 read alignment (minimap2),BANDWIDTH,100,100,100,100,500;3300,500;3300,minimap2 option -r (semicolon will be replaced by comma)
 ,ALIGNMENT_MODE,sr,sr,sr,sr,lr:hq,map-hifi,minimap2 option -x; use lr:hq not map-ont
 RE fragment analysis,PLATFORM_MAX_INSERT_SIZE,1000,1000,1000,1000,5000000,100000,maximum insert size expected/allowed for platform or considered a potential proper insert

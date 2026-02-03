@@ -3,12 +3,14 @@
 // dependencies
 use rustc_hash::FxHashMap;
 use rayon::prelude::*;
+use crossbeam::channel::Sender;
 use mdi::pub_key_constants;
 use mdi::workflow::Workflow;
 use mdi::InputFile;
 use genomex::sam::{SamRecord, flag};
 use crate::junctions::JxnFailureFlag;
 use crate::sites::{SiteMatch, SiteMatches};
+use super::{Outcome, JXN_FAIL_SITE_MATCH};
 
 // constants
 pub_key_constants!{
@@ -153,14 +155,14 @@ impl SiteMatcher {
     /// Match a specific position on a chromosome to the closest RE filtering site.
     pub fn find_closest_site(
         &self, 
-        chrom:    &str, 
-        qry_pos1: u32,
-        w:        &mut Workflow, 
+        tx_outcome: &Sender<Outcome>,
+        chrom:      &str, 
+        qry_pos1:   u32,
     ) -> SiteMatch {
         if let Some(sites) = self.filtering_sites.get(chrom) {
             match sites.binary_search(&qry_pos1) {
                 Ok(site_index0) => { // exact match
-                    w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, EXACT_SITE_MATCH);
+                    tx_outcome.send(Outcome::SiteMatch(EXACT_SITE_MATCH)).unwrap();
                     SiteMatch {
                         index1: site_index0 as i32 + 1, // 1-based index
                         pos1: sites[site_index0],
@@ -170,7 +172,7 @@ impl SiteMatcher {
                 Err(next_site_index0) => { // no exact match
                     // return the closest site with index1 and distance signed negative if qry_pos1 < site.pos1
                     if next_site_index0 > 0 && next_site_index0 < sites.len() {
-                        w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, INEXACT_SITE_MATCH);
+                        tx_outcome.send(Outcome::SiteMatch(INEXACT_SITE_MATCH)).unwrap();
                         let dist_low = qry_pos1 - sites[next_site_index0 - 1];
                         let dist_high = sites[next_site_index0] - qry_pos1;
                         if dist_low < dist_high {
@@ -188,13 +190,13 @@ impl SiteMatcher {
                         }
                     // telomeric sites on a chromosome are considered unusable and return a null site
                     } else {
-                        w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, TELOMERIC_POSITION);
+                        tx_outcome.send(Outcome::SiteMatch(TELOMERIC_POSITION)).unwrap();
                         SiteMatch::new()
                     }
                 },
             }
         } else {
-            w.ctrs.increment_keyed(N_MATCHES_BY_OUTCOME, NO_SITES_ON_CHROM);
+            tx_outcome.send(Outcome::SiteMatch(NO_SITES_ON_CHROM)).unwrap();
             SiteMatch::new()
         }
     }
@@ -202,19 +204,19 @@ impl SiteMatcher {
     /// in read order.
     pub fn match_aln_sites(
         &self, 
+        tx_outcome: &Sender<Outcome>,
         aln: &SamRecord,
-        w:   &mut Workflow, 
     ) -> (SiteMatch, SiteMatch) {
         if self.is_matching_sites {
             if aln.check_flag_any(flag::REVERSE){
                 (
-                    self.find_closest_site(&aln.rname, aln.get_end1() + 1 - self.correction5, w),
-                    self.find_closest_site(&aln.rname, aln.pos1 - self.correction5, w),
+                    self.find_closest_site(tx_outcome, &aln.rname, aln.get_end1() + 1 - self.correction5),
+                    self.find_closest_site(tx_outcome, &aln.rname, aln.pos1 - self.correction5),
                 )
             } else {
                 (
-                    self.find_closest_site(&aln.rname, aln.pos1, w),
-                    self.find_closest_site(&aln.rname, aln.get_end1() + 1, w),
+                    self.find_closest_site(tx_outcome, &aln.rname, aln.pos1),
+                    self.find_closest_site(tx_outcome, &aln.rname, aln.get_end1() + 1),
                 )
             }
         } else {
@@ -268,11 +270,11 @@ impl SiteMatcher {
     /// of an RE filtering site, returning JxnFailureFlag::SiteMatch if the junction 
     /// should be rejected.
     pub fn check_jxn(
-        &self,  
+        &self, 
+        tx_outcome: &Sender<Outcome>,
         aln_sites: &[SiteMatches],
         aln5_i:    usize, // the alignment 5' to the junction on the read (its 3' end is the breakpoint)
         aln3_i:    usize,
-        w: &mut Workflow,
     ) -> JxnFailureFlag {
         if !self.is_matching_sites { return JxnFailureFlag::None; }
         let dist_prox = &aln_sites[aln5_i].site3.distance;
@@ -281,7 +283,7 @@ impl SiteMatcher {
         let failed = dist_prox.abs() <= self.reject_junction_distance ||
                            dist_dist.abs() <= self.reject_junction_distance;
         if failed {
-            w.ctrs.increment_keyed(super::N_JXNS_BY_REASON, super::JXN_FAIL_SITE_MATCH);
+            tx_outcome.send(Outcome::Junction(JXN_FAIL_SITE_MATCH)).unwrap();
             JxnFailureFlag::SiteMatch
         } else {
             JxnFailureFlag::None
