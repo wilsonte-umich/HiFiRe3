@@ -73,7 +73,7 @@ export MERGE_STEP_COMMAND=cat
 if [ "${RUN_PREALIGNMENT_FASTP}" != "" ]; then
     rm -f $FASTP_LOG_PREFIX.*
     export FASTP_COMMAND="fastp \
-        --thread 3 --stdin --stdout --dont_eval_duplication \
+        --stdin --stdout --dont_eval_duplication \
         --length_required $PLATFORM_MIN_INSERT_SIZE \
         $FASTP_PAIRED_END_OPTIONS $FASTP_POLY_X_OPTIONS $FASTP_ADAPTER_OPTIONS \
         --qualified_quality_phred $QUALIFIED_QUALITY_PHRED --unqualified_percent_limit $UNQUALIFIED_PERCENT_LIMIT \
@@ -86,10 +86,10 @@ if [ "${RUN_PREALIGNMENT_FASTP}" != "" ]; then
         #   continue using buffered_fastp.pl as it adds little overhead since aligner is the slow step
         export FASTP_BUFFER=${TMP_DIR_WRK_SMALL}/FASTP_BUFFER.fastq
         export FASTP_BUFFER_N_READS=10000000
-        export FASTP_COMMAND="${FASTP_COMMAND} 2>>$FASTP_LOG_PREFIX.buffered.txt"
+        export FASTP_COMMAND="${FASTP_COMMAND} --thread ${ALN_CPU} 2>>$FASTP_LOG_PREFIX.buffered.txt"
         export FASTP_STEP_COMMAND="perl $ALIGN_DIR/buffered_fastp.pl"
     else 
-        export FASTP_STEP_COMMAND=${FASTP_COMMAND}
+        export FASTP_STEP_COMMAND="${FASTP_COMMAND} --thread 3"
     fi  
     export MERGE_STEP_COMMAND="perl $ALIGN_DIR/adjust_merge_tags.pl"
 fi
