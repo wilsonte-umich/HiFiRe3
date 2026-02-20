@@ -1,0 +1,55 @@
+---
+# basecall ONT reads and perform error-corrected SV analysis
+variables:
+    POD5_DIR:   /path/to/ONT/pod5
+    OUTPUT_DIR: /path/to/output
+shared:
+    library-properties:
+        sequencing-platform: ONT
+        library-type:        Ligation
+        min-selected-size:   8000   # or 0 if not a size-selected library
+        # min-allowed-size:    0    # set to non-zero value to override min-selected-size
+    restriction-enzyme:
+        enzyme-name:         EcoRV  # or NA if not a RE-fragmented library
+    genome:
+        genome:              hg38
+        # is-composite-genome: true # uncomment if a multi-species reference (uncommon)
+    targets-bed:
+        targets-bed:         NA # or /path/to/targets.bed if using adaptive sampling
+    output:
+        output-dir:          ${OUTPUT_DIR}
+        data-name:           my_sample_name
+---
+# perform basecalling and RE-aware adapter trimming
+pipeline: HiFiRe3/basecall:latest
+ONT:
+    pod5:
+        pod5-dir: ${POD5_DIR}
+    resources:
+        n-cpu: 8
+        n-gpu: a40:4
+        ram-per-cpu: 12G # 96G total request
+        tmp-dir-large: /tmp
+    job-manager:
+        time-limit: 48:00:00
+        partition: spgpu # adjust as needed for your cluster to use a GPU node
+execute:
+    - ONT
+---
+# analyze fragments and call SVs
+pipeline: HiFiRe3/analyze:latest
+fragments:
+    resources:
+        n-cpu:          12
+        ram-per-cpu:    6G
+    job-manager:
+        time-limit:     6:00:00
+SVs:
+    resources:
+        n-cpu:          12
+        ram-per-cpu:    4G
+    job-manager:
+        time-limit:     6:00:00
+execute:
+    - fragments
+    - SVs

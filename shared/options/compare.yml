@@ -1,31 +1,17 @@
 ---
 # options that set the path to the input read files for alignment
 options:
-    project-dir: 
+    compare-project-dir: 
         order: 1
         short: P
         type: string
         required: false
         default: null
         description: "directory with multiple sample-level subfolders whose `analyze` pipeline files will be compared [TASK_DIR]"
-    sample-dirs: 
+    compare-sample-dirs: 
         order: 2
         short: S
         type: string
         required: false
         default: null
-        description: "override --project-dir with a comma-delimited list of `analyze` output directories [--project-dir/*]"
-    group-breakpoint-distance: 
-        order: 3
-        short: g
-        type: integer
-        required: false
-        default: 20
-        description: "pairs of junction breakpoints within this many bp may be aggregated as the same breakpoint"
-    group-stem-distance: 
-        order: 4
-        short: G
-        type: integer
-        required: false
-        default: 5
-        description: "pairs of SV adjusted summed stem lengths within this many bp may be aggregated as the same SV"
+        description: "override --project-dir with a comma-delimited list of `analyze` output directories [--compare-project-dir/*]"

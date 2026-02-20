@@ -1,0 +1,36 @@
+---
+# perform integrated SV and SNV analysis of multiple related samples
+# requires prior execution through `analyze fragments`, e.g., from analyze_PacBioStrand.yml 
+variables:
+    OUTPUT_DIR: /path/to/output
+shared:
+    library-properties:
+        sequencing-platform: PacBioStrand
+        library-type:        HiFi
+        min-selected-size:   4500
+        # min-allowed-size:    0    # set to non-zero value to override min-selected-size
+    restriction-enzyme:
+        enzyme-name:         EcoRV  # or NA if not a RE-fragmented library
+    genome:
+        genome:              hg38
+        # is-composite-genome: true # uncomment if a multi-species reference (uncommon)
+    output:
+        output-dir: ${OUTPUT_DIR}
+        data-name:  my_project_name # see analyze_PacBioStrand.yml to see how this was populated with sample analyses
+# ---
+# could add YAML blocks for `basecall PacBio` and `analyze fragments` here to keep in one file
+---
+# perform error-corrected SV and SNV analysis over all samples together
+pipeline: HiFiRe3/compare:latest
+SVs:
+    resources:
+        n-cpu:          12
+        ram-per-cpu:    4G
+    job-manager:
+        time-limit:     6:00:00
+SNVs:
+    SNV:
+        min_n_passes: 20 # adjust to change the required level of duplex strand coverage
+execute:
+    - SVs
+    - SNVs

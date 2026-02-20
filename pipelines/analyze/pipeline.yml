@@ -48,21 +48,25 @@ actions:
     SNVs:
         order: 3
         optionFamilies:
-            - pileup
+            - targets
+            - SNV
         resources:
             required:
                 total-ram: 24G
             recommended: 
-                n-cpu: 12
-                ram-per-cpu: 8G
+                n-cpu: 8
+                ram-per-cpu: 4G
         job-manager:
             recommended:
                 time-limit: 12:00:00
-        description: "parse prepared fragments to describe and count unique SNV combinations"
+        description: "parse prepared PacBio by-strand reads to describe and count unique SNV combinations"
 package:
     SVs: # the pipeline action after which a data package should assembled
         uploadType: hf3AnalyzeSVs # a signal to the Stage 2 framework regarding the package contents
         files:
+            samplesFile:
+                type: txt
+                file: $SV_SAMPLES_FILE
             chromsFile:
                 type: txt
                 file: $ANALYSIS_CHROMS_FILE
@@ -126,15 +130,42 @@ package:
     SNVs:
         uploadType: hf3AnalyzeSNVs
         files:
-            snvSummaryBgz:
+            samplesFile:
+                type: txt
+                file: $SNV_SAMPLES_FILE
+            chromsFile:
+                type: txt
+                file: $ANALYSIS_CHROMS_FILE
+            targetsBed:
+                type: bed
+                file: $TARGETS_BED
+            exclusionsBed:
+                type: bed
+                file: $GENOME_EXCLUSIONS_BED
+            allReadsPileupBgz:
+                type: bed.bgz
+                file: $SNV_ALL_READS_PILEUP_BGZ
+            allReadsPileupTbi:
+                type: bed.bgz.tbi
+                file: $SNV_ALL_READS_PILEUP_BGZ.tbi
+            allReadsVariantsBgz:
                 type: txt.bgz
-                file: $SNV_SUMMARY_TABLE
-            snvSummaryTbi:
+                file: $SNV_ALL_READS_VARIANTS_BGZ
+            allReadsVariantsTbi:
                 type: txt.bgz.tbi
-                file: $SNV_SUMMARY_TABLE.tbi
-            readPileupGz:
-                type: txt.gz
-                file: $SNV_READ_PILEUP
+                file: $SNV_ALL_READS_VARIANTS_BGZ.tbi
+            errorCorrectedPileupBgz:
+                type: bed.bgz
+                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ
+            errorCorrectedPileupTbi:
+                type: bed.bgz.tbi
+                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ.tbi
+            errorCorrectedVariantsBgz:
+                type: txt.bgz
+                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ
+            errorCorrectedVariantsTbi:
+                type: txt.bgz.tbi
+                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ.tbi
 # container:
 #     supported: false    # set to true if you maintain a container registry for this pipeline [false]
 #     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]

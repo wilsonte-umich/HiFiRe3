@@ -1,7 +1,7 @@
 //! Handle the input BAM stream; dispatch strand pairs for merging.
 
 // modules
-mod usable;
+pub mod usable;
 
 // dependencies
 use std::error::Error;
@@ -15,6 +15,7 @@ use mdi::workflow::Config;
 use genomex::bam::tags;
 use crate::formats::hf3_tags::*;
 use super::{BufferedStrand, StrandPair, MergeResult};
+use usable::{is_usable, UnusableReason, StrandSource};
 
 /// StrandBuffer structure for caching PacBio strands
 /// while waiting for their matching strand.
@@ -41,9 +42,20 @@ impl StrandBuffer {
         movie_idx << 32 | zmw
     }
     /// Push a first encountered strand into the buffer for later merging.
-    pub fn insert(&mut self, key: usize, usable: bool, ff:u8, ec: f32, strand: &BamRecord) {
+    pub fn insert(
+        &mut self, 
+        key:    usize, 
+        source: StrandSource,
+        usable: bool, 
+        reason: UnusableReason,
+        ff:     u8, 
+        ec:     f32, 
+        strand: &BamRecord
+    ) {
         self.strand_buffer.insert(key, BufferedStrand {
+            source: source,
             usable,
+            reason,
             ff,
             ec,
             seq:      strand.seq().as_bytes().iter().map(|&c| c as char).collect(),
@@ -64,8 +76,9 @@ pub_key_constants!(
     FAIL_BAM_FILE
     HIFI_BAM_FILE
     // read outcomes
-    UNUSABLE_READ
     ONE_USABLE_STRAND
+    BOTH_STRANDS_UNUSABLE
+    ORPHAN_STRAND
 );
 
 // called by crossbeam scope to create the single input thread
@@ -82,33 +95,71 @@ pub fn stream_bam_files(
     let mut this_strand = BamRecord::new();
     let mut strand_buffer = StrandBuffer::new();
 
-    // scan the fail and hifi BAM files on order to build a cache of by-strand reads
+    // scan the fail and hifi BAM files in order to build a cache of by-strand reads
     // merge strands when both are encountered and usable
-
-    // for bam_file_key in &[FAIL_BAM_FILE, HIFI_BAM_FILE] {
-    for bam_file_key in &[HIFI_BAM_FILE] {
-
+    for bam_file_key in &[FAIL_BAM_FILE, HIFI_BAM_FILE] {
+    // for bam_file_key in &[HIFI_BAM_FILE] {
         let bam_file = cfg.get_string(bam_file_key);
         let bam_file_name = Path::new(&bam_file).file_name().unwrap().to_str().unwrap();
         eprintln!("processing {}", bam_file_name);
         let mut bam = Reader::from_path(&bam_file)?;
+        let source = if *bam_file_key == FAIL_BAM_FILE {
+            StrandSource::Fail
+        } else {
+            StrandSource::Hifi
+        };
+
+        //////////////////////////////////////
+        // let mut counter: usize = 0;
+
         while let Some(r) = bam.read(&mut this_strand) {
             r.expect("Failed to parse BAM record");
-            parse_record(
-                &this_strand, &mut strand_buffer, 
-                &tx_strand_pair, &tx_merge_result
+            process_strand(
+                source,
+                &this_strand, 
+                &mut strand_buffer, 
+                &tx_strand_pair, 
+                &tx_merge_result,
+
+                // &mut counter,
+
             )?;
+            
+            // ////////////////////////////////////////////////////////
+            // if counter >= 10000 {
+            //     break; // TODO: remove this break after testing
+            // }
         }
+    }
+    
+    // report any residual orphan strands; hopefully there are none
+    for (_key, strand) in strand_buffer.strand_buffer.into_iter() {
+        tx_merge_result.send(MergeResult{
+            sources: strand.source,
+            reason:  strand.reason.to_str(),
+            outcome: ORPHAN_STRAND,
+            qname: Vec::new(), // can't parse qname without read data from 'this' strand
+            seq:   String::new(),
+            qual:  Vec::new(),
+            ff: 0,
+            ec: 0.0,
+            dt: None,
+            dd: None,
+            sk: None,
+        })?;
     }
     Ok(())
 }
 
-// dispatch one strand of a PacBio by-strand read for processing
-fn parse_record(
+// dispatch one strand of a PacBio by-strand read to either the StrandBuffer
+// or for processing with its partner strand
+fn process_strand(
+    source:          StrandSource,
     this_strand:     &BamRecord,
     strand_buffer:   &mut StrandBuffer,
     tx_strand_pair:  &Sender<StrandPair>,
-    tx_merge_result: &Sender<MergeResult>
+    tx_merge_result: &Sender<MergeResult>,
+    // counter:         &mut usize,
 ) -> Result<(), Box<dyn Error>> {
 
     // parse ZMW from read name: m64011_190714_120746/14/ccs/rev
@@ -116,7 +167,7 @@ fn parse_record(
     let qname = unsafe { from_utf8_unchecked(this_strand.qname()) };
     let parts: Vec<&str> = qname.split('/').collect();
     if parts.len() < 4 { 
-        return Err(format!("Unexpected read name format: {}", qname).into());
+        return Err(format!("Unexpected name format: {}", qname).into());
     }
     let zmw = parts[1].parse::<u32>().map_err(|e|
         format!("Failed to parse ZMW from read name {}: {}", qname, e)
@@ -126,7 +177,7 @@ fn parse_record(
     let buffer_key = strand_buffer.get_key(parts[0], zmw as usize);
 
     // assess whether this strand is usable for merging
-    let (this_usable, this_ff, this_ec) = usable::is_usable(this_strand);
+    let (this_usable, this_reason, this_ff, this_ec) = is_usable(this_strand);
 
     // process the second strand of a matching by-strand read pair
     // remove the cached data from the map for memory management
@@ -138,67 +189,83 @@ fn parse_record(
         // used downstream for both SNV and SV detection
         if prev_strand.usable && this_usable {
             tx_strand_pair.send(StrandPair{
+                sources: source.get_sources(&prev_strand.source),
                 qname,
                 ff,
                 this: BufferedStrand {
+                    source,
                     usable: this_usable,
+                    reason: this_reason,
                     ff,
-                    ec:     this_ec,
-                    seq:    this_strand.seq().as_bytes().iter().map(|&c| c as char).collect(),
-                    qual:   this_strand.qual().to_vec(),
-                    ip:     tags::get_tag_u8_vec_opt(this_strand, INTER_PULSE_DURATION),
-                    pw:     tags::get_tag_u8_vec_opt(this_strand, PULSE_WIDTH),
+                    ec:   this_ec,
+                    seq:  this_strand.seq().as_bytes().iter().map(|&c| c as char).collect(),
+                    qual: this_strand.qual().to_vec(),
+                    ip:   tags::get_tag_u8_vec_opt(this_strand, INTER_PULSE_DURATION),
+                    pw:   tags::get_tag_u8_vec_opt(this_strand, PULSE_WIDTH),
                 },
                 prev: prev_strand,
             })?;
+            // *counter += 1;
 
-        // transmit reads with one usable strand directly to writer without the two-strand tag
-        // used downstream for SV detection only
+        // transmit reads with only one usable strand directly to writer without 
+        // the two-strand tag used downstream for SV detection only
         } else if prev_strand.usable {
             tx_merge_result.send(MergeResult{
+                sources: source, // the source and reason for the other unsuable strand
+                reason:  this_reason.to_str(),
                 outcome: ONE_USABLE_STRAND,
                 qname,
                 seq:  prev_strand.seq,
                 qual: prev_strand.qual,
                 ff,
                 ec:   prev_strand.ec,
+                dt:   None,
                 dd:   None,
                 sk:   None,
-                dt:   None,
             })?;
         } else if this_usable {
-            let seq: String = this_strand.seq().as_bytes().iter().map(|&c| c as char).collect();
             tx_merge_result.send(MergeResult{
+                sources: prev_strand.source,
+                reason:  prev_strand.reason.to_str(),
                 outcome: ONE_USABLE_STRAND,
                 qname,
-                seq,
+                seq:  this_strand.seq().as_bytes().iter().map(|&c| c as char).collect(),
                 qual: this_strand.qual().to_vec(),
                 ff,
                 ec: this_ec,
+                dt: None,
                 dd: None,
                 sk: None,
-                dt: None,
             })?;
 
         // reject reads with no usable strands due to adapter parsing failures, low coverage, etc.
         } else {
             tx_merge_result.send(MergeResult{
-                outcome: UNUSABLE_READ,
+                sources: source.get_sources(&prev_strand.source),
+                reason:  this_reason.get_reasons(&prev_strand.reason),
+                outcome: BOTH_STRANDS_UNUSABLE,
                 qname,
                 seq: String::new(),
                 qual: Vec::new(),
                 ff,
                 ec: 0.0,
+                dt: None,
                 dd: None,
                 sk: None,
-                dt: None,
             })?;
         }
 
     // cache the needed bits of the first encountered strand of a ZMW while waiting for the second
     } else {
-        strand_buffer.insert(buffer_key, this_usable, this_ff, this_ec, this_strand);
+        strand_buffer.insert(
+            buffer_key, 
+            source,
+            this_usable, 
+            this_reason,
+            this_ff, 
+            this_ec, 
+            this_strand
+        );
     }
     Ok(())
 }
-

@@ -1,0 +1,41 @@
+---
+# perform error-corrected SV analysis on short-read data
+variables:
+    INPUT_DIR:  /path/to/fastq
+    OUTPUT_DIR: /path/to/output
+shared:
+    library-properties:
+        sequencing-platform: Aviti_1x300 # or other supported short-read platforms and libraries
+        library-type:        TruSeq
+        min-selected-size:   275   # or 0 if not a size-selected library
+        # min-allowed-size:    0   # set to non-zero value to override min-selected-size
+    restriction-enzyme:
+        enzyme-name:         AluI  # or NA if not a RE-fragmented library
+    genome:
+        genome:              hg38
+        # is-composite-genome: true # uncomment if a multi-species reference (uncommon)
+    targets-bed:
+        targets-bed:         NA # or /path/to/targets.bed
+    output:
+        output-dir:          ${OUTPUT_DIR}
+        data-name:           my_sample_name
+---
+# analyze fragments and call SVs
+pipeline: HiFiRe3/analyze:latest
+fragments:
+    read-file:
+        read-file-dir: ${INPUT_DIR}
+    resources:
+        n-cpu:          16
+        ram-per-cpu:    6G
+    job-manager:
+        time-limit:     24:00:00
+SVs:
+    resources:
+        n-cpu:          16
+        ram-per-cpu:    4G
+    job-manager:
+        time-limit:     24:00:00
+execute:
+    - fragments
+    - SVs

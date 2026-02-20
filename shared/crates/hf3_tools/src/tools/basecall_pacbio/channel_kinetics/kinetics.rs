@@ -33,7 +33,8 @@ impl CodecV1 {
 pub struct StrandMetadata {
     pub base_context:    [u8; 3], // 3-base context around the index base
     pub is_heteroduplex: bool,    // false for benchmarking on homoduplex strands
-    pub is_ref:          bool,    // whether this strand is the reference base; true for homoduplex benchmarking
+    pub ref_is_known:    bool,    // whether the reference base is known at this position; always true for homoduplex benchmarking
+    pub is_ref:          bool,    // whether this strand is the reference base; always true for homoduplex benchmarking
 }
 
 /// FrameCounts structure for storing the pulse values 
@@ -47,16 +48,17 @@ pub struct FrameCounts {
 /// Extract the FrameCounts for a base at the given offset in the strand.
 /// Send a KineticsInstance to the kinetics collector via tx_kinetics.
 pub fn push(
-    strand: &BufferedStrand,
-    offset: usize,
+    strand:          &BufferedStrand,
+    offset:          usize,
     is_heteroduplex: bool,
-    is_ref: bool,
-    tx_kinetics: &Sender<KineticsInstance>,
+    ref_is_known:    bool,
+    is_ref:          bool,
+    tx_kinetics:     &Sender<KineticsInstance>,
 ) -> (String, Vec<u16>) {
 
     // ignore identity bases at the ends of the read 
     if offset < 1 || offset >= strand.seq.len() - 1 {
-        return ("NNN".to_string(), vec![0, 0, 0]); // dummy value, never expeced to be used in caller
+        return ("NNN".to_string(), vec![0, 0, 0]); // dummy value, never expected to be used in caller
     }
 
     // extract the 3-base context around the target base
@@ -78,6 +80,7 @@ pub fn push(
     let strand_metadata = StrandMetadata {
         base_context: base_context.as_bytes().try_into().unwrap(),
         is_heteroduplex,
+        ref_is_known,
         is_ref,
     };
 

@@ -45,6 +45,7 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
     startSpinner(session, message = "building SVs reads.")
     sites <- hf3_getSites_padded(sourceId, coord)
     if(nrow(sites) == 0) return(trackInfo(track, coord, layout, "no RE sites in window"))
+    siteLineWidth <- track$settings$get("SV_Reads","Site_Line_Width")
 
     # get alignments in window
     startSpinner(session, message = "building SVs reads..")
@@ -118,7 +119,7 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
         yaxt <- "n"
         height <- height(track, 0.25) + padding$total
     }}, error = function(e){
-        print(e)
+        # print(e)
         return(trackInfo(track, coord, layout, "error stacking fragments, probably due to too few sites, etc."))
     })
     startSpinner(session, message = "building SVs reads....")
@@ -131,6 +132,9 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
             xlim = coord$range, xlab = "", xaxt = "n", # nearly always set `xlim`` to `coord$range`
             ylim = ylim,  ylab = projectName, yaxt = yaxt,
             xaxs = "i", yaxs = "i") # always set `xaxs` and `yaxs` to "i"
+
+        # add a hozizontal rule at y = 0
+        abline(h = 0, lwd = siteLineWidth)
 
         # plot the alignment rectangles
         if(coord$width <= maxWidth_alignments){
@@ -170,7 +174,6 @@ build.analyze_SVs_readsTrack <- function(track, reference, coord, layout){
 
         # plot the RE sites
         if(nrow(sites) > 0) {
-            siteLineWidth <- track$settings$get("SV_Reads","Site_Line_Width")
             for(i in 1:nrow(sites)){
                 lines(
                     rep(sites[i, sitePos1 - 0.5], 2), 

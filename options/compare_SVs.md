@@ -13,17 +13,29 @@ compare: Compare variants called by the analyze pipeline across multiple related
 
 SVs: compare structural variant junctions between multiple related samples
 
+library-properties:
+  -P,--sequencing-platform  <string> platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBio) *REQUIRED*
+  -L,--library-type    <string> how inserts were prepared for --sequencing-platform (Nextera|TruSeq|Elevate|Ultima|Ligation|Rapid|HiFi) *REQUIRED*
+  -I,--min-selected-size    <integer> smallest insert in bp selected BEFORE adapter ligation [0]
+  -V,--selected-size-cv     <double> estimated coefficient of variation for --min-selected-size used to calculate min-allowed-size and max-allowed-size [0.15]
+  -z,--min-allowed-size     <integer> use this value for min-allowed-size instead of calculating from --min-selected-size and --selected-size-cv [0]
+
 genome:
   -g,--genome          <string> name of the reference genome to use (e.g., hg38) *REQUIRED*
   -G,--genome-dir      <string> directory with indexed <--genome>.fa or genome.fa file [.../mdi/resources/genomes/<--genome>] 
   --use-all-chroms     <boolean> use all chromosomes as they are found in genome fasta file without filtering 
   --is-composite-genome     <boolean> <--genome> is a composite of >1 reference (e.g., hs1_dm6 with cross-species spike-in) 
 
+restriction-enzyme:
+  -e,--enzyme-name     <string> name of the restriction enzyme used to cleave genomic DNA (from shared/modules/REs/blunt_enzymes.csv if not NA) [NA]
+
+targets:
+  -y,--targets-bed     <string> path to a BED file definining genomic regions targeted during sequencing [NA]
+  -Y,--region-padding  <integer> bp of adjacency padding applied to target regions in --targets-bed-file [0]
+
 compare:
-  -P,--project-dir     <string> directory with multiple sample-level subfolders whose `analyze` pipeline files will be compared [TASK_DIR] 
-  -S,--sample-dirs     <string> override --project-dir with a comma-delimited list of `analyze` output directories [--project-dir/*] 
-  -g,--group-breakpoint-distance <integer> pairs of junction breakpoints within this many bp may be aggregated as the same breakpoint [20]
-  -G,--group-stem-distance  <integer> pairs of SV adjusted summed stem lengths within this many bp may be aggregated as the same SV [5]
+  -P,--compare-project-dir  <string> directory with multiple sample-level subfolders whose `analyze` pipeline files will be compared [TASK_DIR] 
+  -S,--compare-sample-dirs  <string> override --project-dir with a comma-delimited list of `analyze` output directories [--compare-project-dir/*] 
 
 output:
   -O,--output-dir      <string> the directory where output files will be placed; must already exist *REQUIRED*

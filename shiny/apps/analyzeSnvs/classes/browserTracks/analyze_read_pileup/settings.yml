@@ -1,0 +1,21 @@
+trackType:
+    - XY_pileup
+settings:
+    Pileup:
+        Read_Type:
+            type:   selectInput
+            choices:
+                - all_reads
+                - error_corrected
+            value:  all_reads
+        Include_Unallowed:
+            type:   checkboxInput
+            value:  true
+override:
+    Track:
+        Height: 2
+# uncomment this section to specify track-specific settings
+# presets:
+#     Preset_Name:
+#         Family:
+#             Option: value

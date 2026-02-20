@@ -3,6 +3,10 @@
 # for all files, concatenate files in order GENOME1 then GENOME2
 # appending _$GENOME1 or _$GENOME2 to the chromosome name column
 
+# create the app composite genome metadata file
+echo "creating app metadata file"
+perl ${ACTION_DIR}/create_app_metadata.pl
+
 # concatenate genome gaps
 if [ ! -f $GENOME_GAPS_FILE ]; then
     echo "concatenating genome gaps"

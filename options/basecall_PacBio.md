@@ -11,17 +11,18 @@ hf3 basecall PacBio --help
 ```
 basecall: Perform basecalling on input read data from the sequencing platform
 
-PacBio: derive a read consensus from two PacBio pipeline-derived strand consensuses
-
-library-properties:
-  -P,--sequencing-platform  <string> platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBio) *REQUIRED*
-  -L,--library-type    <string> how inserts were prepared for --sequencing-platform (Nextera|TruSeq|Elevate|Ultima|Ligation|Rapid|HiFi) *REQUIRED*
-  -I,--min-selected-size    <integer> smallest insert in bp selected BEFORE adapter ligation [0]
-  -V,--selected-size-cv     <double> estimated coefficient of variation for --min-selected-size used to calculate min-allowed-size and max-allowed-size [0.15]
-  -z,--min-allowed-size     <integer> use this value for min-allowed-size instead of calculating from --min-selected-size and --selected-size-cv [0]
+PacBio: derive a read consensus from PacBioStrand strand consensuses generated in by-strand mode
 
 pacbio:
-  -i,--pacbio-dir      <string> directory with one or more stranded *.bam files from a single PacBio run *REQUIRED*
+  -H,--hifi-bam-file   <string> path to a PacBioStrand BAM file with hifi reads generated in by-strand mode *REQUIRED*
+  -F,--fail-bam-file   <string> path to a PacBioStrand BAM file with fail reads generated in by-strand mode *REQUIRED*
+  -X,--force-basecalling    <boolean> force basecalling of all reads, ignoring any existing ubam files 
+
+genome:
+  -g,--genome          <string> name of the reference genome to use (e.g., hg38) *REQUIRED*
+  -G,--genome-dir      <string> directory with indexed <--genome>.fa or genome.fa file [.../mdi/resources/genomes/<--genome>] 
+  --use-all-chroms     <boolean> use all chromosomes as they are found in genome fasta file without filtering 
+  --is-composite-genome     <boolean> <--genome> is a composite of >1 reference (e.g., hs1_dm6 with cross-species spike-in) 
 
 output:
   -O,--output-dir      <string> the directory where output files will be placed; must already exist *REQUIRED*

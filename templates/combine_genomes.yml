@@ -1,6 +1,6 @@
 ---
 variables:
-    GENOME1: hs1
+    GENOME1: hg38
     GENOME2: dm6
 shared:
     output:

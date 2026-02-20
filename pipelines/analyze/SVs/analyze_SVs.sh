@@ -1,5 +1,5 @@
 # actions:
-#   extracct all junctions and alignments from reads
+#   extract all junctions and alignments from reads
 #   fuzzy-match junctions to each other to yield final junction calls
 #   see Rust crate `hf3_tools` for details
 # input:
@@ -10,7 +10,7 @@
 #   $SV_FINAL_JUNCTIONS_FILE 1 and 2
 
 # working variables
-export INDEX_FILE_PREFIX_WRK=${TMP_FILE_PREFIX_SMALL}.index
+export INDEX_FILE_PREFIX_WRK=${TMP_FILE_PREFIX_SMALL}.index_sv
 rm -f $INDEX_FILE_PREFIX_WRK.*.bam
 rm -f $INDEX_FILE_PREFIX_WRK.*.txt.gz
 rm -f $INDEX_FILE_PREFIX_WRK.*.txt.bgz
@@ -19,7 +19,7 @@ TABIX="tabix --threads $N_CPU"
 # split name-sorted BAM by the chromosome of the first alignment
 # only on-target reads are retained for SV calling
 # this represents a first sort action and supports downstream parallelization by chrom
-${SUITE_BIN_DIR}/hf3_tools split_bam_by_chrom
+${SUITE_BIN_DIR}/hf3_tools split_bam_by_chrom_sv
 checkPipe
 
 # index and parse unique fragment alignments and junctions

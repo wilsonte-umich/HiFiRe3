@@ -7,9 +7,6 @@
 # usage:
 #     source $MODULES_DIR/library/set_library_vars.sh
 
-# library/sample output files
-export LIBRARY_STATS_FILE=${DATA_FILE_PREFIX}.library_stats.yml
-
 # set alignment and analysis parameters based on the sequencing platform and library method in use
 # for clarity, these options are read from tables
 if [ "$SEQUENCING_PLATFORM" != "" ]; then
@@ -54,13 +51,3 @@ elif [ "$REJECTING_JUNCTION_RE_SITES" = "TRUE" ] && [ "$EXPECTING_ENDPOINT_RE_SI
     export FILTERING_SITES_FILE=${GENOME_FILTERING_SITES_FILE}
     export CREATING_SAMPLE_SITE_FILES=""
 fi
-
-# SV extract file paths
-export EXTRACT_PREFIX=${DATA_GENOME_PREFIX}.extract
-export PROPER_FRAGMENTS_PREFIX=${EXTRACT_PREFIX}.proper_fragments
-export ANOMALOUS_SEQUENCE_EDGES=${EXTRACT_PREFIX}.anomalous_edges.sequences.txt.gz
-export KEPT_DUPLICATES_FILE=${EXTRACT_PREFIX}.kept_duplicates.txt # ONT only, used to construct ANOMALOUS_MOLECULE_EDGES
-export DISCARDED_DUPLICATES_FILE=${EXTRACT_PREFIX}.discarded_duplicates.txt
-export ANOMALOUS_MOLECULE_EDGES=${EXTRACT_PREFIX}.anomalous_edges.molecules.txt.gz # ONT only
-export ANOMALOUS_CONTIG_EDGES=${EXTRACT_PREFIX}.anomalous_edges.contigs.txt.gz
-export PROPER_CONTIG_EDGES=${EXTRACT_PREFIX}.proper_edges.contigs.txt.gz
