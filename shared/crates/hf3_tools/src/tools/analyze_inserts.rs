@@ -197,8 +197,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
         });
 
         // process groups of SAM records for each read in a stream (blocks main thread until finished)
-        let mut rs = RecordStreamer::new();
-        rs
+        RecordStreamer::new()
             .comment(b'@')
             .no_trim()
             .flexible()

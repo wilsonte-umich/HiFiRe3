@@ -15,27 +15,51 @@
 
 // dependencies
 use std::error::Error;
-use mdi::RecordStreamer;
+// use mdi::RecordStreamer;
+use mdi::RecordFanner;
+use mdi::workflow::Config;
+use mdi::pub_key_constants;
 use genomex::sam::{SamRecord, SamQual};
 use crate::formats::hf3_tags::{TRIM_LENGTHS, StageTags};
+
+// constants for environment variable, config, and counter keys, etc.
+pub_key_constants!(
+    // from environment variables
+    N_CPU
+);
 
 // main ONT trim function called by hf3_tools main()
 pub fn stream() -> Result<(), Box<dyn Error>> {
 
+    // get config from environment variables
+    let mut cfg = Config::new();
+    cfg.set_usize_env(&[N_CPU]);
+
+    // // run ubam reformatting on each SAM record in a stream
+    // RecordStreamer::new()
+    //     .comment(b'@')
+    //     .no_trim()
+    //     .flexible()
+    //     .stream_in_place_serial(record_parser);
+
     // run ubam reformatting on each SAM record in a stream
-    let mut rs = RecordStreamer::new();
-    rs
+    RecordFanner::new(
+        *cfg.get_usize(N_CPU), 
+        64,
+    )
         .comment(b'@')
         .no_trim()
         .flexible()
-        .stream_in_place_serial(record_parser);
+        .stream(record_parser); // unaligned reads are handled individually in parallel, order not maintained
 
     // this tool runs silently and reports nothing
     Ok(())
 }
 
 // trim reads one at a time, on both ends
-fn record_parser(aln: &mut SamRecord) -> Result<bool, Box<dyn Error>> {
+fn record_parser(
+    mut aln: SamRecord
+) -> Result<Option<Vec<SamRecord>>, Box<dyn Error + Send + Sync>> {
 
     // quantize ONT quality scores to reduce BAM file size
     unsafe { SamQual::quantize_qual_scores(&mut aln.qual.qual); }
@@ -74,6 +98,6 @@ fn record_parser(aln: &mut SamRecord) -> Result<bool, Box<dyn Error>> {
         aln.qname = original_qname;
     }
 
-    // all input reads repeated to STDOUT
-    Ok(true)
+    // all updated reads repeated to STDOUT
+    Ok(Some(vec![aln]))
 }

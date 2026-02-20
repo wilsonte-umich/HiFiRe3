@@ -26,7 +26,7 @@ sub getOptionI {
 my $platformI = getOptionI(
     "--sequencing-platform",
     "SEQUENCING_PLATFORM", 
-    qw(Illumina_2x150 Aviti_2x150 Aviti_1x300 Ultima ONT PacBio)
+    qw(Illumina_2x150 Aviti_2x150 Aviti_1x300 Ultima ONT PacBioMolecule PacBioStrand)
 );
 my $libTypeI = getOptionI(
     "--library-type",

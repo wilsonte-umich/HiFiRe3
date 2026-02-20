@@ -13,5 +13,9 @@ pub mod analyze_alignments; // applied to the minimap2 alignment stream
 pub mod analyze_inserts;    // applied to all alignments after site localization
 
 // structural variant analysis
-pub mod split_bam_by_chrom; // create temporary chrom-level BAM files
+pub mod split_bam_by_chrom_sv; // create temporary chrom-level BAM files
 pub mod analyze_svs;        // analyze chrom-level BAM files then aggregate SV data
+
+// single-nucleotide variant/indel analysis
+pub mod split_bam_by_chrom_snv; // create temporary chrom-level BAM files for SNV/indel analysis
+pub mod analyze_snvs;           // analyze chrom-level BAM files then aggregate SNV/indel data

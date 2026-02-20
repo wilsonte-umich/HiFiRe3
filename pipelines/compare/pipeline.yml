@@ -10,74 +10,146 @@ actions:
             - base
             - main
         optionFamilies:
+            - library-properties
             - genome
+            - restriction-enzyme
     SVs:
         order: 1
         optionFamilies:
+            - targets
             - compare
         resources:
             required:
-                total-ram: 12G
+                total-ram: 24G
             recommended: 
-                n-cpu: 2 # fragment indexing, the slowest step, is parallelized by chromosome
+                n-cpu: 8 # fragment indexing, the slowest step, is parallelized by chromosome
                 ram-per-cpu: 6G
         job-manager:
             recommended:
-                time-limit: 2:00:00
+                time-limit: 12:00:00
         description: "compare structural variant junctions between multiple related samples"
-    # SNVs:
-    #     order: 2
-    #     optionFamilies:
-    #         - compare
-    #         # - target-restriction
-    #         - pileup
-    #     resources:
-    #         required:
-    #             total-ram: 24G
-    #         recommended: 
-    #             n-cpu: 12
-    #             ram-per-cpu: 8G
-    #     job-manager:
-    #         recommended:
-    #             time-limit: 12:00:00
-    #     description: "parse prepared fragments to describe and count unique SNV combinations"
+    SNVs:
+        order: 2
+        optionFamilies:
+            - targets
+            - SNV
+            - compare
+        resources:
+            required:
+                total-ram: 24G
+            recommended: 
+                n-cpu: 8
+                ram-per-cpu: 4G
+        job-manager:
+            recommended:
+                time-limit: 12:00:00
+        description: "compare SNVs and indels between multiple related samples"
 package:
     SVs: # the pipeline action after which a data package should assembled
-        uploadType: hf3CompareSVs # a signal to the Stage 2 framework regarding the package contents
+        uploadType: hf3AnalyzeSVs # a signal to the Stage 2 framework regarding the package contents
         files:
+            samplesFile:
+                type: txt
+                file: $SV_SAMPLES_FILE
             chromsFile:
                 type: txt
                 file: $ANALYSIS_CHROMS_FILE
+            targetsBed:
+                type: bed
+                file: $TARGETS_BED
             genesBed:
                 type: bed
                 file: $GENES_BED
             exclusionsBed:
                 type: bed
                 file: $GENOME_EXCLUSIONS_BED
+            filteringSitesBgz:
+                type: txt.bgz
+                file: $FILTERING_SITES_FILE
+            filteringSitesTbi:
+                type: txt.bgz.tbi
+                file: $FILTERING_SITES_FILE.tbi
+            svAlignmentsBgz:
+                type: txt.bgz
+                file: $SV_ALIGNMENTS_FILE
+                maxSize: 250M
+            svAlignmentsTbi:
+                type: txt.bgz.tbi
+                file: $SV_ALIGNMENTS_FILE.tbi
+                maxSize: 250M
+            svCoverageBgz:
+                type: txt.bgz
+                file: $SV_COVERAGE_FILE
+                maxSize: 250M
+            svCoverageTbi:
+                type: txt.bgz.tbi
+                file: $SV_COVERAGE_FILE.tbi
+                maxSize: 250M
+            svReadPaths:
+                type: txt.bgz
+                file: $SV_READ_PATHS_FILE
+                maxSize: 250M
+            svReadPathsTbi:
+                type: txt.bgz.tbi
+                file: $SV_READ_PATHS_FILE.tbi
+                maxSize: 250M
             svJunctions1Bgz:
                 type: txt.bgz
-                file: $SV_MASKED_JUNCTIONS_FILE_1
+                file: $SV_FINAL_JUNCTIONS_FILE_1
             svJunctions1Tbi:
                 type: txt.bgz.tbi
-                file: $SV_MASKED_JUNCTIONS_FILE_1.tbi
+                file: $SV_FINAL_JUNCTIONS_FILE_1.tbi
             svJunctions2Bgz:
                 type: txt.bgz
-                file: $SV_MASKED_JUNCTIONS_FILE_2
+                file: $SV_FINAL_JUNCTIONS_FILE_2
             svJunctions2Tbi:
                 type: txt.bgz.tbi
-                file: $SV_MASKED_JUNCTIONS_FILE_2.tbi
-#     SNVs:
-#         uploadType: hf3AnalyzeSNVs
-#         files:
-#             snvSummaryBgz:
-#                 type: txt.bgz
-#                 file: $SNV_SUMMARY_TABLE
-#             snvSummaryTbi:
-#                 type: txt.bgz.tbi
-#                 file: $SNV_SUMMARY_TABLE.tbi
-#             readPileupGz:
-#                 type: txt.gz
-#                 file: $SNV_READ_PILEUP
+                file: $SV_FINAL_JUNCTIONS_FILE_2.tbi
+            # genomeTally:
+            #     type: txt
+            #     file: $GENOME_TALLY_FILE
+            # junctionTally:
+            #     type: txt
+            #     file: $JUNCTION_TALLY_FILE
+    SNVs:
+        uploadType: hf3AnalyzeSNVs
+        files:
+            samplesFile:
+                type: txt
+                file: $SNV_SAMPLES_FILE
+            chromsFile:
+                type: txt
+                file: $ANALYSIS_CHROMS_FILE
+            targetsBed:
+                type: bed
+                file: $TARGETS_BED
+            exclusionsBed:
+                type: bed
+                file: $GENOME_EXCLUSIONS_BED
+            allReadsPileupBgz:
+                type: bed.bgz
+                file: $SNV_ALL_READS_PILEUP_BGZ
+            allReadsPileupTbi:
+                type: bed.bgz.tbi
+                file: $SNV_ALL_READS_PILEUP_BGZ.tbi
+            allReadsVariantsBgz:
+                type: txt.bgz
+                file: $SNV_ALL_READS_VARIANTS_BGZ
+            allReadsVariantsTbi:
+                type: txt.bgz.tbi
+                file: $SNV_ALL_READS_VARIANTS_BGZ.tbi
+            errorCorrectedPileupBgz:
+                type: bed.bgz
+                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ
+            errorCorrectedPileupTbi:
+                type: bed.bgz.tbi
+                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ.tbi
+            errorCorrectedVariantsBgz:
+                type: txt.bgz
+                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ
+            errorCorrectedVariantsTbi:
+                type: txt.bgz.tbi
+                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ.tbi
 # container:
 #     supported: false    # set to true if you maintain a container registry for this pipeline [false]
 #     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]

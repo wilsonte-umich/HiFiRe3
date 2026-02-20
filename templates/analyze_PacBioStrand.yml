@@ -1,0 +1,70 @@
+---
+# this template shows an example of multiplexed samples from a single PacBio SMRTCell
+# consensus basecall --by-strand reads
+# perform error-corrected SV and SNV analysis one sample at a time
+variables:
+    INPUT_DIR:  /path/to/pacbio
+    MOVIE:      m21026_251212_225317
+    OUTPUT_DIR: /path/to/output
+shared:
+    library-properties:
+        sequencing-platform: PacBioStrand
+        library-type:        HiFi
+        min-selected-size:   4500
+        # min-allowed-size:    0    # set to non-zero value to override min-selected-size
+    restriction-enzyme:
+        enzyme-name:         EcoRV  # or NA if not a RE-fragmented library
+    genome:
+        genome:              hg38
+        # is-composite-genome: true # uncomment if a multi-species reference (uncommon)
+    output:
+        output-dir: ${OUTPUT_DIR}/my_project_name
+        data-name:
+            - my_sample_name_1 # YAML list format used for parallel job arrays
+            - my_sample_name_2
+            - my_sample_name_3
+            - my_sample_name_4
+---
+# perform consensus basecalling from --by-strand reads
+pipeline: HiFiRe3/basecall:latest
+PacBio:
+    pacbio:
+        hifi-bam-file:  
+            - ${INPUT_DIR}/hifi_reads/${MOVIE}.hifi_reads.bc2001.bam
+            - ${INPUT_DIR}/hifi_reads/${MOVIE}.hifi_reads.bc2002.bam
+            - ${INPUT_DIR}/hifi_reads/${MOVIE}.hifi_reads.bc2003.bam
+            - ${INPUT_DIR}/hifi_reads/${MOVIE}.hifi_reads.bc2004.bam
+        fail-bam-file:  
+            - ${INPUT_DIR}/fail_reads/${MOVIE}.fail_reads.bc2001.bam
+            - ${INPUT_DIR}/fail_reads/${MOVIE}.fail_reads.bc2002.bam
+            - ${INPUT_DIR}/fail_reads/${MOVIE}.fail_reads.bc2003.bam
+            - ${INPUT_DIR}/fail_reads/${MOVIE}.fail_reads.bc2004.bam
+    resources:
+        n-cpu: 12
+        ram-per-cpu: 5G
+    job-manager:
+        time-limit: 6:00:00
+execute:
+    - PacBio
+---
+# perform error-corrected SV and SNV analysis one sample at a time
+pipeline: HiFiRe3/analyze:latest
+fragments:
+    resources:
+        n-cpu:          12
+        ram-per-cpu:    6G
+    job-manager:
+        time-limit:     6:00:00
+SVs:
+    resources:
+        n-cpu:          12
+        ram-per-cpu:    4G
+    job-manager:
+        time-limit:     6:00:00
+SNVs:
+    SNV:
+        min_n_passes: 20 # adjust to change the required level of duplex strand coverage
+execute:
+    - fragments
+    - SVs
+    - SNVs

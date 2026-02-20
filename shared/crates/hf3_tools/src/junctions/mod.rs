@@ -51,33 +51,6 @@ use crossbeam::channel::Sender;
 use rust_htslib::bam::HeaderView;
 use genomex::genome::{Chroms, TargetRegions, Genes, Exclusions};
 
-// ChromWorkerData enum allows difference types of data to be
-// trasmitted to the main thread for aggregation.
-pub enum ChromWorkerData {
-    ReadPath(SvReadPath),
-    DistalAln(AlignmentSegment),
-    Junction((OrderedJunction, JunctionInstance)),
-    ChromReadCount((String, usize)),
-}
-
-/// The JunctionChromWorker tool collects structs and methods 
-/// for SV analysis while processing a single chromosome.
-pub struct JunctionChromWorker <'a, 'b>{
-
-    // global configuration parameters
-    pub expecting_endpoint_re_sites: bool,
-
-    // chromosome parsing
-    pub chroms: &'a Chroms, // HiFiRe3 ordered chroms
-    pub header: HeaderView, // BAM header contigs
-
-    // structures for aggregating over all reads
-    pub first_alns: Vec<AlignmentSegment>,
-
-    // result channel
-    pub tx_data: &'b Sender<ChromWorkerData>,
-}
-
 /// The JunctionAnalysisTool collects structs and methods for SV analysis
 /// at the genome level after all chromosomes have been processed.
 pub struct JunctionAnalysisTool {
@@ -103,4 +76,31 @@ pub struct JunctionAnalysisTool {
     // final junction output files
     pub final_jxns_file_1: String,
     pub final_jxns_file_2: String,
+}
+
+/// The JunctionChromWorker tool collects structs and methods 
+/// for SV analysis while processing a single chromosome.
+pub struct JunctionChromWorker <'a, 'b>{
+
+    // global configuration parameters
+    pub expecting_endpoint_re_sites: bool,
+
+    // chromosome parsing
+    pub chroms: &'a Chroms, // HiFiRe3 ordered chroms
+    pub header: HeaderView, // BAM header contigs
+
+    // structures for aggregating over all reads
+    pub first_alns: Vec<AlignmentSegment>,
+
+    // result channel
+    pub tx_data: &'b Sender<ChromWorkerData>,
+}
+
+// ChromWorkerData enum allows difference types of data to be
+// transmitted to the main thread for aggregation.
+pub enum ChromWorkerData {
+    ReadPath(SvReadPath),
+    DistalAln(AlignmentSegment),
+    Junction((OrderedJunction, JunctionInstance)),
+    ChromReadCount((String, usize)),
 }

@@ -8,6 +8,7 @@ use std::error::Error;
 mod formats;
 mod inserts;
 mod junctions;
+mod snvs;
 mod sites;
 mod tools;
 
@@ -58,10 +59,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         analyze SVs
         ------------------------------------------------------------- */
         // prepare reads for SV analysis by splitting BAM to chrom-level files
-        "split_bam_by_chrom" => tools::split_bam_by_chrom::main(),
+        "split_bam_by_chrom_sv" => tools::split_bam_by_chrom_sv::main(),
 
         // index fragments to collect read paths and junctions
         "analyze_svs" => tools::analyze_svs::main(),
+
+        /*--------------------------------------------------------------
+        analyze SNVs
+        ------------------------------------------------------------- */
+        // prepare reads for SNV analysis by splitting BAM to chrom-level files
+        "split_bam_by_chrom_snv" => tools::split_bam_by_chrom_snv::main(),
+
+        // index fragments to collect read paths and junctions
+        "analyze_snvs" => tools::analyze_snvs::main(),
 
         /*--------------------------------------------------------------
         unrecognized pipeline action tool

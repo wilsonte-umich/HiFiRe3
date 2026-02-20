@@ -23,9 +23,9 @@ pub const PACBIO_EFF_COVERAGE: &str     = "ec:f:";   // effective coverage, modi
 pub const TRIM_LENGTHS: &str            = "tl:Z:";   // serialized encoding of 5',3' ONT trim lengths; only on ONT reads
 
 // Consensus, added by hf3_tools basecall_pacbio
-pub const STRAND_DIFFERENCES: &str      = "dd:Z:";   // cs-tag-like encoding of per-strand base differences
+pub const STRAND_DIFFERENCE_TYPES: &str = "dt:i:";   // bit-encoded flag of the types of duplex strand differences; absent if duplex basecalling not performed
+pub const STRAND_DIFFERENCES: &str      = "dd:Z:";   // cs-like encoding of strand differences, includes reference-resolved heteroduplex (+, -, >, <)
 pub const SUBSTITUTION_KINETICS: &str   = "sk:B:S,"; // kinetics values surrounding base substitution differences
-pub const STRAND_DIFFERENCE_TYPES: &str = "dt:i:";
 
 // Alignment, added by fastp and minimap2
 pub const FASTP_MERGE: &str             = "fm:Z:";   // serialized encoding of read1,read2 retained bases; only on merged read pairs
@@ -52,6 +52,9 @@ pub const INSERT_SIZE: &str             = "iz:i:";   // signed integer insert si
 pub const STEM_LENGTH5: &str            = "ul:i:";   // signed integer 5' stem length; positive = passed <1N filter; only on sized libraries
 pub const STEM_LENGTH3: &str            = "vl:i:";   // signed integer 3' stem length; positive = passed <1N filter; only on sized libraries
 pub const READ_HAS_PASSED_JXN: &str     = "rj:A:";   // flag that the parent read has at least one passed junction; false if absent
+
+// CompareS(N)Vs, added by split_by_chrom_s(n)vs to support sample tracking
+pub const SAMPLE_BIT: &str              = "sb:i:";   // bit-encoded sample index, to track the source sample vs. a known sample list
 
 /* -----------------------------------------------------------------
 enumerate the tags added or retained at each analysis stage
@@ -87,9 +90,9 @@ impl StageTags {
             ],
             Self::Consensus => vec![
                 // PACBIO_EFF_COVERAGE,
+                STRAND_DIFFERENCE_TYPES,
                 STRAND_DIFFERENCES,
                 SUBSTITUTION_KINETICS,
-                STRAND_DIFFERENCE_TYPES,
             ],
             Self::Alignment => vec![
                 FASTP_MERGE,

@@ -61,7 +61,7 @@ if($READ_FILE_TYPE eq "unaligned.bam" or $READ_FILE_TYPE eq "bam"){
         foreach my $ubamFile(split(" ", $READ_1_FILES)){
             my $modTags    = "ML,MM"; # tags do not need to be present
             my $ontTags    = "ch,rn,fn,tl";
-            my $pacBioTags = "ff,ec,dd,sk,dt"; # not ip,pw
+            my $pacBioTags = "ff,ec,dt,dd,sk"; # not ip,pw
             open my $inH, "-|", "samtools view $ubamFile | ".
                                 "samtools fastq -T $modTags,$ontTags,$pacBioTags -  2>/dev/null" 
                 or throwError("could not open $ubamFile: $!");

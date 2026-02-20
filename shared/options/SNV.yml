@@ -1,0 +1,10 @@
+---
+# options that determine the behavior of SNV finding algorithms
+options:
+    min_n_passes:
+        order: 1
+        short: null
+        type: integer
+        required: false
+        default: 10
+        description: "minimum number of PacBio passes on both strands together to be a valid duplex read"

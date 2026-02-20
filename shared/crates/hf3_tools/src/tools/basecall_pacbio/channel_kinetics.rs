@@ -38,9 +38,10 @@ pub fn collect_kinetics(
     let mut file = GzEncoder::new(file, Compression::default());
     writeln!(
         file,
-        "{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}",
         "base_context",
         "is_heteroduplex",
+        "ref_is_known",
         "is_ref",
         "ipd_before",
         "pulse_width",
@@ -60,9 +61,10 @@ pub fn collect_kinetics(
         let fc = &kinetics_instance.frame_counts;
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
             md.base_context.iter().map(|&b| b as char).collect::<String>(),
             md.is_heteroduplex as u8,
+            md.ref_is_known    as u8,
             md.is_ref          as u8,
             fc.ip_before,
             fc.pw,

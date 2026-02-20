@@ -11,7 +11,7 @@ hf3 analyze SVs --help
 ```
 analyze: Align reads, match inserts to RE fragments, and find true mosaic variants
 
-SVs: parse prepared fragments to describe and count unique non-SV and SV paths
+SVs: parse prepared fragments to describe and count unique SV and non-SV paths
 
 library-properties:
   -P,--sequencing-platform  <string> platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBio) *REQUIRED*
@@ -28,6 +28,11 @@ genome:
 
 restriction-enzyme:
   -e,--enzyme-name     <string> name of the restriction enzyme used to cleave genomic DNA (from shared/modules/REs/blunt_enzymes.csv if not NA) [NA]
+
+localization:
+  -S,--min-rflp-evidence    <integer> locate genome positions matching this many read outer endpoints as RFLP sites [3]
+  -X,--skip-rflp-detection  <boolean> do not locate non-reference RFLP sites, use in silico RE sites only 
+  -o,--site-override-file   <string> do not locate RFLP sites, use RE filtering sites from --site-override-file [NA]
 
 targets:
   -y,--targets-bed     <string> path to a BED file definining genomic regions targeted during sequencing [NA]

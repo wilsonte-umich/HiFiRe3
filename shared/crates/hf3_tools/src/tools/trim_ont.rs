@@ -75,8 +75,7 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     ).suppress_alignment_map();
 
     // run ONT trimming on each SAM record in a stream
-    let mut rs = RecordStreamer::new();
-    rs
+    RecordStreamer::new()
         .comment(b'@')
         .no_trim()
         .flexible()

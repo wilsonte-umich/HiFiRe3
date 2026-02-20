@@ -1,18 +1,19 @@
 # HiFiRe3 Tool Suite
 
-The **HiFiRe3** ("high fire") tool suite
-carries pipelines and apps for analyzing sequencing data 
-from library methods that
-achieve **Hi**gh **Fi**delity error-corrected scoring of both 
-single nucleotide variants (SNVs) and structural variants (SVs)
-by controlling input fragment sizes and/or by
+> **NOTICE**: HiFiRe3 is under final active development. While many
+> portions of the codebase are stable, we may still make breaking
+> changes in file formats and usage without notice.
+
+**HiFiRe3** ("high fire") carries pipelines and apps for analyzing
+sequencing data from libraries that achieve **Hi**gh **Fi**delity 
+error-corrected scoring of single nucleotide variants (SNVs) and 
+structural variants (SVs) by controlling input fragment sizes and/or
 **Re**striction enzyme-mediated **Re**duced **Re**presentation.
 
-**IMPORTANT**: HiFiRe3 tools assume that any
-insert size selection during library preparation was performed 
-_before adapter ligation_, targeting molecules from 1N to 2N bp. 
-They also assume that input libararies are either PCR-free
-or used pooled PCR with unique dual indices to minimize chimeric 
+**IMPORTANT**: HiFiRe3 assumes that any insert size selection during 
+library preparation was performed _before adapter ligation_, targeting 
+molecules from 1N to 2N bp, and that input libararies are either 
+PCR-free or used pooled PCR with unique dual indices to minimize 
 template switching.
 
 The steps to using HiFiRe3 are to:
@@ -31,15 +32,13 @@ The steps to using HiFiRe3 are to:
 
 HiFiRe3 is implemented in the
 [Michigan Data Interface](https://midataint.github.io/) (MDI)
-for developing, installing and running 
-Stage 1 HPC **pipelines** and Stage 2 interactive web **apps**.
-Because HiFiRe3 is packaged as standalone software, 
-we recommend a single-suite installation (see the 
-[MDI documentation](https://midataint.github.io/) 
-for multi-suite installation), which is accomplished by:
+for developing, installing and running Stage 1 HPC **pipelines** 
+and Stage 2 interactive web **apps**. Because HiFiRe3 is packaged 
+as standalone software, we recommend a single-suite installation, 
+which is accomplished by:
 - cloning this tool suite repository
-- running _install.sh_ to create a suite-specific MDI installation
-- optionally running _alias.pl_ to create a `hf3` alias to the suite's command line interface (CLI)
+- running _install.sh_
+- optionally running _alias.pl_ to create a `hf3` alias to the command line interface (CLI)
 
 ### Install this tool suite
 
@@ -84,12 +83,10 @@ cd HiFiRe3
 ## Recommended HiFiRe3 workspace organization
 
 Sections below discuss required input files and optional job files,
-and, of course, pipelines generate output files.
-The following is an optional but time-tested strategy for organizing 
-these files in your HiFiRe3 workspace (*** marks optional folders you
-create manually as needed). The parallel organization uses the best 
-practice of separating folders with your job files and input and output 
-data files.
+and, of course, pipelines generate output files. The following is an 
+optional but time-tested strategy for organizing and separating
+these files in your HiFiRe3 workspace (*** marks optional folders
+you create manually as needed).
 
 ```sh
 HiFiRe3                    # root folder you created above
@@ -114,28 +111,31 @@ environment. Build that environment in your HiFiRe3 installation as follows:
 hf3 analyze conda --create
 ```
 
-You must have `conda` available in your server environment. If you need to run
+You must have `conda` available in your environment. If you need to run
 a command to make conda available, follow the instructions in
-`.../mdi/config/stage1-pipelines.yml` (HiFiRe3 is pre-configured to work on
-the University of Michigan Great Lakes cluster).
+`.../mdi/config/stage1-pipelines.yml`, which is pre-configured to work on
+the University of Michigan Great Lakes cluster.
 
 In a shared server environment, the conda build command may get killed by the host.
 If that happens, run the command on a cluster worker node with sufficient resources,
 e.g., 4 CPU with 4G RAM per CPU.
 
-**PENDING**: once HiFiRe3 stabilizes, we will release Singularity containers
-that can be used instead of building the conda environment yourself.
+> **PENDING**: once HiFiRe3 stabilizes, we will release Singularity containers
+> that can be used instead of building the conda environment yourself.
 
 ## Download or compile the required `hf3_tools` utility
 
 Many compute actions in HiFiRe3 pipelines are executed by the `hf3_tools`
-utility, a executable binary compiled from 
+utility, an executable binary compiled from 
 [source Rust code in this repository](https://github.com/wilsontelab/HiFiRe3/tree/main/shared/crates/hf3_tools).
 
 ### Download the compiled x86_64 binary
 
 The easiest way to obtain the `hf3_tools` executable is to download it
 from the pre-compiled x86_64 binary **DETAILS PENDING**.
+
+> **PENDING**: once HiFiRe3 stabilizes, we will release Singularity containers
+> that will carry the pre-compiled binary.
 
 ### Compile the `hf3_tools` utility
 
@@ -151,9 +151,9 @@ hf3 analyze rust --gcc "module load gcc/15.1.0" --compile 1.92 # if a command is
 ```
 
 It is also possible to compile the Rust code from first principles
-if you know how to do it and all prerequisites are met. If you do, the
-compiled executable binary must be copied into file `.../HiFiRe3/mdi/bin/HiFiRe3/hf3_tools`
-(the compile commands above copy the binary there automatically).
+if all prerequisites are met. The compiled executable binary must be 
+copied into file `.../HiFiRe3/mdi/bin/HiFiRe3/hf3_tools`
+(the compile commands above copy the binary automatically).
 
 ## Execute a pipeline from the command line
 
@@ -161,7 +161,7 @@ compiled executable binary must be copied into file `.../HiFiRe3/mdi/bin/HiFiRe3
 
 HiFiRe3 pipelines can be called entirely using the CLI introduced above. However, you 
 are encouraged to create YAML-format job configuration files that define the
-parameters for your job and coordinate execution steps.
+parameters for your job and execution steps.
 
 See [the templates folder](https://github.com/wilsontelab/HiFiRe3/tree/main/templates)
 for job file templates for all HiFiRe3 pipelines
@@ -170,8 +170,8 @@ for extended help on using job files. Job file templates can also be generated w
 command `hf3 <pipeline> template`, e.g., `hf3 basecall template`.
 
 The HiFiRe3 CLI and job files can run pipeline actions either 
-inline in the calling shell or by submitting jobs to your server job scheduler;
-the latter is recommended for most use cases. Thus, our most common usage pattern is:
+inline in the calling shell or by submitting jobs to your server job scheduler.
+The latter is recommended for most use cases. Thus, our most common usage pattern is:
 
 ```sh
 hf3 inspect myJob.yml          # check the formatting of your job file
@@ -208,8 +208,8 @@ Sample-level output files are placed into directory `<--output-dir>/<--data-name
 
 ## Download and digest a reference genome
 
-HiFiRe3 requires a reference genome assembly and supporting annotation files. Obtain and create 
-them using the `prepare genome` pipeline action.
+HiFiRe3 requires a reference genome assembly and supporting annotation files. 
+Obtain and create them using the `prepare genome` pipeline action.
 
 ```sh
 hf3 prepare genome --help
@@ -221,18 +221,17 @@ Even better, use the
 job file template. 
 
 The action downloads all required genome assembly and annotation files and
-tabulates useful restriction enzyme (RE) sites in the assembly sequences.
-These steps only need to be performed once per genome. 
-Many REs suitable for HiFiRe3 are tabulated by _in silico_ digestion in a single pass.
-A given library preparation will only use one of these enzymes (or none at all).
+tabulates various _in silico_ restriction enzyme (RE) sites in the reference 
+sequence in a single pass. These steps only need to be performed once per genome. 
+A given library preparation will only use one of the tabulated enzymes (or none at all).
 
 ### Optionally create a composite genome for mixed species analysis
 
-Especially during development, quality assessment of SV artifact rates can be
-enhanced by mixing samples from two species prior to libary preparation and sequencing.
-The `combine genomes` pipeline action will create the required composite reference,
-which should then be provided as option `--genome` in later analysis steps while
-also setting option `--is-composite-genome`.
+Quality assessment of SV artifact rates can be enhanced by mixing samples from 
+two species prior to libary preparation and sequencing. The `combine genomes` 
+pipeline action creates the required composite reference, which should then be 
+provided as option `--genome` in later analysis steps while also setting 
+option `--is-composite-genome`.
 
 ```sh
 hf3 combine genomes --help
@@ -242,7 +241,7 @@ hf3 combine genomes --genome1 hs1 --genome2 dm6 --output-dir $PWD/_prepare_hs1_d
 Combining genomes requires that each individual genome was previously prepared as above.
 Even better, use the 
 [templates/combine_genomes.yml](https://github.com/wilsontelab/HiFiRe3/blob/main/templates/combine_genomes.yml)
-job file template to coordinate all work.
+job file template.
 
 The resulting composite reference assembly carries the original chromosome names
 suffixed with the respective source genome, e.g., `chr1_hs1` and `chr4_dm6`.
@@ -266,24 +265,23 @@ read configurations, and library types, communicated via options
 | Ultima | Ultima |
 | ONT | Rapid |
 | ONT | Ligation |
-| PacBio | HiFi |
+| PacBioMolecule | HiFi |
+| PacBioStrand | HiFi |
 
-All tools assume you performed a valid HiFiRe3 library preparation,
-with any insert size selection performed _before adapter ligation_. However,
-the pipeline is flexible with regard to which error correction methods you exploit, 
-e.g., you can forego size selection or RE-mediated DNA fragmentation as suits your needs
-(see option details below). 
+All tools assume any insert size selection was performed _before adapter ligation_. 
+However, the pipeline is flexible with regard to which error correction methods you 
+exploit, e.g., you can forego size selection or RE-mediated DNA fragmentation as 
+suits your needs (see option details below). 
 
-Note that different library types use restriction enyzmes in different ways.
-Most commonly adapters are ligated onto DNA fragments generated by a blunt RE (ligFree).
+Different library types use restriction enyzmes in different ways.
+Most commonly, adapters are ligated onto DNA fragments generated by a blunt RE (ligFree).
 Alternatively, tagmentation can be applied to initial genomic DNA fragments generated 
 with a 5' overhanging RE and blocked by ddNTP filling (tagFree).
 
 ## Basecalling long reads
 
-The `basecall` pipeline finishes processing PacBio or ONT
+The `basecall` pipeline finishes processing PacBioStrand or ONT
 reads into the unaligned BAM format required for later pipeline actions. 
-However, what happens during PacBio and ONT basecalling is different.
 
 ```sh
 hf3 basecall --help
@@ -292,17 +290,14 @@ hf3 basecall ONT --help
 hf3 basecall ...
 ```
 
-As throughout, using the 
-[templates/basecall.yml](https://github.com/wilsontelab/HiFiRe3/blob/main/templates/genome.yml)
-job file template can simplify use of the `basecall` pipeline.
+For short-read libraries, input reads will have been basecalled by 
+the sequencing platform and you should proceed directly to fragment analysis.
 
-For short-read libraries, input reads will have been basecalled by the sequencing platform
-and you should proceed directly to fragment analysis.
-
-### PacBio, from unaligned single-strand consensus bam files
+### PacBioStrand, from unaligned single-strand consensus bam files
 
 For PacBio HiFiRe3 with sufficiently small inserts, initial basecalling is 
-performed during your Revio or Vega run, which must be configured with the following settings:
+performed during your Revio or Vega run, which must be configured with the 
+following settings identified in HiFiRe3 as the **PacBioStrand** platform:
 - Library Type = Standard (e.g., WGS)
 - Insert Size = the middle of your selected size range, i.e., (N + 2N) / 2 = 1.5N
 - Movie Acquisition Time = at least 24 hours (or the maximum allowed)
@@ -310,59 +305,66 @@ performed during your Revio or Vega run, which must be configured with the follo
     - Include Base Kinetics = YES (or NO, if you do not intend to look for damaged bases)
     - Consensus Mode = Strand **<<<< IMPORTANT!**
 
-These settings ensure that you will have:
-- sufficient time to get around shorter HiFiRe3 reads _more times than a normal HiFi library_ (ideally at least 4 subreads on each strand)
+These settings ensure you will have:
+- sufficient time to get around shorter HiFiRe3 inserts _more times than a normal HiFi library_ (at least 4 subreads on each strand)
 - consensus output files generated for each strand independently
 
 Point `basecall PacBio` at your strand consensus unaligned BAM files using
-option `--pacbio-dir`. HiFiRe3 compares the strand consensuses to each other and assigns a final 
-base call and quality score. When heteroduplex DNA is detected, it might result from:
+option `--pacbio-dir`. HiFiRe3 compares the strand consensuses to each other 
+and to the reference genome to assign a final base call and quality score. 
+
+When the two strands agree on a base, that base is reported with a high quality 
+score regardless of the reference alignment.
+
+When heteroduplex DNA is detected, it might result from:
+- a consensus basecalling error on one strand but not the other (usually an indel)
 - a base mismatch characterized by two high-quality but non-Watson-Crick paired bases
 - a damaged base on one of the two strands opposite an undamaged base
 
-HiFiRe3 uses reference alignments to determine which case is more likely. If one
-heteroduplex base matches the reference, that base is reported. If neither base
-matches the reference, an N base and low quality are reported. In either case, 
-the values of the mismatched bases and kinetic information are reported in 
+If one heteroduplex strand matches the reference, that base is reported with 
+a high quality score. If neither base matches the reference, an N base and low
+quality are reported. In either case, the values of the mismatched bases and 
+kinetic information are reported in 
 [SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf3_tags.rs).
 
-PacBio reads processed in this way can be used for high-accuracy, error-corrected calling of 
-both SVs and SNVs. Alternatively, larger PacBio reads can be subjected to normal basecalling
-and used only for error-corrected SV calling.
+PacBioStrand reads processed in this way can be used for error-corrected calling of 
+both SVs and SNVs. Alternatively, larger PacBioMolecule reads can be subjected to 
+normal on-device basecalling with molecule-level consensuses built from both strands
+if only error-corrected SV calling is needed. The `basecall PacBio` action is not 
+needed for PacBioMolecule reads.
 
 ### ONT, from POD5 files
 
-Unlike PacBio, HiFiRe3 must perform basecalling of ONT reads from primary trace data 
-to make best use of the fixed bases at RE-cleaved DNA ends. ONT reads cannot support
-high-fidelity SNV calling, but fully support error-corrected calling of rare mosaic 
-SVs (often using longer reads than for combined SNV and SV calling with PacBio).
+HiFiRe3 must perform basecalling of ONT reads from primary trace data 
+to make best use of the fixed bases at RE-cleaved DNA ends. ONT reads cannot 
+support high-fidelity SNV calling, but fully support error-corrected calling 
+of rare mosaic SVs.
 
 The required input for ONT is one or more POD5 format files obtained from your
-nanopore sequencing run. Use option `--pod5-dir` to point at your files in your call to
-`basecall ONT`. HiFiRe3 uses 
+nanopore sequencing run. Use option `--pod5-dir` to point at your files in your 
+call to `basecall ONT`. HiFiRe3 uses 
 [Dorado](https://github.com/nanoporetech/dorado)
-for high accuracy basecalling and custom scripts
-for RE-aware adapter trimming that preserves ONT channel information. See
-the options help for information on how to tune ONT basecalling and/or to 
-invoke modified basecalling.
+for high accuracy basecalling and custom scripts for RE-aware adapter trimming 
+that preserves ONT channel information. See the options help for information 
+on how to tune ONT basecalling and/or to invoke modified basecalling.
 
 ### HiFiRe3 tags in unaligned bam files
 
 The final output of either HiFiRe3 `basecall` action is one or more unaligned
-BAM files in folder `<--output-dir>/<--data-name>/ubam`. Important metatadata specific 
-to HiFiRe3 or derived from vendor files is propagated into output files as
+BAM files in folder `<--output-dir>/<--data-name>/ubam`. Important metatadata 
+specific to HiFiRe3 or derived from vendor files is propagated to output files as
 [SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf3_tags.rs).
 
 ## Shared fragment analysis upstream of SV and SNV calling
 
 The `analyze` pipeline aligns and processes reads with the goal of finding
 rare mosaic variants, especially singleton variants, with extremely low baseline 
-artifact rates for SVs and, mainly for PacBio, SNVs/indels.
+artifact rates for SVs and, for PacBioStrand, SNVs/indels.
 
-The `analyze fragments` action filters, aligns and indexes reads to prepare for variant analysis.
-Briefly, various quality filters ensure that only high-quality conforming reads and bases 
-are used for variant calling downstream. Indexing allows for efficient comparison of individual 
-reads to RE fragment locations and read recovery during visualization.
+The `analyze fragments` action filters, aligns and indexes reads to prepare for 
+variant analysis. Various filters ensure that only high-quality conforming reads 
+and bases are used for variant calling downstream. Indexing allows for efficient 
+comparison of reads to RE sites and read recovery during visualization.
 
 ```sh
 hf3 analyze --help
@@ -370,14 +372,14 @@ hf3 analyze fragments --help
 hf3 analyze fragments ...
 ```
 
-Custom metadata generated by HiFiRe3 fragment analysis is propagated into output BAM files as
+Custom metadata generated by fragment analysis is propagated to output BAM files as
 [SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf3_tags.rs).
-These tags codify information on RE site matching, size distributions, alignment and junction
-quality filterting, and more.
+These tags codify information on RE site matching, size distributions, alignment 
+and junction quality filterting, and more.
 
 ### Read alignment using minimap2
 
-The first step in `analyze fragments` aligns properly basecalled reads to the reference genome using 
+The first step in `analyze fragments` aligns reads to the reference genome using 
 [minimap2](https://github.com/lh3/minimap2), 
 for both short and long reads. Use option --`read-file-dir` and `--read-file-prefix` to communicate 
 the path to your input read files if they were not generated with `basecall PacBio` or `basecall ONT`.
@@ -385,42 +387,44 @@ the path to your input read files if they were not generated with `basecall PacB
 ### Inferring RE site locations in reduced representation reads
 
 When option `--enzyme-name` is set to something other than NA, HiFiRe3 expects reads
-to arise from (a subset of) all possible RE fragments in a sample's genome.
+to arise from (a subset of) all possible RE fragments in a genome.
 
 For adapter ligation (ligFree) libraries, sequencing reads end at RE sites.
-Each fragment is sequenced sufficient times to establish its consensus genotype without external information. 
-This is known as a _reduced representation_ libary. While most fragments can be predicted from the
-_in silico_ RE site analysis performed by `prepare genome`, others will be genotype-specific due to RFLPs. 
-Therefore, `analyze fragments` next uses the ends of sequenced inserts to locate recurring sample-specific RE sites. 
+Each fragment is sequenced enough times to establish its consensus genotype without 
+external information. This is known as a _reduced representation_ libary. While 
+most fragments can be predicted from the _in silico_ RE site analysis performed 
+by `prepare genome`, others will be genotype-specific due to RFLPs. Therefore, 
+`analyze fragments` uses the ends of sequenced inserts to locate recurring 
+sample-specific RE sites. 
 
-Clonal SNV-containing fragments will be among the set of located fragments if they are within the 
-(selected) insert size range. Only these reads are used for SNV discovery, where reference and 
+Clonal SNV-containing fragments will be among the set of located fragments if 
+they are within the (selected) insert size range, where reference and 
 SNV/indel-containing reads will be ~the same size.
 
-In contrast, rare mosaic SV-containing fragments may not end at located RE sites depending on the 
-relative sizes of clonal and SV fragments, i.e.,  an SV fragment may be in a library's insert 
-size range even though  the parental fragment(s) it bridges are not.
-For this reason, both _in silico_ and located RE sites are used in subsequent steps when
-matching read outer ends to RE sites. Any fragment ending at expected RE sites of either type
-are used for SV discovery, which, unlike clonal fragments, can be located ~anywhere in the genome 
-or target regions.
+In contrast, rare mosaic SV-containing fragments may not end at located RE sites 
+depending on the relative sizes of clonal and SV fragments, i.e.,  an SV fragment 
+may be in a library's insert size range even though the parental fragment(s) it 
+bridges are not. For this reason, both _in silico_ and located RE sites are used 
+when matching read outer ends to RE sites. Any fragment ending at expected RE sites 
+of either type are used for SV discovery, which, unlike clonal fragments, can be 
+located ~anywhere in the genome or target regions.
 
-These steps do not apply and are skipped for randomly sheared library inputs, even when tagmentation 
-is applied to inital RE-cleaved fragments (tagFree). Reference RE sites at junctions are still used 
-to filter against chimeric SVs, but read endpoints are not expected to match RE sites and thus are 
-not useful for identifying non-reference RFLPs. 
+These steps do not apply and are skipped for randomly sheared library inputs, 
+even when tagmentation is applied to inital RE-cleaved fragments (tagFree). 
+Reference RE sites at junctions are still used to filter against chimeric SVs, 
+but read outer endpoints are not expected to match RE sites. 
 
-You can also skip RFLP assessment by setting option `--skip-rflp-detection`, in which
-case only reference RE sites will be tracked during SV error correction.
+You can also skip RFLP assessment by setting option `--skip-rflp-detection`, 
+in which case only reference RE sites will be tracked during SV error correction.
 Alternatively, you can set option `--site-override-file` to a file containing
-a properly constructed HiFiRe3 RE site list to use instead of 
-performing _de novo_ RE site discovery from the current sample's reads.
+a properly constructed HiFiRe3 RE site list instead of performing _de novo_ 
+RE site discovery from the current sample's reads.
 
 ## Mosaic variant calling
 
-Depending on your application and sequencing platform, 
-you may wish to call SVs, SNVs/indels, or both from your processed reads, which
-is done in distinct actions of the `analyze` pipeline:
+Depending on your application and sequencing platform, you may wish to call 
+SVs, SNVs/indels, or both from your processed reads, which is done in distinct 
+actions of the `analyze` pipeline:
 
 ```sh
 hf3 analyze SVs --help
@@ -429,14 +433,17 @@ hf3 analyze SNVs --help
 hf3 analyze SNVs ...
 ```
 
-The error correction methods available during SV and SNV calling depend on the nature
-of the input libraries. Error-corrected SNV calling is mainly used
-for sufficiently small PacBio reads processed using `basecall PacBio` as described above.
-SV error correction enforces filters against end-to-end chimeras that may variably include:
-- rejecting SVs with adapters inserted at junctions (always applied)
-- rejecting junctions flanked by low quality bases or alignments (always applied)
-- rejecting junctions that match a known RE fragment endpoint (if a RE was used to fragment the genomic DNA)
-- requiring junctions to be within 1N bp of insert ends (if size selection was performed before adapter ligation)
+Error-corrected SNV calling requires sufficiently small PacBioStrand reads 
+processed using `basecall PacBio` as described above. The process uses
+the tags added during basecalling to determine which bases of a read are allowed
+to call SNVs and indels based on homoduplex strand validation.
+
+SV error correction enforces filters against end-to-end chimeras that may variably 
+include rejecting junctions:
+- with adapters present in inserted non-reference bases (always applied)
+- flanked by low quality bases or alignments (always applied)
+- that match a known RE fragment endpoint (if a RE was used to fragment the genomic DNA)
+- more than 1N bp away from either insert end (if size selection was performed before adapter ligation)
 
 Use options `--sequencing-platform` and `--library-type` to tell the pipeline how
 to perform adapter and alignment quality checks based on the nature of the reads.
@@ -447,27 +454,24 @@ default value 'NA' if your library is a sheared DNA library with no RE cleavage.
 
 Use options `--min-selected-size`, `--selected-size-cv`, and `--min-allowed-size` 
 to communicate the selected DNA insert size range. Leave both `--min-selected-size` and 
-`--min-allowed-size` at the default value of 0 if size selection was not performed. Otherwise,
+`--min-allowed-size` at the default of 0 if size selection was not performed. Otherwise,
 you will most commonly set `--min-selected-size` to communicate the lower insert size cutoff,
 which should be strictly established, e.g., using a BluePippin device. If needed, the values
 calculated from `--min-selected-size` and `--selected-size-cv` can be overridden by setting
-`--min-allowed-size` to a non-zero value. Whether you set `--min-selected-size` or 
-`--min-allowed-size`, these options establish the 1N insert size value used to enforce
-size-based SV error correction.
+`--min-allowed-size` to a non-zero value. In either usage, these options establish the
+1N insert size value used to enforce size-based SV error correction.
 
 RE-based and size-based SV error correction methods are substantially redundant but 
-independent, so both can be used to achieve maximal SV error correction. There is not too much 
-point in running HiFiRe3 pipelines if neither method was used during library preparation,
-although the pipelines are highly functional SV callers in any case. 
+independent, so both can be used to achieve maximal SV error correction.
 
 Importantly, each SV error correction method only allows the pipeline to reliably reject 
 end-to-end chimeras. Many middle-to-middle chimeras arising from DNA fragmentation after 
-size-selection cannot be error corrected, so care must be taken to suppress their formation 
-by aggressively limiting DNA fragmentation that occurs between size selection and adapter ligation.
+size-selection cannot be error corrected, so care must be taken to aggressively limit 
+DNA fragmentation that occurs between size selection and adapter ligation.
 
 The final output of both variant calling actions is a data package suitable for
-loading into the interactive visualization app, in additional variant-specific files described next.
-Note that many output files have the `.bgz` extension to indicate that they are bgzipped
+loading into the interactive visualization app, in additional variant-specific files.
+Many output files have the `.bgz` extension to indicate that they are bgzipped
 and tabix-indexed for random access data retrieval. The can be decompressed with either
 `bgzip` or `gzip`.
 
@@ -486,13 +490,13 @@ can be found in the Rust structures that define them:
 - [read_path table format](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/junctions/read_path.rs#L22)
 - [alignment map table format](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/junctions/alignment.rs#L24)
 
-Notably, HiFiRe3 SV final junction files retain ALL junctions detected in all (on-target)
-reads that passed read-level quality filtering, including junctions identified as chimeric
-artifacts, single-molecule junctions, etc. This supports comparisons 
-of the properties of real vs. artifact junctions. Filtering the table against the various 
-columns yields lists of SV junctions of greatest interest for different applications. 
+Notably, final junction files retain ALL junctions detected in all (on-target) reads 
+that passed read-level quality filtering, including junctions identified as chimeric
+artifacts, single-molecule junctions, etc. This supports comparisons of the properties 
+of real vs. artifact junctions. Filtering the table yields lists of SV junctions of 
+greatest interest for different applications, e.g., clonal vs. mosaic SVs. 
 
-Some of the essential filtering information is found in bit-encoded alignment-level and 
+Some essential filtering information is found in bit-encoded alignment-level and 
 junction-level "failure flags", where a bit that is set means that quality check failed. 
 Please see this summary of the 
 [failure flag bit encoding](https://github.com/wilsontelab/HiFiRe3/blob/main/shiny/shared/session/utilities/jxn_filters.R#L16)
@@ -500,31 +504,54 @@ for details.
 
 ### SNV-specific output files
 
-PENDING.
+The primary outputs of SNV/indel calling are:
+- two variant list files named `XXXX.<READ_LEVEL>.snv_indel.txt.bgz`
+- two genome pileup files named `XXXX.<READ_LEVEL>.pileup.bed.bgz`.
+
+Each file type has two variants where READ_LEVEL is replaced with either:
+- `all_reads`, where non-duplex reads were included during variant calling
+- `error_corrected`, where only duplex error-corrected reads were used
+
+The all_reads variant list provides the most sensitive and accurate detection 
+of clonal variants, where the error_corrected list provides the most
+specific asssessment of rare variants. Pileup files are mainly used 
+for visualization in the app TrackBrowser.
+
+As with SV files, ALL variants from the indicated reads are included, even 
+variants that will eventually be filtered away as not passing homoduplex 
+strand validation or having too few or too many observations.
+
+Details on these file formats can be found in the Rust structures that define them:
+- [snv_indel variant list format](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/snvs/variant.rs#L35)
+- [pileup file format](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/snvs/pileup.rs#L34)
+
+**PENDING: conversion of HiFiRe3 file formats to VCF format
 
 ## Comparing variants across samples
 
 HiFiRe3 applications often seek to distinguish single-molecule variants,
 i.e., SVs and SNVs detected only once in a sample, from those detected
 multiple times. Multiply-sequenced variants must have arisen from different 
-input DNA molecules in the PCR-free libraries HiFiRe3 is mainly intended to 
-process, whereas single-molecule variants are consistent with mutations
-that occurred during an experiment or recently in a tissue or cell lineage.
+input DNA molecules in PCR-free libraries, whereas single-molecule variants 
+are consistent with mutations that occurred during an experiment or recently 
+in a tissue or cell lineage.
 
 Sensitivity for detecting multiply-sequenced variants increases if data from 
 many samples from the same DNA source can be combined, which is the
 job of `compare SVs` and `compare SNVs`. These actions are not needed if you 
 are only analyzing one sample.
 
-The process for comparing variants across samples is essentially the same as
-that used to count the number of reads that called a variant in a single
-sample, tracking sample sources whan applying fuzzy-logic variant comparisons.
+The processes and file formats for comparing variants across samples are the 
+same as those applied to a single sample. Aligned reads from multiple samples 
+are analyzed together with tracking of the samples that contributed to each called 
+variant. This approach requires that `analyze fragments` has been run on all input 
+samples, but `analyze SVs` and `analyze SNVs` are not required to run `compare SVs` 
+or `compare SNVs`, as variant calling is repeated anew.
 
 ## Targeted genomic analysis
 
 Many error-corrected sequencing approaches benefit from focusing reads to specific
-genomic regions. The details differ by platform and library type, but commonly
-include hybridization capture and, most useful for HiFiRe3, ONT adaptive sampling.
+genomic regions, e.g., by hybridization capture or ONT adaptive sampling.
 If applicable, use options `--targets-bed` and `--region-padding` to communicate 
 the genomic regions to which your reads were targeted. 
 

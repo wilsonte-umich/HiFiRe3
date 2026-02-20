@@ -23,7 +23,7 @@ actions:
         job-manager:
             recommended:
                 time-limit: 24:00:00
-        description: "derive a read consensus from PacBio strand consensuses generated in by-strand mode"
+        description: "derive a read consensus from PacBioStrand strand consensuses generated in by-strand mode"
     ONT:
         order: 2
         optionFamilies:

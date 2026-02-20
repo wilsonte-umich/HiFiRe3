@@ -39,7 +39,9 @@ alignment:
   -F,--force-alignment <boolean> force read alignment, even if alignment bam file already exists 
 
 localization:
-  -S,--min-rflp-evidence    <integer> accept genome positions matching this many read ends as RFLP sites [3]
+  -S,--min-rflp-evidence    <integer> locate genome positions matching this many read outer endpoints as RFLP sites [3]
+  -X,--skip-rflp-detection  <boolean> do not locate non-reference RFLP sites, use in silico RE sites only 
+  -o,--site-override-file   <string> do not locate RFLP sites, use RE filtering sites from --site-override-file [NA]
 
 targets:
   -y,--targets-bed     <string> path to a BED file definining genomic regions targeted during sequencing [NA]

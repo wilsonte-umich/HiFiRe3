@@ -27,12 +27,12 @@ pod5:
   -i,--pod5-dir        <string> directory or tar archive with one or more *.pod5 files from a single ONT run *REQUIRED*
 
 dorado:
-  -A,--dorado-version  <string> Dorado version to be downloaded and used, e.g., 1.1.1-linux-x64 [1.1.1-linux-x64]
+  -A,--dorado-version  <string> Dorado version to be downloaded and used, e.g., 1.3.0-linux-x64 [1.3.0-linux-x64]
   -M,--ont-model-complex    <string> ONT main basecalling model complex = (fast|hac|sup)[__AT_SYMBOL__(version|latest)] [sup]
   -b,--modified-base-models <string> optional comma-separated list of modified base models = modification[__AT_SYMBOL__(version|latest)]] 
   -5,--pod5-buffer     <string> whether to use shared memory (shm) or --tmp-dir (tmp) for pod5 buffering [shm]
   -Z,--pod5-buffer-size     <string> maximum size of pod5-buffer in Gb used when auto-batching POD5 files, e.g., 50G [60G]
-  -y,--min-pod5-size   <string> minimum size of a pod5 file in Mb to use when auto-batching POD5 files, e.g., 100M [1000M]
+  -y,--min-pod5-size   <string> minimum size of a pod5 file in Mb to use when auto-batching POD5 files, e.g., 100M [250M]
   -D,--dorado-options  <string> additional options passed directly to `dorado basecaller` [none] 
   -F,--force-basecalling    <boolean> force basecalling of all reads, ignoring any existing ubam files 
 

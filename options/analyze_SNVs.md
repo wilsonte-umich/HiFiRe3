@@ -11,7 +11,7 @@ hf3 analyze SNVs --help
 ```
 analyze: Align reads, match inserts to RE fragments, and find true mosaic variants
 
-SNVs: parse prepared fragments to describe and count unique SNV combinations
+SNVs: parse prepared PacBio by-strand reads to describe and count unique SNV combinations
 
 library-properties:
   -P,--sequencing-platform  <string> platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBio) *REQUIRED*
@@ -28,6 +28,13 @@ genome:
 
 restriction-enzyme:
   -e,--enzyme-name     <string> name of the restriction enzyme used to cleave genomic DNA (from shared/modules/REs/blunt_enzymes.csv if not NA) [NA]
+
+targets:
+  -y,--targets-bed     <string> path to a BED file definining genomic regions targeted during sequencing [NA]
+  -Y,--region-padding  <integer> bp of adjacency padding applied to target regions in --targets-bed-file [0]
+
+SNV:
+  --min_n_passes       <integer> minimum number of PacBio passes on both strands together to be a valid duplex read [10]
 
 output:
   -O,--output-dir      <string> the directory where output files will be placed; must already exist *REQUIRED*

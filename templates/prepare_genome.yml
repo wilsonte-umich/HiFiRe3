@@ -2,7 +2,7 @@
 # download and digest a reference genome assembly
 pipeline: HiFiRe3/prepare:latest
 variables:
-    GENOME: hs1
+    GENOME: hg38
 shared:
     output:
         output-dir: ${PWD}/_prepare_${GENOME}

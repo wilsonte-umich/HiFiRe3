@@ -311,9 +311,39 @@ hf3_bgzColumns <- list(
         seq_strand0        = "integer",
         seq               = "character",
         qual              = "character"
+    ),
+    allReadsPileupBgz = c(
+        chrom_index1 = "integer",
+        start        = "integer",
+        end          = "integer",
+        M            = "integer",
+        A            = "integer",
+        C            = "integer",
+        G            = "integer",
+        T            = "integer",
+        N            = "integer",
+        D            = "integer",
+        I            = "integer",
+        D_allowed    = "integer",
+        I_allowed    = "integer"
+    ),
+    allReadsVariantsBgz = c(
+        chrom_index1 = "integer",
+        start0       = "integer",
+        n_ref_bases  = "integer",
+        alt_bases    = "character",
+        count        = "integer",
+        coverage     = "integer",
+        sample_bits  = "integer",
+        n_samples    = "integer",
+        max_n_passes = "integer",
+        any_allowed  = "integer",
+        all_allowed  = "integer"
     )
 )
-hf3_bgzColumns$svJunctions2Bgz       <-   hf3_bgzColumns$svJunctions1Bgz
+hf3_bgzColumns$svJunctions2Bgz           <- hf3_bgzColumns$svJunctions1Bgz
+hf3_bgzColumns$errorCorrectedPileupBgz   <- hf3_bgzColumns$allReadsPileupBgz
+hf3_bgzColumns$errorCorrectedVariantsBgz <- hf3_bgzColumns$allReadsVariantsBgz
 
 # # header flags
 # hf3_hasHeader <- list(
@@ -382,9 +412,16 @@ hf3_getExcludedRegions <- function(sourceId){
 }
 
 # general track data retrieval, uses tabix random access not sessionCache
-hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE){
+hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE, debug = FALSE){
     if(!use_chrom) coord$chromosome <- hf3_getChromIndex(sourceId, coord$chromosome)
     bgzFile <- getSourceFilePath(sourceId, fileType)
+    if (debug) {
+        dmsg()
+        dmsg(bgzFile)
+        dmsg(file.exists(bgzFile))
+        dstr(coord)
+        # dstr(fread(bgzFile))
+    }
     if(!isTruthy(bgzFile) || !file.exists(bgzFile)) return(data.table()) # no data of this type
     getCachedTabix(bgzFile) %>% # , create = TRUE, force = TRUE
     getTabixRangeData(
