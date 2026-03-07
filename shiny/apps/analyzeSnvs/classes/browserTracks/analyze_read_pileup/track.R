@@ -69,14 +69,14 @@ build.analyze_read_pileupTrack <- function(track, reference, coord, layout){
         end   = pmin(end,   as.integer(coord$end))
     )]
 
-    ############################
-    variants <- hf3_getVariants(sourceId, coord, Read_Type)
-    dprint(pileup[, -1])
-    if (nrow(variants) > 0) {
-        variants[, start0 := start0 + 1L]
-        variants[, alt_bases := nchar(alt_bases)]
-        dprint(variants[, -1])
-    }
+    # ############################
+    # variants <- hf3_getVariants(sourceId, coord, Read_Type)
+    # dprint(pileup[, -1])
+    # if (nrow(variants) > 0) {
+    #     variants[, start0 := start0 + 1L]
+    #     variants[, alt_bases := nchar(alt_bases)]
+    #     dprint(variants[, -1])
+    # }
 
     # set the layout
     padding <- padding(track, layout)

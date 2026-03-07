@@ -56,7 +56,6 @@ use genomex::genome::{Chroms, TargetRegions, Genes, Exclusions};
 pub struct JunctionAnalysisTool {
 
     // global configuration parameters
-    pub data_name: String,
     pub n_cpu:     u32,
 
     // chromosomes and regions

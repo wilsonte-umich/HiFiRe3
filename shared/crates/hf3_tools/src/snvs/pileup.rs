@@ -103,14 +103,13 @@ impl ChromPileup {
 
     /// Increment a chromosome position count for a specific observed 
     /// base in a read alignment at ref_pos0.
-    pub fn increment_base(&mut self, ref_pos0: usize, base: char) {
-        match base {
-            'A' => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_a),
-            'C' => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_c),
-            'G' => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_g),
-            'T' => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_t),
-            'N' => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_n),
-            _  => panic!("Unexpected base character in pileup increment: {}", base),
+    pub fn increment_base(&mut self, ref_pos0: usize, base: char, allowed: bool) {
+        match (base, allowed) {
+            ('A', true) => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_a),
+            ('C', true) => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_c),
+            ('G', true) => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_g),
+            ('T', true) => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_t),
+            _           => ChromPileup::increment(&mut self.0[ref_pos0].n_alt_n), // either unresolved heteroduplex or ACGT with low base quality
         }
     }
 

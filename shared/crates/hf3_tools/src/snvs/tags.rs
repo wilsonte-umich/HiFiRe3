@@ -65,6 +65,9 @@ pub const HETERODUP_SUBS_THIS_REF:     &str = ">"; // this.seq base (listed firs
 pub const HETERODUP_SUBS_PREV_REF:     &str = "<"; // prev.seq base (listed second in the op value) matched the reference base
 pub const HETERODUP_SUBS_NEITHER_REF:  &str = "&"; // heteroduplex substitutions that DID NOT match reference on either strand 
 
+// variant calling parameters
+const INDEL_FLANK_BASES: usize = 3; // calculate indel base quality including this many bases on either side of the event
+
 /// DdTag struct helps parse a dd:Z: tag into a mask of read positions 
 /// that are allowed to call SNV and indel variants downstream.
 /// 
@@ -161,6 +164,7 @@ impl CsTag {
         &self, 
         worker:       &mut SnvChromWorker,
         mask:         &[bool],
+        qual:         &[u8],
         mut qry_pos0: u32, 
         mut ref_pos0: u32,
         sample_bit:   u16,
@@ -172,26 +176,27 @@ impl CsTag {
         let mut var_ref_pos0: Option<u32> = None;
         let mut n_ref_bases: u32 = 0;
         let mut alt_bases: String = String::with_capacity(10);
+        let mut alt_qual: Vec<u8> = Vec::with_capacity(100);
         let mut allowed = true;
         while let Some(char) = chars.next() {
             if char.is_alphanumeric() {
                 val.push(char);
             } else {
                 CsTag::process_op(
-                    worker, mask,
+                    worker, mask, qual,
                     &mut qry_pos0,  &mut ref_pos0, sample_bit, n_passes,
                     op, &val, 
-                    &mut var_ref_pos0, &mut n_ref_bases, &mut alt_bases, &mut allowed
+                    &mut var_ref_pos0, &mut n_ref_bases, &mut alt_bases, &mut alt_qual, &mut allowed
                 );
                 op = char;
                 val.clear();
             }
         }
         CsTag::process_op(
-            worker, mask,
+            worker, mask, qual,
             &mut qry_pos0,  &mut ref_pos0, sample_bit, n_passes, 
             op, &val, 
-            &mut var_ref_pos0, &mut n_ref_bases, &mut alt_bases, &mut allowed
+            &mut var_ref_pos0, &mut n_ref_bases, &mut alt_bases, &mut alt_qual, &mut allowed
         );
     }
 
@@ -199,6 +204,7 @@ impl CsTag {
     fn process_op(
         worker:       &mut SnvChromWorker,
         mask:         &[bool],
+        qual:         &[u8],
         qry_pos0:     &mut u32, 
         ref_pos0:     &mut u32,
         sample_bit:   u16,
@@ -208,6 +214,7 @@ impl CsTag {
         var_ref_pos0: &mut Option<u32>,
         n_ref_bases:  &mut u32,
         alt_bases:    &mut String,
+        alt_qual:     &mut Vec<u8>,
         allowed:      &mut bool,
     ) {
         // :	[0-9]+	Identical sequence length
@@ -222,13 +229,16 @@ impl CsTag {
                         var_ref_pos0.unwrap(), 
                         *n_ref_bases, 
                         &alt_bases,
+                        &alt_qual,
                         sample_bit,
                         n_passes,
                         *allowed,
+                        worker.min_snv_indel_qual,
                     );
                     *var_ref_pos0 = None;
                     *n_ref_bases = 0;
                     alt_bases.clear();
+                    alt_qual.clear();
                     *allowed = true;
                 }
                 let len = val.parse::<u32>().unwrap();
@@ -245,8 +255,11 @@ impl CsTag {
                 if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0); }
                 *n_ref_bases += 1;
                 alt_bases.push(alt_base);
-                *allowed &= mask[*qry_pos0 as usize];
-                worker.pileup.increment_base(*ref_pos0 as usize, alt_base);
+                let i0 = *qry_pos0 as usize;
+                alt_qual.push(qual[i0]);
+                *allowed &= mask[i0];
+                let pileup_allowed = *allowed && qual[i0] as usize >= worker.min_snv_indel_qual;
+                worker.pileup.increment_base(*ref_pos0 as usize, alt_base, pileup_allowed);
                 *qry_pos0 += 1;
                 *ref_pos0 += 1;
             },
@@ -254,24 +267,34 @@ impl CsTag {
                 //    *INI     insertions may have heteroduplex bases within homoduplex query run
                 // rrrr   Rrrr
                 // qqqqQqqqqqq
-                //     A A
+                //    aA Aa
+                let n_ins_bases = val.len();
                 if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0 - 1); }
                 alt_bases.push_str(&val.to_ascii_uppercase());
-                *allowed &= mask[*qry_pos0 as usize] && mask[*qry_pos0 as usize + val.len() - 1];
+                let ins_start0 = *qry_pos0 as usize;
+                let ins_end1 = ins_start0 + n_ins_bases;
+                let qual_left0  = ins_start0.saturating_sub(INDEL_FLANK_BASES);
+                let qual_right1 = (ins_end1 + INDEL_FLANK_BASES).min(qual.len());
+                alt_qual.extend_from_slice(&qual[qual_left0..qual_right1]);
+                *allowed &= mask[ins_start0] && mask[ins_end1 - 1];
                 worker.pileup.increment_ins(*ref_pos0 as usize - 1, *allowed);
-                *qry_pos0 += val.len() as u32;
+                *qry_pos0 += n_ins_bases as u32;
             },
             '-' => {
                 //     DDD
                 // rrrrRrrrrrr
                 // qqqq   Qqqq
-                //    A   A
-                let len = val.len() as u32;
+                //   aA   Aa
+                let n_del_bases = val.len();
                 if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0); }
-                *n_ref_bases += len;
-                *allowed &= mask[*qry_pos0 as usize - 1] && mask[*qry_pos0 as usize];
-                worker.pileup.increment_del(*ref_pos0 as usize, len as usize, *allowed);
-                *ref_pos0 += len;
+                *n_ref_bases += n_del_bases as u32;
+                let qry_after_del0 = *qry_pos0 as usize;
+                let qual_left0  = qry_after_del0.saturating_sub(INDEL_FLANK_BASES);
+                let qual_right1 = (qry_after_del0 + INDEL_FLANK_BASES).min(qual.len());
+                alt_qual.extend_from_slice(&qual[qual_left0..qual_right1]);
+                *allowed &= mask[qry_after_del0 - 1] && mask[qry_after_del0];
+                worker.pileup.increment_del(*ref_pos0 as usize, n_del_bases as usize, *allowed);
+                *ref_pos0 += n_del_bases as u32;
             },
             _   => panic!("Unexpected operation in cs tag: {}", op),
         }

@@ -43,6 +43,7 @@ pub struct StrandMerger{
     pub has_ref_on_this: bool,
     ref_on_this:         Vec<String>,
     prev_on_this:        Vec<String>,
+    prev_qual:           Vec<u8>,
     prev_offset:         usize,
     ident_unknown_len:   usize,
     ident_ref_len:       usize,
@@ -62,6 +63,7 @@ impl StrandMerger {
             has_ref_on_this:   false,
             ref_on_this:       Vec::with_capacity(MAX_READ_LEN),
             prev_on_this:      Vec::with_capacity(MAX_READ_LEN),
+            prev_qual:         Vec::with_capacity(MAX_READ_LEN),
             prev_offset:       0,
             ident_unknown_len: 0,
             ident_ref_len:     0,
@@ -246,6 +248,10 @@ impl StrandMerger {
         self.prev_on_this[aln.tgt_start0..=aln.tgt_end0].swap_with_slice(aln.qry_on_tgt.as_mut_slice());
         self.prev_offset = aln.qry_start0;
 
+        // set prev_qual to match the orientation of prev_on_this, but prev_qual is a simple Vec, not mapped to this
+        self.prev_qual.clear();
+        self.prev_qual.extend(strand_pair.prev.qual.iter().rev()); // reverse prev qual to match rc(prev.seq)
+
         // return the absence of prev_on_this failure
         None
     }
@@ -271,9 +277,10 @@ impl StrandMerger {
         self.ident_ref_len     = 0; 
         self.dd_ops.clear();
         self.outcomes = PERFECT_MATCH;
-        let this_len = strand_pair.this.seq.len();
-        let prev_len = strand_pair.prev.seq.len();
-        let mut seq = String::with_capacity(this_len * 2);
+        let this_len  = strand_pair.this.seq.len();
+        let prev_len  = strand_pair.prev.seq.len();
+        let mut seq  = String::with_capacity(this_len * 2);
+        let mut qual = Vec::with_capacity(this_len * 2);
         let mut sk_tag: Vec<u16> = Vec::with_capacity(this_len / 4);
 
         // loop through this.seq on base at a time
@@ -290,6 +297,7 @@ impl StrandMerger {
             // homoduplex bases that agree between strands
             if !is_heteroduplex {
                 seq.push_str(this_base); // commit duplex-validated sequenced bases as is regardless of ref match
+                qual.push(strand_pair.this.qual[this_offset].max(self.prev_qual[self.prev_offset])); // use the higher base quality of the two strands for homoduplex bases
                 self.prev_offset += 1;
                 if self.has_ref_on_this {
                     if this_is_ref {
@@ -350,8 +358,10 @@ impl StrandMerger {
                     self.dd_ops.push((PREV_CLIP_OP, SEQ_MASKED_BASE.to_string()));
                     if this_is_ref {
                         seq.push_str(this_base);
+                        qual.push(strand_pair.this.qual[this_offset]);
                     } else {
                         seq.push(SEQ_MASKED_BASE);
+                        qual.push(0);
                     }
                     // prev_offset starts after a left clip
                     self.outcomes |= HAS_STRAND_CLIP;
@@ -364,14 +374,18 @@ impl StrandMerger {
                         if this_is_ref {
                             self.dd_ops.push((HETERODUP_INS_VS_REF, indel_bases));
                             seq.push_str(this_base);
+                            qual.push(strand_pair.this.qual[this_offset]);
                         } else if prev_is_ref {
                             self.dd_ops.push((HETERODUP_DEL_VS_REF, indel_bases));
                             seq.push_str(prev_bases); // the last base matches the one this_base after the indel
+                            qual.extend(self.prev_qual[self.prev_offset..self.prev_offset + n_prev_bases].iter()); 
                         } else {
                             let masked_bases: String = repeat_n(SEQ_MASKED_BASE, indel_bases.len()).collect();
                             self.dd_ops.push((HETERODUP_INDEL_NEITHER_REF, indel_bases));
                             seq.push_str(&masked_bases);
+                            for _ in 0..masked_bases.len() { qual.push(0); }
                             seq.push_str(this_base);
+                            qual.push(strand_pair.this.qual[this_offset]);
                             self.outcomes |= HAS_STRAND_INDEL_NEITHER_REF;
                         }
                         self.ident_ref_len += 1; // just the one base after the indel
@@ -379,7 +393,9 @@ impl StrandMerger {
                         let masked_bases: String = repeat_n(SEQ_MASKED_BASE, indel_bases.len()).collect();
                         self.dd_ops.push((HETERODUP_INDEL_UNKNOWN, indel_bases));
                         seq.push_str(&masked_bases);
+                        for _ in 0..masked_bases.len() { qual.push(0); }
                         seq.push_str(this_base);
+                        qual.push(strand_pair.this.qual[this_offset]);
                         self.ident_unknown_len += 1;
                     }
                     self.prev_offset += n_prev_bases;
@@ -392,18 +408,21 @@ impl StrandMerger {
                         if this_is_ref {
                             self.dd_ops.push((HETERODUP_DEL_VS_REF, indel_bases));
                             seq.push_str(this_base);
+                            qual.push(strand_pair.this.qual[this_offset]);
                         } else if prev_is_ref {
                             self.dd_ops.push((HETERODUP_INS_VS_REF, indel_bases));
                         } else {
                             let masked_bases: String = repeat_n(SEQ_MASKED_BASE, indel_bases.len()).collect();
                             self.dd_ops.push((HETERODUP_INDEL_NEITHER_REF, indel_bases));
                             seq.push_str(&masked_bases);
+                            for _ in 0..masked_bases.len() { qual.push(0); }
                             self.outcomes |= HAS_STRAND_INDEL_NEITHER_REF;
                         }
                     } else {
                             let masked_bases: String = repeat_n(SEQ_MASKED_BASE, indel_bases.len()).collect();
                             self.dd_ops.push((HETERODUP_INDEL_UNKNOWN, indel_bases));
                             seq.push_str(&masked_bases);
+                            for _ in 0..masked_bases.len() { qual.push(0); }
                     }
                     // does not advance on prev_strand.seq
                     self.outcomes |= HAS_STRAND_INDEL;
@@ -435,17 +454,21 @@ impl StrandMerger {
                     let dd_op = if self.has_ref_on_this {
                         if this_is_ref {
                             seq.push_str(this_base);
+                            qual.push(strand_pair.this.qual[this_offset]);
                             HETERODUP_SUBS_THIS_REF
                         } else if prev_is_ref {
                             seq.push_str(prev_bases);
+                            qual.push(self.prev_qual[self.prev_offset]);
                             HETERODUP_SUBS_PREV_REF
                         } else {
                             seq.push(SEQ_MASKED_BASE);
+                            qual.push(0);
                             self.outcomes |= HAS_STRAND_SUBS_NEITHER_REF;
                             HETERODUP_SUBS_NEITHER_REF
                         } 
                     } else {
                         seq.push(SEQ_MASKED_BASE);
+                        qual.push(0);
                         HETERODUP_SUBS_UNKNOWN
                     };
                     self.dd_ops.push((dd_op, format!("{}{}", this3, prev3)));
@@ -480,11 +503,6 @@ impl StrandMerger {
             }
         }
         Self::commit_dd_op(wrk_op, &mut dd_tag);
-
-        // create a two-level QUAL string with:
-        //   - Phred 40 (I) for homoduplex or reference-validated bases (thus, at least two of three values agreed on the base)
-        //   - Phred  0 (!) for heteroduplex bases where neither strand matched the reference (thus, no consensus was achieved)
-        let qual = seq.chars().map(|b| if b == SEQ_MASKED_BASE { 0 } else { 40 }).collect();
 
         // return the results
         (seq, qual, self.outcomes, dd_tag, sk_tag)

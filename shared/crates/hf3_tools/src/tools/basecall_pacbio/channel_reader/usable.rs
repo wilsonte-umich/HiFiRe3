@@ -3,7 +3,7 @@
 
 // dependencies
 use rust_htslib::bam::Record as BamRecord;
-use genomex::bam::tags;
+use genomex::bam::{tags, qual::median_qual_all};
 use crate::formats::hf3_tags::{PACBIO_FAIL, PACBIO_EFF_COVERAGE};
 use crate::tools::basecall_pacbio::{
     MIN_READ_LEN, 
@@ -16,7 +16,7 @@ use crate::tools::basecall_pacbio::{
 /// as found in the "ff:i:" tag in ccs bam files (even hifi files)
 #[repr(u8)]
 enum CcsFailBits {
-    // LowAccuracy      = 0x1, // never enforced as is; can rescue low QV reads by strand pairing
+    LowAccuracy      = 0x1,
     ControlRead      = 0x2,
     // SingleStranded   = 0x4, // not a fail bit here, always set on by-strand ccs reads
     NoCcsRead        = 0x8,
@@ -34,12 +34,14 @@ enum CcsFailBits {
 
 // constants
 const UNUSABLE_BITS: u8 = 
+    CcsFailBits::LowAccuracy      as u8 |
     CcsFailBits::ControlRead      as u8 |
     CcsFailBits::NoCcsRead        as u8 |
     CcsFailBits::ChimericAdapter  as u8 |
     CcsFailBits::MiscalledAdapter as u8 |
     CcsFailBits::CloseAdapter     as u8;
 const MIN_EFFECTIVE_STRAND_COVERAGE: f32 = 3.0; // mergable reads have at least twice this coverage; expose as option?
+const MIN_MEDIAN_BASE_QUAL: u8 = 35; // same as PacBio MIN_AVG_BASE_QUAL
 
 /// Reasons why a PacBio CCS strand may be considered unusable for merging.
 #[repr(u8)]
@@ -50,6 +52,7 @@ pub enum UnusableReason {
     CoverageTooLow = 2,
     ReadTooShort   = 3,
     ReadTooLong    = 4,
+    QualTooLow     = 5,
 }
 impl UnusableReason {
     /// Return a string representation of the unusable reason for outcome keying.
@@ -60,6 +63,7 @@ impl UnusableReason {
             UnusableReason::CoverageTooLow => "COVERAGE_TOO_LOW",
             UnusableReason::ReadTooShort   => "READ_TOO_SHORT",
             UnusableReason::ReadTooLong    => "READ_TOO_LONG",
+            UnusableReason::QualTooLow     => "QUAL_TOO_LOW",
         }
     }
     pub fn get_reasons(&self, other: &Self) -> &'static str {
@@ -107,6 +111,15 @@ impl StrandSource {
     }
 }
 
+// Character  Phred  Accuracy
+// I          40     99.99
+// D          35     99.97
+// <          27     99.8
+// 7          22     99.3
+// 2          17     98.0
+// +          10     90.0
+// $          3      50.0
+
 /// Determine whether a by-strand read is usable for merging based on its PacBio tags.
 pub (super) fn is_usable(strand: &BamRecord) -> (bool, UnusableReason, u8, f32) {
     let ff  = tags::get_tag_u8(strand, PACBIO_FAIL);
@@ -120,6 +133,8 @@ pub (super) fn is_usable(strand: &BamRecord) -> (bool, UnusableReason, u8, f32) 
         UnusableReason::ReadTooShort
     } else if read_len > MAX_READ_LEN {
         UnusableReason::ReadTooLong // could be masked by CoverageTooLow
+    } else if median_qual_all(strand) < MIN_MEDIAN_BASE_QUAL { // more stringent than PacBio LowAccuracy bit?
+        UnusableReason::QualTooLow
     } else {
         UnusableReason::None
     };

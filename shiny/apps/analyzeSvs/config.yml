@@ -19,8 +19,8 @@ description: "Visualize the inputs and outputs of the `analyze SVs` pipeline act
 uploadTypes:
     hf3AnalyzeSVs: 
         contentFileTypes: # anything not listed will not be available to the app
-            # samplesFile:
-            #     required: true    
+            samplesFile:
+                required: true
             chromsFile:
                 required: true
             targetsBed:

@@ -52,7 +52,6 @@ pub struct AlnFailure {
     max_divergence:    f64,
     min_flank_len:     u32,
     min_avg_base_qual: f64,
-    has_base_accuracy: bool,
 }
 impl AlnFailure {
 
@@ -72,7 +71,6 @@ impl AlnFailure {
             max_divergence:    *w.cfg.get_f64(MAX_DIVERGENCE),
             min_flank_len:     *w.cfg.get_u32(MIN_FLANK_LEN),
             min_avg_base_qual: *w.cfg.get_f64(MIN_AVG_BASE_QUAL),
-            has_base_accuracy: *w.cfg.get_bool(super::HAS_BASE_ACCURACY),
         }
     }
 
@@ -103,7 +101,7 @@ impl AlnFailure {
                 aln.tags.tags.push(format!("{}{}", ALN_FAILURE_FLAG, AlnFailureFlag::FlankLen as u8));
                 return false;
             }
-            if !self.has_base_accuracy { // this slow check only performed on ONT or other low accuracy platform
+            if self.min_avg_base_qual > 0.0 { // this slow check only performed on platforms that need it (ONT, PacBio)
                 let avg_base_qual = aln.get_avg_qual_aln();
                 let base_qual_bin_i = (avg_base_qual / AVG_BASE_QUAL_BIN_SIZE as f64).round() as usize;
                 w.ctrs.increment_indexed(AVG_BASE_QUAL, base_qual_bin_i);

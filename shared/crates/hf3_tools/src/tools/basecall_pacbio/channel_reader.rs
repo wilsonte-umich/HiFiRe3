@@ -154,11 +154,11 @@ pub fn stream_bam_files(
 // dispatch one strand of a PacBio by-strand read to either the StrandBuffer
 // or for processing with its partner strand
 fn process_strand(
-    source:          StrandSource,
-    this_strand:     &BamRecord,
-    strand_buffer:   &mut StrandBuffer,
-    tx_strand_pair:  &Sender<StrandPair>,
-    tx_merge_result: &Sender<MergeResult>,
+    this_source:       StrandSource,
+    this_strand:       &BamRecord,
+    strand_buffer:     &mut StrandBuffer,
+    tx_strand_pair:    &Sender<StrandPair>,
+    tx_merge_result:   &Sender<MergeResult>,
     // counter:         &mut usize,
 ) -> Result<(), Box<dyn Error>> {
 
@@ -184,16 +184,17 @@ fn process_strand(
     if let Some(prev_strand) = strand_buffer.remove(&buffer_key){
         let qname = format!("{}/{}/ccs", parts[0], zmw).into_bytes();
         let ff = prev_strand.ff | this_ff; // read reports both strands' fail flags
+        let this_is_hifi = this_source == StrandSource::Hifi;
 
-        // merge two usable strands into a single read
+        // merge two usable strands into a single read if this strand is a hifi strand
         // used downstream for both SNV and SV detection
-        if prev_strand.usable && this_usable {
+        if prev_strand.usable && this_usable && this_is_hifi { // a fail strand can be used to error correct a hifi strand but not another fail strand
             tx_strand_pair.send(StrandPair{
-                sources: source.get_sources(&prev_strand.source),
+                sources: this_source.get_sources(&prev_strand.source),
                 qname,
                 ff,
                 this: BufferedStrand {
-                    source,
+                    source: this_source,
                     usable: this_usable,
                     reason: this_reason,
                     ff,
@@ -209,23 +210,9 @@ fn process_strand(
 
         // transmit reads with only one usable strand directly to writer without 
         // the two-strand tag used downstream for SV detection only
-        } else if prev_strand.usable {
+        } else if this_usable && this_is_hifi { // single strands reported for SV analysis must be hifi
             tx_merge_result.send(MergeResult{
-                sources: source, // the source and reason for the other unsuable strand
-                reason:  this_reason.to_str(),
-                outcome: ONE_USABLE_STRAND,
-                qname,
-                seq:  prev_strand.seq,
-                qual: prev_strand.qual,
-                ff,
-                ec:   prev_strand.ec,
-                dt:   None,
-                dd:   None,
-                sk:   None,
-            })?;
-        } else if this_usable {
-            tx_merge_result.send(MergeResult{
-                sources: prev_strand.source,
+                sources: prev_strand.source, // the source and reason for the other unusable strand
                 reason:  prev_strand.reason.to_str(),
                 outcome: ONE_USABLE_STRAND,
                 qname,
@@ -237,11 +224,25 @@ fn process_strand(
                 dd: None,
                 sk: None,
             })?;
+        } else if prev_strand.usable && prev_strand.source == StrandSource::Hifi {
+            tx_merge_result.send(MergeResult{
+                sources: this_source,
+                reason:  this_reason.to_str(),
+                outcome: ONE_USABLE_STRAND,
+                qname,
+                seq:  prev_strand.seq,
+                qual: prev_strand.qual,
+                ff,
+                ec:   prev_strand.ec,
+                dt:   None,
+                dd:   None,
+                sk:   None,
+            })?;
 
         // reject reads with no usable strands due to adapter parsing failures, low coverage, etc.
         } else {
             tx_merge_result.send(MergeResult{
-                sources: source.get_sources(&prev_strand.source),
+                sources: this_source.get_sources(&prev_strand.source),
                 reason:  this_reason.get_reasons(&prev_strand.reason),
                 outcome: BOTH_STRANDS_UNUSABLE,
                 qname,
@@ -259,7 +260,7 @@ fn process_strand(
     } else {
         strand_buffer.insert(
             buffer_key, 
-            source,
+            this_source,
             this_usable, 
             this_reason,
             this_ff, 

@@ -1,0 +1,87 @@
+#----------------------------------------------------------------------
+# ui
+#----------------------------------------------------------------------
+shortLabel:       "Explore Variants" # shown on dashboard menu 
+shortDescription: "Explore the properties of artifact vs. confirmed SNVs and indels." # shown on Overview page
+longLabel:        "Explore variant properties" # shown at top of appStep page 
+
+#----------------------------------------------------------------------
+# server
+#----------------------------------------------------------------------
+types: # names of the type(s) of this module ...
+    - exploreVariants
+sourceTypes: upload # ... and of the module(s) on which it depends
+
+#----------------------------------------------------------------------
+# dependencies
+#----------------------------------------------------------------------
+packages: # required R packages
+    R: null
+    Bioconductor: null
+
+## optional data classes and UI modules this module will use
+## e.g., might expect to find shared/optional/classes/<classType>/<className>/<className>_*.R
+#classes:
+#    classType:
+#        - className            
+#modules: null
+
+#----------------------------------------------------------------------
+# module-level settings
+#----------------------------------------------------------------------
+# settings:
+#     Pair_Settings:
+#         Min_Fragment_Size:
+#             type: numericInput
+#             value: 500
+#         Max_Fragment_Size:
+#             type: numericInput
+#             value: 100000
+#         Min_N50:
+#             type: numericInput
+#             value: 500
+#         Max_N50:
+#             type: numericInput
+#             value: 50000
+#         Genic:
+#             type: checkboxInput
+#             value: true
+#         SV_Type:
+#             type: selectInput
+#             choices:
+#                 - Deletion
+#                 - Translocation
+#             value: Deletion   
+#         Has_Merged:
+#             type: radioButtons
+#             choices:
+#                 - "Yes"
+#                 - "No" 
+#                 - "All"
+#             value: All  
+#         <settingName>:
+#             type: selectInput
+#             choices:
+#                 - abc
+#                 - xyz
+#             value: abc    
+#         <settingName>:
+#             type: radioButtons
+#             choices:
+#                 - abc
+#                 - xyz
+#             value: abc    
+#         <settingName>:
+#             type: checkboxGroupInput
+#             choices:
+#                 - abc
+#                 - xyz
+#             value: abc 
+#         <settingName>:
+#             type: checkboxInput
+#             value: true 
+#         <settingName>:
+#             type:   fileInput
+#             accept: 
+#                 - ".csv"
+#                 - ".txt"

@@ -173,7 +173,8 @@ exploreJunctionsUI <- function(id, options) {
                 width = 12,
                 solidHeader = TRUE,
                 status = "primary",
-                collapsible = TRUE
+                collapsible = TRUE,
+                download = TRUE,
             )
         ),
         fluidRow(

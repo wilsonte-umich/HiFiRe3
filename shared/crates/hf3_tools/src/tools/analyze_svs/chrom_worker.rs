@@ -9,7 +9,7 @@ use rust_htslib::bam::{Reader, Read, Record as BamRecord};
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
 use genomex::genome::Chroms;
-use genomex::bam::tags;
+use genomex::bam::tags as bam_tags;
 use genomex::sam::{junction::JunctionType};
 use crate::formats::hf3_tags::*;
 use crate::junctions::*;
@@ -112,9 +112,10 @@ fn process_alns(
 ) -> Result<(), Box<dyn Error>>{
     let n_alns = alns.len();
     let max_aln_i = n_alns - 1;
+    let sample_bit = bam_tags::get_tag_u16(&alns[0], SAMPLE_BIT);
 
     // get read-level metadata from first alignment
-    let read_data = ReadLevelMetadata::from_bam_records(alns);
+    let read_data = ReadLevelMetadata::from_bam_records(alns, sample_bit);
     let qlen = alns[0].seq_len() as u32;
 
     // has_committed_jxn is not the same as READ_HAS_PASSED_JXN or n_alns > 1
@@ -137,7 +138,7 @@ fn process_alns(
                 qlen,
             );
             this_jxn_type = ordered_jxn.jxn_type;
-            let jxn_failure_flag = tags::get_tag_u8_default(&alns[aln_i], JXN_FAILURE_FLAG, 0);
+            let jxn_failure_flag = bam_tags::get_tag_u8_default(&alns[aln_i], JXN_FAILURE_FLAG, 0);
             let passed_traversal_delta = jxn_failure_flag & JxnFailureFlag::TraversalDelta as u8 == 0;
             if passed_traversal_delta { // only commit junctions that passed traversal delta
                 tool.tx_data.send(ChromWorkerData::Junction((ordered_jxn, jxn_instance)))?;

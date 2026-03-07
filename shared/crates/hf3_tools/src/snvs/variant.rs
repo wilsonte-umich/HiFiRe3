@@ -111,11 +111,15 @@ impl ChromVariants {
         ref_pos0:    u32, 
         n_ref_bases: u32, 
         alt_bases:   &str, 
+        alt_qual:    &[u8],
         sample_bit:  u16,
         n_passes:    u8,
-        allowed:     bool,
+        mut allowed: bool,
+        min_snv_indel_qual: usize,
     ) {
         let variant = ChromVariant::new(ref_pos0, n_ref_bases, alt_bases);
+        let avg_alt_qual = alt_qual.iter().map(|&q| q as usize).sum::<usize>() / alt_qual.len();
+        allowed &= avg_alt_qual >=  min_snv_indel_qual;
         let obs = self.0.entry(variant.clone()).or_insert_with(ChromVariantObs::new);
         obs.count        += 1;
         obs.sample_bits  |= sample_bit;

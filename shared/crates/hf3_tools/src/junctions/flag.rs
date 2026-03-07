@@ -11,7 +11,7 @@ pub enum JxnFailureFlag {
     TraversalDelta = 1, // set by analyze_alignments, independent of RE sites or insert sizing
     Noncanonical   = 2,
     FoldbackInv    = 4,
-    OntFollowOn    = 8, 
+    LowQualIns     = 8, // either ONT follow-on or PacBio low-quality insertion
     HasAdapter     = 16,
     SiteMatch      = 32,  // set by analyze_inserts based on RE site matching and insert sizing
     StemLength     = 64,
@@ -24,7 +24,7 @@ const PRE_CHIMERIC_JXN_FLAGS: u8 =
     JxnFailureFlag::Noncanonical   as u8 |
     JxnFailureFlag::FoldbackInv    as u8;
 const CHIMERIC_JXN_FLAGS: u8 = 
-    JxnFailureFlag::OntFollowOn as u8 |
+    JxnFailureFlag::LowQualIns  as u8 |
     JxnFailureFlag::HasAdapter  as u8 |
     JxnFailureFlag::SiteMatch   as u8 |
     JxnFailureFlag::StemLength  as u8;

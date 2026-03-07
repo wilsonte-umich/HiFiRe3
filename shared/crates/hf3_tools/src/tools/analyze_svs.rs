@@ -23,7 +23,6 @@ pub_key_constants!(
     GROUP_BREAKPOINT_DISTANCE
     GROUP_STEM_DISTANCE
     DEDUPLICATE_READS
-    DATA_NAME
     SEQUENCING_PLATFORM
     INDEX_FILE_PREFIX_WRK
     SV_READ_PATHS_FILE
@@ -59,7 +58,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut cfg = Config::new();
     cfg.set_usize_env( &[N_CPU, GROUP_BREAKPOINT_DISTANCE, GROUP_STEM_DISTANCE]);
     cfg.set_bool_env(  &[DEDUPLICATE_READS]);
-    cfg.set_string_env(&[DATA_NAME, SEQUENCING_PLATFORM, SV_READ_PATHS_FILE,
+    cfg.set_string_env(&[SEQUENCING_PLATFORM, SV_READ_PATHS_FILE,
                               INDEX_FILE_PREFIX_WRK, SV_ALIGNMENTS_FILE, SV_COVERAGE_FILE,
                               SV_FINAL_JUNCTIONS_FILE_1, SV_FINAL_JUNCTIONS_FILE_2,
                               ANALYSIS_CHROMS_FILE]);
@@ -97,7 +96,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
     // create the junction analysis tool
     let mut tool = JunctionAnalysisTool {
-        data_name:  w.cfg.get_string(DATA_NAME).to_string(),
         n_cpu:      *w.cfg.get_usize(N_CPU) as u32,
         chroms:     chroms,
         targets:    targets,

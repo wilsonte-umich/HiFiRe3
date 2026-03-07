@@ -35,14 +35,13 @@ hf3_jxnFailureBits <- list(
     # Traversal    = 1,  # the number of base traversed on reference and read between breakpoints was too similar
     # Noncanonical = 2,  # one alignment was to a non-nuclear chromosome, e.g., an unplaced contig
     FoldbackInv    = 4,  # the junction was classified as a foldback inversion consistent with sequence two strands of one duplex
-    OntFollowOn    = 8,  # the junction had inserted bases with a low quality stretch as seen in ONT follow-on artifacts; ONT only
+    LowQualIns     = 8,  # the junction had inserted bases with a low quality stretch as seen in ONT follow-ons and some PacBio artifacts
     "HasAdapter ||"     = 16, # the junction had inserted bases that aligned to known adapter sequences
     #-------------------
     SiteMatch      = 32, # one or both junction breakpoints were too close to a filtering RE site
     StemLength     = 64  # both junction breakpoints were too far from the read end, i.e., failed the <1N filter
     # InsertSize   = 128 # the read carring the junction failed the 1N to 2N size filter; never set, listed for legacy reasons
 )
-
 
 # construct the filtering UI
 hf3_flagFilterModeUI <- function(inputId, passFail, label = NULL) radioButtons(
@@ -70,8 +69,11 @@ hf3_jxnFailureBitsUI <- function(inputId, label = FALSE) checkboxGroupInput(
 hf3_JxnFilterDefaults <- list( 
     Min_Breakpoint_Coverage = 0,
     One_End_In_Genome       = "any",
-    # Enforce_1N_to_2N_Size   = FALSE,
+    Min_N_Samples           = 0,
+    Max_N_Samples           = 0,
+    Duplex_Read_Status      = "show_all",
     Allow_Excluded_Regions  = FALSE
+    # Enforce_1N_to_2N_Size   = FALSE,
 )
 hf3_anyReadFlagPassed <- function(readFlags, flagBits){
     for (readFlag in readFlags) {
@@ -135,6 +137,15 @@ hf3_applyJunctionFilters <- function(jxns, settings, input){
     startSpinner(session, message = paste("filtering junctions..."))
     if(length(jxns) > 0 && !filters$Allow_Excluded_Regions) jxns <- jxns[
         is_excluded_1 == 0 & is_excluded_2 == 0
+    ]
+    if(length(jxns) > 0 && filters$Min_N_Samples > 0) jxns <- jxns[
+        n_samples >= filters$Min_N_Samples
+    ]
+    if(length(jxns) > 0 && filters$Max_N_Samples > 0) jxns <- jxns[
+        n_samples <= filters$Max_N_Samples
+    ]
+    if(length(jxns) > 0 && filters$Duplex_Read_Status != "show_all") jxns <- jxns[
+        has_duplex_read == if (filters$Duplex_Read_Status == "has_duplex_read") 1 else 0
     ]
 
     # enforce filters from inputs specifying failure flag bits

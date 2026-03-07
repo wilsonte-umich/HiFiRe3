@@ -60,9 +60,10 @@ pub struct SnvChromWorker{
     pub chrom:       String,
     pub chrom_index: u8,
 
-    // flag for the level of reads to include
+    // the level of reads and bases to include
     pub include_all_reads: bool,
-    pub min_n_passes:      u8,
+    pub min_n_passes:       u8,
+    pub min_snv_indel_qual: usize,
 
     // data structures for chromosome processing
     pub pileup:   ChromPileup,

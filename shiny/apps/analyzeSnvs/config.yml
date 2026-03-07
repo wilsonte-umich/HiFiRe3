@@ -20,7 +20,7 @@ uploadTypes:
     hf3AnalyzeSNVs: 
         contentFileTypes: # anything not listed will not be available to the app
             samplesFile:
-                required: true    
+                required: true
             chromsFile:
                 required: true
             targetsBed:
@@ -58,8 +58,8 @@ uploadTypes:
 appSteps:
     upload: # nearly always the 1st step of every app
         module: sourceFileUpload
-    # exploreJunctions:
-    #     module: exploreJunctions
+    exploreVariants:
+        module: exploreVariants
     browser:
         module: genomex-mdi-tools//trackBrowser
         # options:

@@ -30,12 +30,12 @@ dpi <- 96
 #----------------------------------------------------------------------
 # load SV junctions
 #----------------------------------------------------------------------
-sourceIds <- dataSourceTableServer("dataSource", selection = "single") 
+sourceId <- dataSourceTableServer("dataSource", selection = "single") 
 junctions_all <- reactive({ # all junction from data source, prior to filtering
-    sourceIds <- sourceIds()
-    req(sourceIds)
+    sourceId <- sourceId()
+    req(sourceId)
     startSpinner(session, message = "loading junctions")
-    hf3_getJunctions_all_sources(sourceIds)[
+    hf3_getJunctions_all_source(sourceId)[
         jxn_type == hf3_junctions$typeToBits["translocation"] | 
         sv_size > 0 # suppress 0bp inversions
     ]
@@ -104,7 +104,7 @@ sizePlotJunctions <- reactive({ # all junctions, prior to filtering for offset s
     jxns <- junctions_filtered()
     req(nrow(jxns) > 0)
     startSpinner(session, message = "grouping SVs")
-    samples <- unique(jxns$sample_names)
+    # samples <- unique(jxns$sample_names)
     jxns[, stratumLabel := hf3_junctionStrata$getJxnStratumLabels(jxnStratum)]
     stratumLabels <- hf3_junctionStrata$indexToStratumLabel
     strata <- 1:length(stratumLabels)
@@ -133,7 +133,7 @@ sizePlotJunctions <- reactive({ # all junctions, prior to filtering for offset s
     }, by = .(stratumLabel)]
     jxns[, y := jitter(y_, amount = typeJitterAmount)] # spread the subrow points through a y-axis jitter
     list(
-        samples       = samples,
+        # samples       = samples,
         jxns          = jxns,
         stratumLabels = stratumLabels,
         strata        = strata,
@@ -161,7 +161,7 @@ createSizePlot <- function(settings, plot) {
     layout <- plot$initializePng() %>% plot$initializeFrame(
         xlim = xlim,
         ylim = ylim,
-        title = d$samples,
+        # title = d$samples,
         xlab = "log10 SV Size",
         ylab = "",
         yaxt = "n",
@@ -405,8 +405,9 @@ createOffsetPlot <- function(settings, plot, v) {
         xlab = "Alignment Offset",
         ylab = "# Junctions",
         xaxs = "i",
-        yaxs = "i",
-        title = sizePlotJunctions()$samples
+        yaxs = "i"
+        # ,
+        # title = sizePlotJunctions()$samples
     )
     abline(v = v, col = "grey80")
     abline(v = 0, col = "black")
@@ -670,6 +671,7 @@ junctionExpandData <- reactive({
             " and max base divergence = ", min_max_divergence
         ),
         qName = strsplit(sub(",", "", q_names), ",")[[1]], # one or more source reads per output row
+        isDuplex = strsplit(sub(",", "", is_duplexes), ",")[[1]],
         aln5I0 = as.integer(strsplit(sub(",", "", aln5_is), ",")[[1]]), # alignment index (0-based) of 5' side of junction within read
         orientation = as.integer(strsplit(sub(",", "", jxn_orientations), ",")[[1]]), # whether the alignments were/should be flipped for this read to match the junction canonical node order
         strands = .(c(strand_index0_1, strand_index0_2)), # junction strands _after_ junction was flipped to canonical order
@@ -733,7 +735,9 @@ observeEvent(input$nextReadI1, {
 output$expandedReadQname <- renderText({
     i <- currReadI1()
     req(i)
-    junctionExpandData()$qName[currReadI1()]
+    jed <- junctionExpandData()
+    duplexStatus <- if(jed$isDuplex[i] == "1") " (duplex)" else ""
+    paste(jed$qName[i], duplexStatus)
 })
 parseCigar <- function(cigar, strand0, alnI0 = NULL) {
     ops <- data.table(
@@ -922,6 +926,8 @@ output$expandedSequences <- renderUI({
     nClip5_2 <- if(cigars[[ALNI1_2]]$ops[ 1, op == "S"]) cigars[[ALNI1_2]]$ops[ 1, n] else 0
     nClip3 <- if(cigars[[ALNI1_2]]$ops[.N, op == "S"]) cigars[[ALNI1_2]]$ops[.N, n] else 0
     nBases_1 <- cigars[[ALNI1_1]]$n_read_bases_aln
+    # q1 <- rp$qual[[1]][nClip5_1 + (1:nBases_1)]
+    # q2 <- rp$qual[[1]][nClip5_2 + (1:cigars[[ALNI1_2]]$n_read_bases_aln)]
     fluidRow(
         style = "margin: 10px; font-size: 1.2em;",
         tagList(

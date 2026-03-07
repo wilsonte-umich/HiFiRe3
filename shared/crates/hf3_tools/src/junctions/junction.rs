@@ -309,6 +309,7 @@ pub struct FinalJunction {
     channels:      String, // comma-delimited ONT channel numbers of qnames; 0 if not applicable
     n_jxns:        String, // comma-delimited number of junctions in qnames
     is_duplicates: String, // comma-delimited integer bools if each QNAME was marked as a duplicate read; always duplicated or not for identical qnames
+    is_duplexes:   String, // comma-delimited integer bools if duplex basecalling was performed on each read
     /* ------------------------------------------- */
     // values that place (multiple) occurrences of the (same) junction in one read
     aln5_is:             String, // comma-delimited index of the 5' alignment in a QNAME's alignments
@@ -333,6 +334,7 @@ pub struct FinalJunction {
     // values that reflect aggregated quality metrics over all deduplicated read instances
     has_multi_jxn_read:      u8,  // integer bool; true if any QNAME had multiple junctions of any type
     has_multi_instance_read: u8,  // integer bool; true if any QNAME had multiple instances of this junction
+    has_duplex_read:         u8,  // integer bool; true if any read with this junction had duplex basecalling performed
     is_bidirectional:        u8,  // integer bool; true if junction instances were observed in both orientations
     jxn_failure_flag:        u8,  // bitwise OR of all instance jxn_failure_flags
     aln_failure_flag:        u8,  // bitwise OR of all instance aln_failure_flags
@@ -356,8 +358,8 @@ pub struct FinalJunction {
     is_excluded_2:  u8,     // integer bool; true if breakpoint 2 overlaps an excluded region
     /* ------------------------------------------- */
     // additional read-level properties that derive deterministically from the global config
-    n_samples:    u8,     // number of unique samples that sequenced this SV, initially == 1
-    sample_names: String, // comma-delimited names of the samples that sequenced this SV, initially just one sample
+    sample_bits:  u16, // bitwise OR of the sample bits of all samples that sequenced this SV
+    n_samples:    u8,  // number of unique samples that sequenced this SV
     /* ------------------------------------------- */
     // additional junction properties added later, initialized to zero
     pub bkpt_coverage_1: u16, // total number of any type of alignment that crossed breakpoint 1
@@ -406,6 +408,7 @@ impl FinalJunction {
 
         // construct and return the FinalJunction
         let rd = &instances.read_data;
+        let sample_bits = rd.iter().fold(0_u16, |acc, rd| acc | rd.sample_bit);
         FinalJunction {
             /* ------------------------------------------- */
             chrom_index1_1,
@@ -442,6 +445,9 @@ impl FinalJunction {
             is_duplicates: Self::join_with_flanked_commas(
                               &rd.iter().map(|rd| rd.is_duplicate as u8).collect::<Vec<_>>(), 
                               1),
+            is_duplexes:   Self::join_with_flanked_commas(
+                              &rd.iter().map(|rd| rd.is_duplex as u8).collect::<Vec<_>>(), 
+                              1),
             /* ------------------------------------------- */
             aln5_is:             Self::join_with_flanked_commas(&instances.aln5_is, 2),
             qry_pos1_aln5_end3s: Self::join_with_flanked_commas(&instances.qry_pos1_aln5_end3s, 6),
@@ -467,6 +473,7 @@ impl FinalJunction {
                 }
                 qname_counts.values().any(|&count| count > 1) as u8
             },
+            has_duplex_read:      rd.iter().any(|rd| rd.is_duplex) as u8,
             is_bidirectional:    (instances.jxn_orientations.iter().any(|&ori| ori == 0) &&
                                   instances.jxn_orientations.iter().any(|&ori| ori == 1)) as u8,
             jxn_failure_flag:     instances.jxn_failure_flags.iter().fold(0u8, |acc, &flag| acc | flag),
@@ -489,8 +496,9 @@ impl FinalJunction {
             is_excluded_1:  tool.exclusions.pos_in_region(&chrom_1, ref_pos1_1) as u8,
             is_excluded_2:  tool.exclusions.pos_in_region(&chrom_2, ref_pos1_2) as u8,
             /* ------------------------------------------- */
-            n_samples:    1,
-            sample_names: Self::join_with_flanked_commas(&vec![tool.data_name.clone()], tool.data_name.len()),
+            // sample_names: Self::join_with_flanked_commas(&vec![tool.data_name.clone()], tool.data_name.len()),
+            sample_bits: sample_bits,
+            n_samples:   sample_bits.count_ones() as u8,
             /* ------------------------------------------- */
             bkpt_coverage_1: 0, // added downstream after alignment segments are merge sorted
             bkpt_coverage_2: 0,

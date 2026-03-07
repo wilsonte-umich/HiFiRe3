@@ -3,7 +3,7 @@
 #   fuzzy-match junctions to each other to yield final junction calls
 #   see Rust crate `hf3_tools` for details
 # input:
-#   $NAME_BAM_FILE with hf3 tags
+#   $NAME_BAM_FILES from one or more samples with hf3 tags
 # output:
 #   $SV_ALIGNMENTS_FILE
 #   $SV_READ_PATHS_FILE

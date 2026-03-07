@@ -342,7 +342,7 @@ impl InsertSizer {
         };
 
         // reads were stratified above as chimeric or not
-        // "chimeric" means a single junction that failed breakpointMatchesSite, isOntFollowOn, or junctionHasAdapters
+        // "chimeric" means a single junction that failed breakpointMatchesSite, isLowQualIns, or junctionHasAdapters
         // "not chimeric" means it passed those chimeric tests, but it may still be chimeric by some other mechanism
         let chimericity = if is_chimeric { CHIMERIC } else { NOT_CHIMERIC };
         let chimera_type = format!("{}{}{}", genomicity, CHIMERIC_DELIMITER, chimericity);

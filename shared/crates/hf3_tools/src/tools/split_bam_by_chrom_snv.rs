@@ -1,9 +1,12 @@
-//! Split an input name-sorted BAM file into temporary per-chromosome BAM 
-//! files based on the chromosome of each alignment, i.e., unlike for SVs,
-//! alignments from multi-alignment reads may be dispatched to different files.
+//! Split input name-sorted BAM file(s) into temporary per-chromosome BAM 
+//! files based on the chromosome of each alignment. Unlike for SVs,
+//! alignments from multi-alignment reads may be dispatched to different 
+//! files.
 //! 
-//! Output only includes usable on-target PacBioStrand error-corrected reads, 
-//! as defined by the presence of the STRAND_DIFFERENCE_TYPES, i.e., dt tag.
+//! Output only includes usable on-target PacBioStrand reads, as defined 
+//! by the presence of the minimap2 cs tag.
+//! 
+//! Support multiple BAM files for multi-sample variant calling.
 
 // dependencies
 use std::error::Error;
@@ -15,6 +18,7 @@ use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
 use mdi::OutputFile;
 use genomex::genome::{Chroms, TargetRegions};
+use genomex::bam::qual::median_qual_aln;
 use crate::formats::hf3_tags::*;
 use crate::snvs::check_pacbio_strand;
 
@@ -24,6 +28,7 @@ pub_key_constants!(
     // from environment variables
     N_CPU
     IS_COMPOSITE_GENOME
+    MIN_AVG_BASE_QUAL
     NAME_BAM_FILES
     INDEX_FILE_PREFIX_WRK
     SNV_SAMPLES_FILE
@@ -47,7 +52,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut cfg = Config::new();
     cfg.set_u32_env(&[N_CPU]);
     cfg.set_bool_env(&[IS_COMPOSITE_GENOME]);
+    cfg.set_u8_env(&[MIN_AVG_BASE_QUAL]);
     cfg.set_string_env(&[NAME_BAM_FILES, INDEX_FILE_PREFIX_WRK, SNV_SAMPLES_FILE]);
+    let min_avg_base_qual = *cfg.get_u8(MIN_AVG_BASE_QUAL);
 
     // validate we are working with the expected read data type
     check_pacbio_strand(TOOL, &mut cfg)?;
@@ -119,7 +126,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         let mut aln = BamRecord::new();
         while let Some(result) = name_bam.read(&mut aln) {
             match result {
-                Ok(_)  => print_aln(&mut aln, &header_view, is_composite, &mut writers, &mut w.ctrs, sample_bit, sample_name)?,
+                Ok(_)  => print_aln(
+                    &mut aln, 
+                    &header_view, 
+                    is_composite, 
+                    min_avg_base_qual,
+                    &mut writers, 
+                    &mut w.ctrs, 
+                    sample_bit, 
+                    sample_name
+                )?,
                 Err(_) => panic!("BAM parsing failed")
             }
         }
@@ -142,6 +158,7 @@ fn print_aln(
     aln:          &mut BamRecord, 
     header_view:  &HeaderView,
     is_composite: bool,
+    min_avg_base_qual: u8,
     writers:      &mut FxHashMap<u32, Writer>,
     ctrs:         &mut Counters,
     sample_bit:   u16,
@@ -150,11 +167,14 @@ fn print_aln(
     ctrs.increment(N_ALNS);
 
     // skip unmapped reads
-    // rare mapped reads lack a cs tag, so the presence of a cs tag is the most specicic criterion
+    // rare mapped reads lack a cs tag, so the presence of a cs tag is the most specific criterion
     if let Some(_cs) = aln.aux(CS_TAG).ok() { 
 
         // skip low quality alignments
-        if aln.mapq() < MIN_MAPQ { return Ok(()); }
+        if aln.mapq() < MIN_MAPQ || 
+           median_qual_aln(aln) < min_avg_base_qual { 
+            return Ok(()); 
+        }
 
         // skip reads in untargeted samples that map to other than nuclear chromosomes
         let tid = aln.tid();

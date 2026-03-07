@@ -22,6 +22,7 @@ pub_key_constants!{
     MIN_ADAPTER_LENGTH
     MAX_ADAPTER_LENGTH
     MIN_ADAPTER_SCORE
+    MIN_AVG_BASE_QUAL
     // counters
     ADAPTER_SCORES
     N_CHIMERIC
@@ -30,8 +31,10 @@ const PHRED_OFFSET: usize = 33;
 
 pub struct ChimeraSplitter {
     is_ont:                 bool,
+    is_pacbio:              bool,
     insertion_window_size:  i16,
     min_sum_ins_qual:       usize,
+    min_avg_base_qual:      u8, // including PHRED offset, for direct comparison to qual
     has_adapters:           bool,
     adapter_core:           String,
     adapter_core_rc:        String,
@@ -50,6 +53,7 @@ impl ChimeraSplitter {
         w.cfg.set_usize_env(&[INSERTION_WINDOW_SIZE, MIN_INSERTION_WINDOW_QUAL, 
                                     MIN_ADAPTER_LENGTH, MAX_ADAPTER_LENGTH, MIN_ADAPTER_SCORE]);
         w.cfg.set_string_env(&[INSERTION_ADAPTER_SEQUENCE]);
+        w.cfg.set_u8_env(&[MIN_AVG_BASE_QUAL]);
         let insertion_window_size = *w.cfg.get_usize(INSERTION_WINDOW_SIZE);
         let min_insertion_window_qual = *w.cfg.get_usize(MIN_INSERTION_WINDOW_QUAL);
         let adapter_core = w.cfg.get_string(INSERTION_ADAPTER_SEQUENCE); 
@@ -70,8 +74,10 @@ impl ChimeraSplitter {
         }
         ChimeraSplitter{
             is_ont:                *w.cfg.get_bool(super::IS_ONT), // must be set upstream
+            is_pacbio:             *w.cfg.get_bool(super::IS_PACBIO),
             insertion_window_size: insertion_window_size as i16,
             min_sum_ins_qual:      (min_insertion_window_qual + PHRED_OFFSET) * insertion_window_size,
+            min_avg_base_qual:     *w.cfg.get_u8(MIN_AVG_BASE_QUAL) + PHRED_OFFSET as u8,
             has_adapters,
             adapter_core:          adapter_core.to_string(),        // fused to 5' genomic ends; for ligation, last T matches the one-base A-tail
             adapter_core_rc:       rc_acgt_str(&adapter_core), // fused to 3' genomic ends 
@@ -102,11 +108,12 @@ impl ChimeraSplitter {
         }
 
         // reject ONT junctions consistent with follow-on events
-        // let (clip1, jxn_ins_size, is_follow_on) = self.is_ont_follow_on(aln5, aln3);
-        if self.is_ont && self.is_ont_follow_on(jxn) {
+        // reject PacBio junctions with a generally low insertion quality
+        if (self.is_ont    && self.is_ont_follow_on(jxn)) || 
+           (self.is_pacbio && self.is_low_qual_ins(jxn)) {
             w.ctrs.increment(N_CHIMERIC);
-            w.ctrs.increment_keyed(super::N_JXNS_BY_REASON, super::JXN_FAIL_ONT_FOLLOW_ON);
-            return JxnFailureFlag::OntFollowOn;
+            w.ctrs.increment_keyed(super::N_JXNS_BY_REASON, super::JXN_FAIL_LOW_QUAL_INS);
+            return JxnFailureFlag::LowQualIns;
         }
 
         // reject junctions that contain adapters
@@ -144,7 +151,7 @@ impl ChimeraSplitter {
         true
     }
 
-    /// Determine if an ONT junction has a very low quality insertion span,
+    /// Determine if an ONT junction has a very low quality span within its insertion,
     /// identifying it as a two-insert follow-on event.
     fn is_ont_follow_on(&self, jxn: &Junction) -> bool {
 
@@ -169,6 +176,22 @@ impl ChimeraSplitter {
             }
         }
         false
+    }
+
+    /// Determine if a PacBio junction has a low quality longer insertion over its length,
+    /// as seen in certain types of CCS errors.
+    fn is_low_qual_ins(&self, jxn: &Junction) -> bool {
+
+        // stop if insertion of insufficient size to suggest PacBio quality-degraded spans
+        if jxn.offset <= self.insertion_window_size {
+            return false;
+        }
+
+        // examine inserted bases for base quality commensurate with criteria applied upstream to flanking alignments
+        let mut qual = jxn.jxn_qual.as_bytes().to_vec();
+        let mid = qual.len() / 2;
+        let (_, median, _) = qual.select_nth_unstable(mid);
+        *median < self.min_avg_base_qual // all with PHRED_OFFSET added
     }
 
     /// Determine if a junction insertion has adapters, identifying it as a two-insert event.

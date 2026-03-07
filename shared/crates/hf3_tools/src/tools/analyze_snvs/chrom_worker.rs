@@ -22,6 +22,7 @@ pub_key_constants!(
     // from environment variables
     INDEX_FILE_PREFIX_WRK
     MIN_N_PASSES
+    MIN_SNV_INDEL_QUAL
 );
 
 // process chromosomes received on the channel
@@ -33,7 +34,7 @@ pub fn process_chrom(
 
     // get config from environment variables
     let mut cfg = Config::new();
-    cfg.set_u8_env(&[MIN_N_PASSES]);
+    cfg.set_u8_env(&[MIN_N_PASSES, MIN_SNV_INDEL_QUAL]);
     cfg.set_string_env(&[INDEX_FILE_PREFIX_WRK]);
     let chrom_file_prefix = cfg.get_string(INDEX_FILE_PREFIX_WRK);
 
@@ -63,12 +64,13 @@ pub fn process_chrom(
                 chrom_file_prefix, &chrom_index_padded, read_type
             );
             let mut worker = SnvChromWorker {
-                chrom:             chrom_name.clone(),
+                chrom:              chrom_name.clone(),
                 chrom_index,
-                include_all_reads: read_type == "all_reads",
-                min_n_passes:      *cfg.get_u8(MIN_N_PASSES),
-                pileup:            ChromPileup::with_capacity(chrom_size as usize),
-                variants:          ChromVariants::new(),
+                include_all_reads:  read_type == "all_reads",
+                min_n_passes:       *cfg.get_u8(MIN_N_PASSES),
+                min_snv_indel_qual: *cfg.get_u8(MIN_SNV_INDEL_QUAL) as usize,
+                pileup:             ChromPileup::with_capacity(chrom_size as usize),
+                variants:           ChromVariants::new(),
                 pileup_file_path,
                 variants_file_path,
             };
@@ -140,6 +142,14 @@ fn process_aln(
     let cs = bam_tags::get_tag_str(aln, DIFFERENCE_STRING);
     let cs = snv_tags::CsTag(cs);
     let sample_bit = bam_tags::get_tag_u16(aln, SAMPLE_BIT);
-    cs.process_aln(worker, &mask, left_clip, ref_pos0, sample_bit, n_passes); 
+    cs.process_aln(
+        worker, 
+        &mask, 
+        aln.qual(),
+        left_clip, 
+        ref_pos0, 
+        sample_bit, 
+        n_passes
+    ); 
     Ok(())
 }

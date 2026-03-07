@@ -243,6 +243,7 @@ hf3_bgzColumns <- list(
         channels         = "character",
         n_jxns           = "character",
         is_duplicates    = "character",
+        is_duplexes      = "character",
         # ------------------------------
         aln5_is          = "character",
         qry_pos1_aln5_end3s = "character",
@@ -262,6 +263,7 @@ hf3_bgzColumns <- list(
         # ------------------------------
         has_multi_jxn_read = "integer",
         has_multi_instance_read = "integer",
+        has_duplex_read  = "integer",
         is_bidirectional = "integer",
         jxn_failure_flag = "integer",
         aln_failure_flag = "integer",
@@ -283,8 +285,8 @@ hf3_bgzColumns <- list(
         is_excluded_1    = "integer",
         is_excluded_2    = "integer",
         # ------------------------------
-        n_samples       = "integer",
-        sample_names    = "character",
+        sample_bits      = "integer",
+        n_samples        = "integer",
         # ------------------------------
         bkpt_coverage_1 = "integer",
         bkpt_coverage_2 = "integer"
@@ -345,15 +347,9 @@ hf3_bgzColumns$svJunctions2Bgz           <- hf3_bgzColumns$svJunctions1Bgz
 hf3_bgzColumns$errorCorrectedPileupBgz   <- hf3_bgzColumns$allReadsPileupBgz
 hf3_bgzColumns$errorCorrectedVariantsBgz <- hf3_bgzColumns$allReadsVariantsBgz
 
-# # header flags
-# hf3_hasHeader <- list(
-#     filteringSitesBgz = TRUE,
-# )
-
 # column display definitions
 hf3_bgzColumns_display <- list(
     svJunctions1Bgz = c(
-        sample_names    = "sample",
         chrom_index1_1  = "chrom1",
         ref_pos1_1      = "bkptPos1",
         strand_index0_1 = "strand1",
@@ -363,10 +359,12 @@ hf3_bgzColumns_display <- list(
         sv_size         = "svSize",
         jxn_type        = "jxnType",
         is_intergenomic = "interGen",
+        n_samples       = "nSmp",
         n_instances_dedup  = "nObs",
         # is_expected     = "expected",
         max_min_mapq       = "mapQ",
         min_max_divergence = "deTag",
+        has_duplex_read    = "hasDpx",
         # site_dist       = "siteDist",
         offset          = "alnOffset",
         target_1        = "target1",
@@ -378,6 +376,17 @@ hf3_bgzColumns_display <- list(
         NULL
     )
 )
+
+# sample bit to sample name conversion
+hf3_sampleIndex <- list()
+hf3_getSampleNames <- Vectorize(function(sourceId, sampleBits_, as_string = TRUE){
+    if(is.null(hf3_sampleIndex[[sourceId]])) {
+        hf3_sampleIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "samplesFile"))
+    }
+    sample_names <- hf3_sampleIndex[[sourceId]][bitwAnd(sample_bit, sampleBits_) > 0, sample_name]
+    if(as_string) sample_names <- paste0(sample_names, collapse = " ")
+    sample_names
+})
 
 # chrom to chromIndex conversion for bgz queries
 # simple cache, sessionCache not used
@@ -415,15 +424,17 @@ hf3_getExcludedRegions <- function(sourceId){
 hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE, debug = FALSE){
     if(!use_chrom) coord$chromosome <- hf3_getChromIndex(sourceId, coord$chromosome)
     bgzFile <- getSourceFilePath(sourceId, fileType)
+    # debug <- TRUE
     if (debug) {
         dmsg()
+        dmsg(fileType)
         dmsg(bgzFile)
         dmsg(file.exists(bgzFile))
         dstr(coord)
         # dstr(fread(bgzFile))
     }
     if(!isTruthy(bgzFile) || !file.exists(bgzFile)) return(data.table()) # no data of this type
-    getCachedTabix(bgzFile) %>% # , create = TRUE, force = TRUE
+    getCachedTabix(bgzFile, create = debug, force = debug) %>% 
     getTabixRangeData(
         coord, 
         col.names  =  names(hf3_bgzColumns[[fileType]]), 
@@ -483,6 +494,7 @@ hf3_getJunctions_all_source <- function(sourceId){
             jxns[, ":="(
                 jxnI = 1:.N,
                 sourceId = sourceId,
+                sample_names = hf3_getSampleNames(sourceId, sample_bits, as_string = TRUE),
                 is_validated = n_instances_dedup >= 3
             )][, ":="(
                 is_artifact = n_instances_dedup == 1 & (
@@ -515,26 +527,6 @@ hf3_getJunctions_all_source <- function(sourceId){
         }
     )
     persistentCache[[filePath]]$data
-}
-hf3_getJunctions_all_sources <- function(sourceIds){
-    if(length(sourceIds) == 1){
-        hf3_getJunctions_all_source(sourceIds)
-    } else {
-        fileType <- "svJunctions1Bgz"
-        sessionCache$get(
-            fileType, 
-            keyObject = list(sourceIds, "hf3_getJunctions_all_sources"), 
-            permanent = TRUE,
-            from = "ram",
-            create = hf3_jxnCreate,
-            createFn = function(...) {
-                startSpinner(session, message = "parsing junctions")
-                x <- do.call(rbind, lapply(sourceIds, hf3_getJunctions_all_source))
-                x[, jxnI := 1:.N]
-                x
-            }  
-        )$value
-    }
 }
 
 # get a single SV-containing read path by qName

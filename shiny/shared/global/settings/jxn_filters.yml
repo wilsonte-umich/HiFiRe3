@@ -10,11 +10,30 @@ Junction_Filters:
     One_End_In_Genome:
         type: textInput
         value: "any"
-    # Enforce_1N_to_2N_Size:
-    #     type: checkboxInput
-    #     value: FALSE
+    Min_N_Samples:
+        type:   numericInput
+        value:  0
+        min:    0
+        max:    100
+        step:   1
+    Max_N_Samples:
+        type:   numericInput
+        value:  0
+        min:    0
+        max:    100
+        step:   1
+    Duplex_Read_Status:
+        type: selectInput
+        choices:
+            - has_duplex_read
+            - has_no_duplexes
+            - show_all
+        value: show_all
     Allow_Excluded_Regions:
         type: checkboxInput
         value: FALSE
+    # Enforce_1N_to_2N_Size:
+    #     type: checkboxInput
+    #     value: FALSE
     # SPACER_1:
     #     type: spacer

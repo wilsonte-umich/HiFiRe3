@@ -76,7 +76,8 @@ struct Tool {
     splitter:      ChimeraSplitter,
     endpoints:     Endpoints,
     incoming_tags: Vec<&'static str>,
-    has_base_accuracy: bool,
+    has_base_accuracy:  bool,
+    is_error_corrected: bool,
 }
 
 // constants
@@ -87,10 +88,12 @@ pub_key_constants!(
     IS_END_TO_END_READ
     READ_PAIR_TYPE
     HAS_BASE_ACCURACY
+    IS_ERROR_CORRECTED
     // derived configuration values
     IS_END_TO_END_PLATFORM
     IS_PAIRED_READS
     IS_ONT
+    IS_PACBIO
     // counter keys
     N_SEQS
     N_READS
@@ -115,7 +118,7 @@ pub_key_constants!(
     JXN_FAIL_TRAVERSAL_DELTA
     JXN_FAIL_NONCANONICAL
     JXN_FAIL_FOLDBACK_INV
-    JXN_FAIL_ONT_FOLLOW_ON
+    JXN_FAIL_LOW_QUAL_INS
     JXN_FAIL_HAS_ADAPTER
     JXN_FAIL_SITE_MATCH // not used yet, check later
     JXN_FAIL_STEM_LENGTH
@@ -129,12 +132,14 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_string_env(&[SEQUENCING_PLATFORM, READ_PAIR_TYPE]);
-    cfg.set_bool_env(&[IS_END_TO_END_READ, HAS_BASE_ACCURACY]);
+    cfg.set_bool_env(&[IS_END_TO_END_READ, HAS_BASE_ACCURACY, IS_ERROR_CORRECTED]);
 
     // set derived config values
     cfg.set_bool( IS_END_TO_END_PLATFORM, *cfg.get_bool(IS_END_TO_END_READ));
     cfg.set_bool( IS_PAIRED_READS,        cfg.equals_string(READ_PAIR_TYPE, "paired"));
     cfg.set_bool( IS_ONT,                 cfg.equals_string(SEQUENCING_PLATFORM, "ONT"));
+    cfg.set_bool( IS_PACBIO,              cfg.equals_string(SEQUENCING_PLATFORM, "PacBioMolecule") || 
+                                                     cfg.equals_string(SEQUENCING_PLATFORM, "PacBioStrand") );
 
     // initialize counters
     let mut ctrs = Counters::new(TOOL, &[
@@ -168,7 +173,8 @@ pub fn stream() -> Result<(), Box<dyn Error>> {
         splitter:      ChimeraSplitter::new(&mut w),
         endpoints:     Endpoints::new(&mut w),
         incoming_tags: StageTags::Alignment.tags_after_stage(),
-        has_base_accuracy: *w.cfg.get_bool(HAS_BASE_ACCURACY),
+        has_base_accuracy:  *w.cfg.get_bool(HAS_BASE_ACCURACY),
+        is_error_corrected: *w.cfg.get_bool(IS_ERROR_CORRECTED),
     };
 
     // initialize the record streamer
@@ -405,17 +411,22 @@ fn process_read(
         }
     
         // now that junctions are described, drop SEQ and QUAL on all alignments except the 5' alignment
-        for aln3_i in 1..n_alns {
-            alns[aln3_i].set_to_null(&[SEQ, QUAL]); // but keep the difference string
+        // unless platform IS_ERROR_CORRECTED, if which case keep SEQ and QUAL to preserve the ability to call SNVs
+        if !tool.is_error_corrected {
+            for aln3_i in 1..n_alns {
+                alns[aln3_i].set_to_null(&[SEQ, QUAL]); // but keep the difference string
+            }
         }
 
-    // to save disk space
-    //  - drop SEQ and QUAL on reads with no junctions
-    //  - drop cs tag unless platform HAS_BASE_ACCURACY, so has short tags that may be used for SNV calling
+    // to save disk space on reads with no junctions when there is no potential for SNV analysis
+    //  - drop SEQ and QUAL unless platform IS_ERROR_CORRECTED
+    //  - drop cs tag unless platform HAS_BASE_ACCURACY
     } else {
-        alns[aln5_i].set_to_null(&[SEQ, QUAL]);
+        if !tool.is_error_corrected { // expects that HAS_BASE_ACCURACY is also set on error-corrected platforms
+            alns[aln5_i].set_to_null(&[SEQ, QUAL]); // SNV analysis uses QUAL for filtering
+        }
         if !tool.has_base_accuracy {
-            alns[aln5_i].tags.drop(&[DIFFERENCE_STRING])
+            alns[aln5_i].tags.drop(&[DIFFERENCE_STRING]);
         }
     }
 

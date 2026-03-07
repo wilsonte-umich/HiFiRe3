@@ -297,7 +297,7 @@ the sequencing platform and you should proceed directly to fragment analysis.
 
 For PacBio HiFiRe3 with sufficiently small inserts, initial basecalling is 
 performed during your Revio or Vega run, which must be configured with the 
-following settings identified in HiFiRe3 as the **PacBioStrand** platform:
+following settings, identified in HiFiRe3 as the **PacBioStrand** platform:
 - Library Type = Standard (e.g., WGS)
 - Insert Size = the middle of your selected size range, i.e., (N + 2N) / 2 = 1.5N
 - Movie Acquisition Time = at least 24 hours (or the maximum allowed)
@@ -313,8 +313,8 @@ Point `basecall PacBio` at your strand consensus unaligned BAM files using
 option `--pacbio-dir`. HiFiRe3 compares the strand consensuses to each other 
 and to the reference genome to assign a final base call and quality score. 
 
-When the two strands agree on a base, that base is reported with a high quality 
-score regardless of the reference alignment.
+When the two strands agree on a base, that base is reported with the highest 
+quality score of the two strands regardless of the reference alignment.
 
 When heteroduplex DNA is detected, it might result from:
 - a consensus basecalling error on one strand but not the other (usually an indel)
@@ -322,7 +322,7 @@ When heteroduplex DNA is detected, it might result from:
 - a damaged base on one of the two strands opposite an undamaged base
 
 If one heteroduplex strand matches the reference, that base is reported with 
-a high quality score. If neither base matches the reference, an N base and low
+its quality score. If neither base matches the reference, an N base and zero
 quality are reported. In either case, the values of the mismatched bases and 
 kinetic information are reported in 
 [SAM/BAM tags enumerated here](https://github.com/wilsontelab/HiFiRe3/blob/main/shared/crates/hf3_tools/src/formats/hf3_tags.rs).
@@ -436,7 +436,10 @@ hf3 analyze SNVs ...
 Error-corrected SNV calling requires sufficiently small PacBioStrand reads 
 processed using `basecall PacBio` as described above. The process uses
 the tags added during basecalling to determine which bases of a read are allowed
-to call SNVs and indels based on homoduplex strand validation.
+to call SNVs and indels based on homoduplex strand validation. SNV calling
+occurs in two passes. The first pass includes all reads, even non-duplex reads,
+for maximal sensitivity for clonal variant calling. The second pass includes 
+only duplex reads for maximal specificity for rare mosaic variant calling.
 
 SV error correction enforces filters against end-to-end chimeras that may variably 
 include rejecting junctions:

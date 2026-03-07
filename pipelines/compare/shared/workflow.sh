@@ -8,20 +8,6 @@ source $MODULES_DIR/library/set_library_vars.sh
 source $MODULES_DIR/analyze/set_analysis_vars.sh
 source $MODULES_DIR/compare/set_compare_vars.sh
 
-# # collect the working sample directories
-# if [ "$SAMPLE_DIRS" != "null" ]; then
-#     export SAMPLE_DIRS=$(echo $SAMPLE_DIRS | tr ',' ' ')
-# else 
-#     export SAMPLE_DIRS=$(ls -d $PROJECT_DIR/*/*.$VARIANT_FILE_SUFFIX | xargs -n1 dirname)
-# fi
-# export N_SAMPLES=$(echo $SAMPLE_DIRS | wc -w)
-# if [ $N_SAMPLES -lt 2 ]; then
-#     echo "ERROR: at least two sample directories are required for comparison"
-#     echo "check options --project-dir and --sample-dirs to be sure they point at `analyze $VARIANT_TYPE` output directories"
-#     exit 1
-# fi
-# export SAMPLE_FILES=$(echo "$SAMPLE_DIRS" | xargs -n 1 -I {} echo {}/*.$VARIANT_FILE_SUFFIX)
-
 # set temporary directories
 source $MODULES_DIR/utilities/shell/create_temp_dir_small.sh
 source $MODULES_DIR/utilities/shell/create_temp_dir_shm.sh
