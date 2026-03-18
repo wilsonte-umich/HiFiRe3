@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # # set derivative environment variables and file paths
+source $MODULES_DIR/rust/set_rust_vars.sh
 source $MODULES_DIR/genome/set_genome_vars.sh
 UBAM_DIR=${TASK_DIR}/ubam
 mkdir -p ${UBAM_DIR}

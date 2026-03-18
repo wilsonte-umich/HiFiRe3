@@ -1,6 +1,5 @@
 [package]
 name = "hf3_tools"
-version = "0.1.0"
 rust-version = "1.92"
 edition = "2024"
 authors = ["Thomas E. Wilson"]
@@ -16,7 +15,8 @@ rust-htslib = "0.51"
 minimap2 = "0.1.28"
 faimm = "0.5"
 
-mdi = { path = "../../../../../../frameworks/definitive/mdi-pipelines-framework/crates/mdi" }
+mdi = { git = "https://github.com/MiDataInt/mdi-pipelines-framework", branch = "main" }
 # mdi = { path = "../../../../../../frameworks/developer-forks/mdi-pipelines-framework/crates/mdi" }
 
-genomex = { path = "../../../../genomex-mdi-tools/shared/crates/genomex" }
+genomex = { git = "https://github.com/wilsontelab/genomex-mdi-tools", branch = "main" }
+# genomex = { path = "../../../../genomex-mdi-tools/shared/crates/genomex" }

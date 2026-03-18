@@ -43,7 +43,7 @@ do_batch_copy () {
         if [[ ! -f $BATCH_OUTPUT_FILE2 || "$FORCE_BASECALLING" == "true" ]]; then
             samtools view --with-header $COPY_OUT_DIR/out/*.bam | 
             # perl $MODULES_DIR/ONT/trim.pl | 
-            ${SUITE_BIN_DIR}/hf3_tools trim_ont | 
+            ${HF3_TOOLS_BIN} trim_ont | 
             samtools view --bam --output $BATCH_OUTPUT_FILE2 -
             # mv -f $COPY_OUT_DIR/out/*.bam $UBAM_DIR
         fi

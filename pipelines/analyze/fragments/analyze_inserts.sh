@@ -13,7 +13,7 @@ rm -f ${TMP_BAM_FILE}
 
 echo "analyzing insert-level properties (RE sites and sizes) to set filtering tags"
 samtools view --threads ${SAMTOOLS_CPU} -h ${NAME_BAM_FILE} | 
-${SUITE_BIN_DIR}/hf3_tools analyze_inserts | 
+${HF3_TOOLS_BIN} analyze_inserts | 
 samtools view --threads ${SAMTOOLS_CPU} -b -o ${TMP_BAM_FILE} -
 checkPipe
 

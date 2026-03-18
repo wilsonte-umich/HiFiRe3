@@ -15,5 +15,5 @@ export CREATE_MM2_INDEX_MESSAGE="continuing with basecalling"
 source ${MODULES_DIR}/align/create_mm2_index.sh # sets variable ${MINIMAP2_INDEX_WRK}
 
 # run basecalling
-${SUITE_BIN_DIR}/hf3_tools basecall_pacbio
+${HF3_TOOLS_BIN} basecall_pacbio
 checkPipe
