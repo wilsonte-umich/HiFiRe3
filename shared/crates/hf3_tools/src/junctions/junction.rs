@@ -358,7 +358,7 @@ pub struct FinalJunction {
     is_excluded_2:  u8,     // integer bool; true if breakpoint 2 overlaps an excluded region
     /* ------------------------------------------- */
     // additional read-level properties that derive deterministically from the global config
-    sample_bits:  u16, // bitwise OR of the sample bits of all samples that sequenced this SV
+    sample_bits:  u32, // bitwise OR of the sample bits of all samples that sequenced this SV
     n_samples:    u8,  // number of unique samples that sequenced this SV
     /* ------------------------------------------- */
     // additional junction properties added later, initialized to zero
@@ -408,7 +408,7 @@ impl FinalJunction {
 
         // construct and return the FinalJunction
         let rd = &instances.read_data;
-        let sample_bits = rd.iter().fold(0_u16, |acc, rd| acc | rd.sample_bit);
+        let sample_bits = rd.iter().fold(0_u32, |acc, rd| acc | rd.sample_bit);
         FinalJunction {
             /* ------------------------------------------- */
             chrom_index1_1,

@@ -1,8 +1,8 @@
 # HiFiRe3 Tool Suite
 
-> **NOTICE**: HiFiRe3 is under final active development. While many
-> portions of the codebase are stable, we may still make breaking
-> changes in file formats and usage without notice.
+> **NOTICE**: HiFiRe3 is under final active development. While most
+> portions of the codebase are mature and stable, we may still make 
+> breaking changes in file formats and usage without notice.
 
 **HiFiRe3** ("high fire") carries pipelines and apps for analyzing
 sequencing data from libraries that achieve **Hi**gh **Fi**delity 
@@ -17,15 +17,13 @@ PCR-free or used pooled PCR with unique dual indices to minimize
 template switching.
 
 The steps to using HiFiRe3 are to:
-- install the codebase
+- install the codebase in this repository
 - build the conda enviroment
-- download the `hf3_tools` utility, or compile it using Rust
-- download and digest a reference genome using `prepare genome`
 - if needed, basecall reads using `basecall PacBio` or `basecall ONT`
-- align and analyze basecalled reads using:
-    - `analyze fragments`
-    - `analyze SVs` and/or `analyze SNVs`
-- compare samples using `compare SVs` and/or `compare SNVs`
+- align and analyze basecalled reads using `analyze fragments`
+- characterize variants:
+    - in single samples using `analyze SVs` and/or `analyze SNVs`
+    - comparing across multiple samples using `compare SVs` and/or `compare SNVs`
 - visualize results in the R Shiny apps
 
 ## Single-suite installation (recommended)
@@ -38,7 +36,7 @@ as standalone software, we recommend a single-suite installation,
 which is accomplished by:
 - cloning this tool suite repository
 - running _install.sh_
-- optionally running _alias.pl_ to create a `hf3` alias to the command line interface (CLI)
+- optionally running _alias.pl_ to create an `hf3` alias to the command line interface (CLI)
 
 ### Install this tool suite
 
@@ -80,27 +78,6 @@ cd HiFiRe3
 ./hf3 --help
 ```
 
-## Recommended HiFiRe3 workspace organization
-
-Sections below discuss required input files and optional job files,
-and, of course, pipelines generate output files. The following is an 
-optional but time-tested strategy for organizing and separating
-these files in your HiFiRe3 workspace (*** marks optional folders
-you create manually as needed).
-
-```sh
-HiFiRe3                    # root folder you created above
-├── input                  # *** folder for your input data files
-│   └── project1           # *** subfolder for a related set of samples
-├── jobFiles               # *** folder for your job configuration files
-│   └── project1
-├── mdi                    # MDI codebase folder created by HiFiRe3 installation
-│   ├── config             # folder with configuration files you may need
-│   └── resources/genomes  # folder where genome files are placed by default
-└── output                 # *** folder for your output data files
-    └── project1
-```
-
 ## Build the required Conda environment
 
 HiFiRe3 pipelines use version-controlled 3rd-party software built into a 
@@ -118,42 +95,17 @@ the University of Michigan Great Lakes cluster.
 
 In a shared server environment, the conda build command may get killed by the host.
 If that happens, run the command on a cluster worker node with sufficient resources,
-e.g., 4 CPU with 4G RAM per CPU.
+e.g., 4 CPU with 4G RAM per CPU works well.
 
-> **PENDING**: once HiFiRe3 stabilizes, we will release Singularity containers
-> that can be used instead of building the conda environment yourself.
-
-## Download or compile the required `hf3_tools` utility
-
-Many compute actions in HiFiRe3 pipelines are executed by the `hf3_tools`
-utility, an executable binary compiled from 
-[source Rust code in this repository](https://github.com/wilsontelab/HiFiRe3/tree/main/shared/crates/hf3_tools).
-
-### Download the compiled x86_64 binary
-
-The easiest way to obtain the `hf3_tools` executable is to download it
-from the pre-compiled x86_64 binary **DETAILS PENDING**.
-
-> **PENDING**: once HiFiRe3 stabilizes, we will release Singularity containers
-> that will carry the pre-compiled binary.
-
-### Compile the `hf3_tools` utility
-
-Alternatively, developers can compile the Rust code using the 
-support features provided by the mdi-pipelines-framework.
-
-```bash
-cd .../HiFiRe3/shared/crates/hf3_tools # must compile from within the crate directory
-hf3 analyze rust --help
-hf3 analyze rust --create  1.92 # create a versioned Rust development environment
-hf3 analyze rust --compile 1.92 # compile hf3_tools using the created environment
-hf3 analyze rust --gcc "module load gcc/15.1.0" --compile 1.92 # if a command is required to make C compilers available 
+```sh
+# example for a Slurm-based cluster server
+salloc --account <your_slurm_account> --cpus-per-task 4 --mem-per-cpu 4G 
+hf3 analyze conda --create
+exit
 ```
 
-It is also possible to compile the Rust code from first principles
-if all prerequisites are met. The compiled executable binary must be 
-copied into file `.../HiFiRe3/mdi/bin/HiFiRe3/hf3_tools`
-(the compile commands above copy the binary automatically).
+> **PENDING**: we will soon release Singularity containers (Apptainers)
+> that can be used instead of building the conda environment yourself.
 
 ## Execute a pipeline from the command line
 
@@ -187,14 +139,11 @@ hf3 myJob.yml ls               # show the contents of a job's output diretory
 ### Workflow sequence
 
 HiFiRe3 has _pipelines_ each with associated _actions_ with descriptive names, 
-listed here in execution order:
-- `prepare genome` (where `prepare` is the _pipeline_ and `genome` is the _action_)
-- `basecall ONT` or `basecall PacBio`
+listed here in execution order of the most common actions:
+- `basecall ONT` or `basecall PacBio` (where `basecall` is a _pipeline_ and `ONT` is an _action_)
 - `analyze fragments`
-- `analyze SVs`
-- `analyze SNVs`
-- `compare SVs`
-- `compare SNVs`
+- `analyze SVs`  or `compare SVs`
+- `analyze SNVs` or `compare SNVs`
 
 Required/common options are described below; use 
 `hf3 <pipeline> <action> --help` or `hf3 <pipeline> template` 
@@ -204,47 +153,11 @@ for complete option information, or see the output of all action help commands
 ### Universally required options
 
 Options `--output-dir/-O` and `--data-name/-N` are required by all pipeline actions.
-Sample-level output files are placed into directory `<--output-dir>/<--data-name>`.
+Output files are placed into directory `<--output-dir>/<--data-name>`.
 
-## Download and digest a reference genome
-
-HiFiRe3 requires a reference genome assembly and supporting annotation files. 
-Obtain and create them using the `prepare genome` pipeline action.
-
-```sh
-hf3 prepare genome --help
-hf3 prepare genome --genome hs1 --output-dir $PWD/_prepare_hs1 --data-name hs1
-```
-
-Even better, use the 
-[templates/prepare_genome.yml](https://github.com/wilsontelab/HiFiRe3/blob/main/templates/prepare_genome.yml)
-job file template. 
-
-The action downloads all required genome assembly and annotation files and
-tabulates various _in silico_ restriction enzyme (RE) sites in the reference 
-sequence in a single pass. These steps only need to be performed once per genome. 
-A given library preparation will only use one of the tabulated enzymes (or none at all).
-
-### Optionally create a composite genome for mixed species analysis
-
-Quality assessment of SV artifact rates can be enhanced by mixing samples from 
-two species prior to libary preparation and sequencing. The `combine genomes` 
-pipeline action creates the required composite reference, which should then be 
-provided as option `--genome` in later analysis steps while also setting 
-option `--is-composite-genome`.
-
-```sh
-hf3 combine genomes --help
-hf3 combine genomes --genome1 hs1 --genome2 dm6 --output-dir $PWD/_prepare_hs1_dm6 --data-name hs1_dm6
-```
-
-Combining genomes requires that each individual genome was previously prepared as above.
-Even better, use the 
-[templates/combine_genomes.yml](https://github.com/wilsontelab/HiFiRe3/blob/main/templates/combine_genomes.yml)
-job file template.
-
-The resulting composite reference assembly carries the original chromosome names
-suffixed with the respective source genome, e.g., `chr1_hs1` and `chr4_dm6`.
+Option `--genome` is required by nearly all actions to indicate the reference 
+genome to use (default hg38). This is usually all that is needed, but see below 
+for special use cases. 
 
 ## Input read data
 
@@ -278,6 +191,25 @@ Most commonly, adapters are ligated onto DNA fragments generated by a blunt RE (
 Alternatively, tagmentation can be applied to initial genomic DNA fragments generated 
 with a 5' overhanging RE and blocked by ddNTP filling (tagFree).
 
+## Recommended HiFiRe3 workspace organization
+
+The following is an optional but time-tested strategy for organizing input,
+output, job, and resource files in your HiFiRe3 workspace 
+(create *** folders manually as needed).
+
+```sh
+HiFiRe3                    # root folder you created above
+├── input                  # *** folder for your input data files
+│   └── project1           # *** subfolder for a related set of samples
+├── jobFiles               # *** folder for your job configuration files
+│   └── project1
+├── mdi                    # MDI codebase folder created by HiFiRe3 installation
+│   ├── config             # folder with configuration files you may need
+│   └── resources/genomes  # folder where genome files are placed by default
+└── output                 # *** folder for your output data files
+    └── project1
+```
+
 ## Basecalling long reads
 
 The `basecall` pipeline finishes processing PacBioStrand or ONT
@@ -306,7 +238,8 @@ following settings, identified in HiFiRe3 as the **PacBioStrand** platform:
     - Consensus Mode = Strand **<<<< IMPORTANT!**
 
 These settings ensure you will have:
-- sufficient time to get around shorter HiFiRe3 inserts _more times than a normal HiFi library_ (at least 4 subreads on each strand)
+- sufficient time to get around shorter HiFiRe3 inserts _more times than a normal HiFi library_ 
+  (at least 4 subreads on each strand)
 - consensus output files generated for each strand independently
 
 Point `basecall PacBio` at your strand consensus unaligned BAM files using
@@ -392,10 +325,9 @@ to arise from (a subset of) all possible RE fragments in a genome.
 For adapter ligation (ligFree) libraries, sequencing reads end at RE sites.
 Each fragment is sequenced enough times to establish its consensus genotype without 
 external information. This is known as a _reduced representation_ libary. While 
-most fragments can be predicted from the _in silico_ RE site analysis performed 
-by `prepare genome`, others will be genotype-specific due to RFLPs. Therefore, 
-`analyze fragments` uses the ends of sequenced inserts to locate recurring 
-sample-specific RE sites. 
+most fragments can be predicted from the _in silico_ RE site analysis, others 
+will be genotype-specific due to RFLPs. Therefore, `analyze fragments` uses the 
+ends of sequenced inserts to locate recurring sample-specific RE sites. 
 
 Clonal SNV-containing fragments will be among the set of located fragments if 
 they are within the (selected) insert size range, where reference and 
@@ -545,7 +477,7 @@ job of `compare SVs` and `compare SNVs`. These actions are not needed if you
 are only analyzing one sample.
 
 The processes and file formats for comparing variants across samples are the 
-same as those applied to a single sample. Aligned reads from multiple samples 
+same as those applied to a single sample above. Aligned reads from multiple samples 
 are analyzed together with tracking of the samples that contributed to each called 
 variant. This approach requires that `analyze fragments` has been run on all input 
 samples, but `analyze SVs` and `analyze SNVs` are not required to run `compare SVs` 
@@ -564,7 +496,7 @@ where off-target 5' ends will be present in the library in a truncated form that
 should not be used for equivalent SV calling to on-target reads.
 
 Note that region targeting is compounded on top of RE-mediated reduced representation
-sampling to allow considerable focusing of reads onto specific genomic fragments.
+sampling to allow considerable focusing of reads onto specific genomic fragments. 
 
 ## Launch the interactive apps server
 
@@ -577,4 +509,99 @@ which allows you to control both local and remote MDI web servers.
 
 After following the instructions to run the Desktop on your local machine
 or server, load a HiFiRe3 data package file ending in `.mdi.package.zip`,
-into the app interface. 
+into the app interface.
+
+## Download and digest a reference genome (special cases only)
+
+HiFiRe3 requires a reference genome assembly and supporting annotation files,
+including tables of _in silico_ restriction enzyme (RE) sites.
+Usually, these files are automatically prepared on first use of a given `--genome`.
+However, two special use cases require you to prepare genome files manually.
+
+### Manually prepare a genome if your worker nodes don't have internet access
+
+If you run HiFiRe3 on a server without internet access, you must
+prepare the genome in advance from a computer/node that does:
+
+```sh
+hf3 prepare genome --help
+hf3 prepare genome --genome hs1 --output-dir $PWD/_prepare_hs1 --data-name hs1
+```
+
+Even better, use the 
+[templates/prepare_genome.yml](https://github.com/wilsontelab/HiFiRe3/blob/main/templates/prepare_genome.yml)
+job file template. 
+
+### Optionally create a composite genome for mixed species analysis
+
+Quality assessment of SV artifact rates can be enhanced by mixing samples from 
+two species prior to libary preparation and sequencing. The `combine genomes` 
+pipeline action creates the required composite reference, which should then be 
+provided as option `--genome` in later analysis steps while also setting 
+option `--is-composite-genome`.
+
+```sh
+hf3 combine genomes --help
+hf3 combine genomes --genome1 hs1 --genome2 dm6 --output-dir $PWD/_prepare_hs1_dm6 --data-name hs1_dm6
+```
+
+Combining genomes requires that each individual genome was previously prepared as above.
+Even better, use the 
+[templates/combine_genomes.yml](https://github.com/wilsontelab/HiFiRe3/blob/main/templates/combine_genomes.yml)
+job file template.
+
+The resulting composite reference assembly carries the original chromosome names
+suffixed with the respective source genome, e.g., `chr1_hs1` and `chr4_dm6`.
+
+## Obtain the required `hf3_tools` utility (special cases only)
+
+Many actions in HiFiRe3 pipelines are executed by the `hf3_tools`
+utility, an executable binary compiled from 
+[source Rust code in this repository](https://github.com/wilsontelab/HiFiRe3/tree/main/shared/crates/hf3_tools).
+
+For most use cases, `hf3_tools` will be automatically downloaded from
+GitHub on first use. However, two special cases require your action
+to obtain or create the binary.
+
+### Manually download the binary if your server doesn't have internet access
+
+If you run HiFiRe3 on a server without internet access, you will need
+to pre-download the binary for the matching version of the tool suite code.
+
+First, go to <https://github.com/wilsontelab/HiFiRe3/releases/latest>
+to get the latest version number of the code you installed above, 
+e.g., `v1.2.3`. Use that version number to complete the following:
+
+```sh
+VERSION=<version> # replace <version> with your desired version number, e.g., v1.2.3
+URL=https://github.com/wilsontelab/HiFiRe3/releases/download/$VERSION/hf3_tools-x86_64-unknown-linux-gnu.tar.gz
+DIR=bin/HiFiRe3/$VERSION
+cd /path/to/HiFiRe3/mdi # the mdi folder within your HiFiRe3 installation
+mkdir -p $DIR
+curl -sLf ${URL} | tar -xz -C $DIR
+```
+
+### Compile the binary using Rust (developers only)
+
+Developers most often need to compile the Rust code for themselves 
+using the support features provided by the mdi-pipelines-framework.
+
+```bash
+cd /path/to/HiFiRe3/mdi/suites/developer-forks/HiFiRe3/shared/crates/hf3_tools # must compile from within the crate directory
+hf3 analyze rust --help
+hf3 analyze rust --create  1.92 # create a versioned Rust development environment
+hf3 analyze rust --compile 1.92 # compile hf3_tools using the created environment
+hf3 analyze rust --gcc "module load gcc/15.1.0" --compile 1.92 # if a command is required to make C compilers available 
+```
+
+It is also possible to compile the Rust code from first principles
+if all prerequisites are met. The compiled executable binary must be 
+copied into file `/path/to/HiFiRe3/mdi/bin/HiFiRe3/dev/hf3_tools`
+(the compile commands above copy the binary automatically).
+
+Alternatively, if you are not developing Rust code, you can download
+or copy a valid `hf3_tools` binary into `/path/to/HiFiRe3/mdi/bin/HiFiRe3/dev`
+without compiling it yourself. 
+
+Use of the developer binary in the `dev` folder is activated using
+the `hf3 -d` option on all HiFiRe3 calls as used during development.

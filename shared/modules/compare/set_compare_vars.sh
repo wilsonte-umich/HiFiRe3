@@ -5,7 +5,6 @@
 # usage:
 #     source $MODULES_DIR/compare/set_compare_vars.sh
 
-export NAME_BAM_FILES=""
 if [ "$COMPARE_SAMPLE_DIRS" != "null" ]; then
     COMPARE_SAMPLE_DIRS=$(echo $COMPARE_SAMPLE_DIRS | tr ',' ' ')
 else
@@ -27,3 +26,13 @@ for COMPARE_SAMPLE_DIR in $COMPARE_SAMPLE_DIRS; do
         fi
     fi
 done
+
+N_NAME_BAM_FILES=$(echo $NAME_BAM_FILES | tr ',' ' ' | wc -w)
+if [ "$N_NAME_BAM_FILES" == "0" ]; then
+    echo "no name bam files found to compare"
+    exit 1
+fi
+if [ $N_NAME_BAM_FILES -gt 32 ]; then
+    echo "too many name bam files provided ($N_NAME_BAM_FILES); up to 32 samples can be compared"
+    exit 1
+fi

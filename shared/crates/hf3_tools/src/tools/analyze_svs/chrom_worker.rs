@@ -112,7 +112,7 @@ fn process_alns(
 ) -> Result<(), Box<dyn Error>>{
     let n_alns = alns.len();
     let max_aln_i = n_alns - 1;
-    let sample_bit = bam_tags::get_tag_u16(&alns[0], SAMPLE_BIT);
+    let sample_bit = bam_tags::get_tag_u32(&alns[0], SAMPLE_BIT);
 
     // get read-level metadata from first alignment
     let read_data = ReadLevelMetadata::from_bam_records(alns, sample_bit);

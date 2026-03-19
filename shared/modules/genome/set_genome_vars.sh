@@ -16,6 +16,7 @@ export PLOT_GENOME_PREFIX=${PLOT_PREFIX}.${GENOME}
 # set and check the genome directory
 if [[ "$GENOME_DIR" == "" || "$GENOME_DIR" == "null" || "$GENOME_DIR" == "NA" ]]; then
     export GENOME_DIR=${MDI_DIR}/resources/genomes/${GENOME}
+    mkdir -p ${GENOME_DIR}
 fi
 if [ ! -d $GENOME_DIR ]; then
     echo

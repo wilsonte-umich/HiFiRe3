@@ -11,7 +11,15 @@ download_and_unzip_file () {
             echo "  downloading $FILE_DESCRIPTION"
             echo "    from: $URL"
             echo "    to:   $GZ_FILE"
-            wget --no-verbose -O $GZ_FILE $URL
+            if ! wget --no-verbose -O $GZ_FILE $URL; then
+                if [ "$ALLOW_MISSING_FILE" == "" ]; then
+                    echo "      FATAL ERROR: file not found"
+                    exit 1
+                else 
+                    echo "      file not found, creating an empty file"
+                    gzip -c /dev/null > $GZ_FILE 
+                fi 
+            fi
         fi
         if [ "$LEAVE_ZIPPED" == "" ]; then
             echo "  unzipping $FILE_DESCRIPTION"
@@ -38,8 +46,11 @@ download_and_unzip_UCSC () {
     fi
     download_and_unzip_file
 }
+
+# genome FASTA file
 download_and_index_genome () {
     FORCE_URL=$1 # to support downloading an analysis set instead of just the genome
+    ALLOW_MISSING_FILE=""
     download_and_unzip_UCSC \
         bigZips/${GENOME}.fa.gz \
         ${GENOME_FASTA} \
@@ -71,29 +82,42 @@ download_and_index_genome () {
         echo "  already exists: genome fasta index"
     fi
 }
+
+# assembly gaps
 download_genome_gaps () {
+    ALLOW_MISSING_FILE="TRUE"
     download_and_unzip_UCSC \
         database/gap.txt.gz \
         ${GENOME_GAPS_FILE} \
         "gaps file"
 }
+
+# bad regions excluded from analyses
 download_ENCODE_exclusions () {
     TO_FILE=${GENOME_EXCLUSIONS_BED}
     GZ_FILE=${TO_FILE}.gz
     FILE_DESCRIPTION="excluded regions"
     LEAVE_ZIPPED=""
-    URL=https://github.com/Boyle-Lab/Blacklist/raw/master/lists/${GENOME}-blacklist.v2.bed.gz
+    URL=https://raw.githubusercontent.com/Boyle-Lab/Blacklist/master/lists/${GENOME}-blacklist.v2.bed.gz
+    ALLOW_MISSING_FILE="TRUE"
     download_and_unzip_file
 }
 copy_excluderegions () { # for newer genomes lacking Boyle lab exclusions
     cp ${MODULES_DIR}/genome/resources/${GENOME}.exclusions.bed ${GENOME_EXCLUSIONS_BED}
 }
+
+# annotation GTF and processed BED
 download_annotation_gtf () {
     TO_FILE=${ANNOTATION_GTF}
     GZ_FILE=${TO_FILE}
     FILE_DESCRIPTION="genome GTF"
     LEAVE_ZIPPED="TRUE"
     URL=${UCSC_GOLDEN_PATH}/${GENOME}/bigZips/genes/${GENOME}.ncbiRefSeq.gtf.gz
+    if ! wget --spider --no-verbose $URL 2>&1; then
+        # support two known forms of ncbiRefSeq GTFs
+        URL=${UCSC_GOLDEN_PATH}/${GENOME}/bigZips/genes/ncbiRefSeq.gtf.gz
+    fi
+    ALLOW_MISSING_FILE=""
     download_and_unzip_file
 
     if [ ! -f $GENES_BED ]; then
@@ -124,37 +148,35 @@ download_annotation_gtf () {
 }
 
 # execute download actions customized for each specific supported genome
-echo
 echo "downloading resource files for reference genome ${GENOME}"
+APPEND_EBV=""
+
+# custom handling of certain genomes
 if [ "$GENOME" == "hs1" ]; then
     APPEND_EBV="TRUE"
     download_and_index_genome ""
     echo "  touching genome gaps (hs1/CHM13 has no gaps!)"
-    touch ${GENOME_GAPS_FILE} # CHM13 has no gaps! create the empty file anyway for consistency
+    touch ${GENOME_GAPS_FILE}
     copy_excluderegions hs1.exclusions.bed
     download_annotation_gtf
 
 elif [ "$GENOME" == "hg38" ]; then
-    APPEND_EBV=""
-    download_and_index_genome ${HG38_ANALYSIS_SET}
+    download_and_index_genome ${HG38_ANALYSIS_SET} # already carries EBV
     download_genome_gaps
     download_ENCODE_exclusions
     download_annotation_gtf
 
 elif [ "$GENOME" == "mm39" ]; then
-    APPEND_EBV=""
     download_and_index_genome ""
     download_genome_gaps
     copy_excluderegions mm39.exclusions.bed
     download_annotation_gtf
 
-elif [ "$GENOME" == "dm6" ]; then
-    APPEND_EBV=""
+# attempt all other genomes in standardized format(s)
+# gaps and exclusions may be empty if not found in resource sites
+else 
     download_and_index_genome ""
     download_genome_gaps
     download_ENCODE_exclusions
     download_annotation_gtf
 fi
-
-echo
-echo "done"

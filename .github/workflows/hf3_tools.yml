@@ -12,7 +12,7 @@ jobs:
 
     env:
       BINARY_NAME: hf3_tools # change this one line to compile shared/crates/<BINARY_NAME>
-                             # the parent repository is the one that holds this file in .github/workflows
+                             # the parent MDI repository must hold this file in .github/workflows
     steps:
       - uses: actions/checkout@v4
 

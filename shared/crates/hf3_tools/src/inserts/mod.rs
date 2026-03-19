@@ -32,7 +32,7 @@ pub enum ReadFailureFlag {
 pub struct UniqueInsertSpan {
     pub node1:   isize,  // (re)ordered nodes in the canonical orientation
     pub node2:   isize,
-    pub sample_bit: u16, // bit-encoded sample index
+    pub sample_bit: u32, // bit-encoded sample index
     pub channel: u32,    // ONT channel number from CHANNEL tag; 0 if not applicable
 }
 impl UniqueInsertSpan {
@@ -40,7 +40,7 @@ impl UniqueInsertSpan {
     /// (UniqueInsertSpan, was_reordered), 
     /// where `was_reordered` indicates if the nodes were reordered to achieve 
     /// the canonical orientation.
-    pub fn from_bam_record(aln: &BamRecord, sample_bit: u16) -> (UniqueInsertSpan, bool) {
+    pub fn from_bam_record(aln: &BamRecord, sample_bit: u32) -> (UniqueInsertSpan, bool) {
         let ordered_outer_nodes = SamRecord::sam_tag_to_paired_nodes(
             &tags::get_tag_str(aln, OUTER_NODES), 
             true
@@ -76,7 +76,7 @@ pub struct ChannelAlignment {
 /// only needs to be assessed once per read.
 #[derive(Clone)]
 pub struct ReadLevelMetadata {
-    pub sample_bit:   u16,    // bit-encoded sample index
+    pub sample_bit:   u32,    // bit-encoded sample index
     pub qname:        String, // BAM query name
     pub insert_size:  i32,    // INSERT_SIZE tag value
     pub node1:        isize,  // (re)ordered nodes in the canonical orientation
@@ -88,7 +88,7 @@ pub struct ReadLevelMetadata {
 }
 impl ReadLevelMetadata {
     /// Create ReadLevelMetadata from the first BamRecord of a set of BamRecords.
-    pub fn from_bam_records(alns: &[BamRecord], sample_bit: u16) -> Self {
+    pub fn from_bam_records(alns: &[BamRecord], sample_bit: u32) -> Self {
         let ordered_outer_nodes = SamRecord::sam_tag_to_paired_nodes(
             &tags::get_tag_str(&alns[0], OUTER_NODES), 
             true

@@ -141,7 +141,7 @@ fn process_aln(
     let ref_pos0 = aln.pos() as u32;
     let cs = bam_tags::get_tag_str(aln, DIFFERENCE_STRING);
     let cs = snv_tags::CsTag(cs);
-    let sample_bit = bam_tags::get_tag_u16(aln, SAMPLE_BIT);
+    let sample_bit = bam_tags::get_tag_u32(aln, SAMPLE_BIT);
     cs.process_aln(
         worker, 
         &mask, 

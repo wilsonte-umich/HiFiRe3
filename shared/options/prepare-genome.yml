@@ -6,7 +6,7 @@ options:
         type: string
         required: false
         default: hs1
-        description: "the reference genome to download (hs1|CHM13|hg38|GRCh38|mm39|GRCm39)"
+        description: "UCSC-compatible name of the reference genome to prepare (e.g., hg38)"
     genomes-dir:
         order: 2
         short: G
