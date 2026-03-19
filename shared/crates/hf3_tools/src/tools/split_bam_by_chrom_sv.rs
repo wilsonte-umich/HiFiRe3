@@ -121,8 +121,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let samples_file = w.cfg.get_string(SV_SAMPLES_FILE);
     let header = vec!["sample_bit", "sample_name"];
     let mut samples_file = OutputFile::open_file(&samples_file, b'\t', Some(&header)); 
-    let mut sample_bit: u16 = 1;
-    let mut samples: FxHashMap<u16, String> = FxHashMap::default(); // sample_bit -> sample_name
+    let mut sample_bit: u32 = 1;
+    let mut samples: FxHashMap<u32, String> = FxHashMap::default(); // sample_bit -> sample_name
     for name_bam_path in name_bam_paths {
         let bam_file_name = name_bam_path.split('/').last().unwrap();
         let sample_name = bam_file_name.split('.').nth(0).unwrap();
@@ -185,7 +185,7 @@ fn print_alns(
     read_counts:  &mut FxHashMap<u32, usize>,
     ctrs:         &mut Counters,
     channel_alns: &mut Vec<(ChannelAlignment, u32)>,
-    sample_bit:   u16,
+    sample_bit:   u32,
     sample_name:  &str,
 ) -> Result<(), Box<dyn Error>> {
 
@@ -207,7 +207,7 @@ fn print_alns(
         for aln in alns.iter_mut() {
 
             // add the sample bit tag for multi-sample comparison
-            aln.push_aux(SB_TAG, Aux::U16(sample_bit)).unwrap();
+            aln.push_aux(SB_TAG, Aux::U32(sample_bit)).unwrap();
 
             // commit on-target reads to temporary BAM files
             writer.write(aln)?; 
@@ -238,7 +238,7 @@ fn tally_read_bases(
     channel_alns: &mut Vec<(ChannelAlignment, u32)>,
     chroms:       &Chroms,
     w:            &mut Workflow,
-    samples:      FxHashMap<u16, String>,
+    samples:      FxHashMap<u32, String>,
 ){
     let deduplicate_reads   = *w.cfg.get_bool(DEDUPLICATE_READS);
     let is_composite_genome = *w.cfg.get_bool(IS_COMPOSITE_GENOME);

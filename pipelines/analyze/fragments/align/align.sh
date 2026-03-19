@@ -119,7 +119,7 @@ minimap2 \
     ${MINIMAP2_INDEX_WRK} - 2>${MINIMAP_LOG_FILE} |
 
 # process reads to determine if variants are present according to the reference genome
-${SUITE_BIN_DIR}/hf3_tools analyze_alignments |
+${HF3_TOOLS_BIN} analyze_alignments |
 samtools view -b -@ ${SAMTOOLS_CPU} -o ${NAME_BAM_FILE} -
 checkPipe
 

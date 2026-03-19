@@ -19,12 +19,12 @@ TABIX="tabix --threads $N_CPU"
 # split name-sorted BAM by the chromosome of the first alignment
 # only on-target reads are retained for SV calling
 # this represents a first sort action and supports downstream parallelization by chrom
-${SUITE_BIN_DIR}/hf3_tools split_bam_by_chrom_sv
+${HF3_TOOLS_BIN} split_bam_by_chrom_sv
 checkPipe
 
 # index and parse unique fragment alignments and junctions
 # fuzzy-match junctions to yield final SV calls
-${SUITE_BIN_DIR}/hf3_tools analyze_svs
+${HF3_TOOLS_BIN}  analyze_svs
 checkPipe
 rm -f $INDEX_FILE_PREFIX_WRK.first_alns.chr*.gz
 

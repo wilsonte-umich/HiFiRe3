@@ -1,0 +1,34 @@
+name: compile Rust
+on:
+  push:
+    tags: ['v*'] # MDI repos expect v.#.#.# as semantic versions
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    env:
+      BINARY_NAME: hf3_tools # change this one line to compile shared/crates/<BINARY_NAME>
+                             # the parent MDI repository must hold this file in .github/workflows
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install C support # comment this block out if C language support is not needed
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+
+      - name: install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: build and release binary
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin:           ${{ env.BINARY_NAME }}
+          manifest-path: shared/crates/${{ env.BINARY_NAME }}/Cargo.toml
+          target:        x86_64-unknown-linux-gnu
+          rustflags:     "-C target-cpu=x86-64-v3" # AVX2/SIMD support with wide HPC compatibility
+          token:         ${{ secrets.GITHUB_TOKEN }}

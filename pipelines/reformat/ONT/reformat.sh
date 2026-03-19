@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # set read file variables and paths
+source $MODULES_DIR/rust/set_rust_vars.sh
 source $MODULES_DIR/align/set_read_file_vars.sh
 
 # create backup directory for original files
@@ -22,7 +23,7 @@ for UBAM_FILE in $READ_1_FILES; do
     # run the reformatting
     echo "      reformatting and compressing"
     samtools view -@ ${N_CPU} --with-header ${BU_FILE} |
-    ${SUITE_BIN_DIR}/hf3_tools reformat_ont |
+    ${HF3_TOOLS_BIN} reformat_ont |
     samtools view -@ ${N_CPU} -b -o ${UBAM_FILE} -
     checkPipe
 

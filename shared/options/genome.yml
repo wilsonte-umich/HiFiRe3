@@ -6,7 +6,7 @@ options:
         type: string
         required: true
         default: null
-        description: "name of the reference genome to use (e.g., hg38)"
+        description: "UCSC-compatible name of the reference genome to use (e.g., hg38)"
     genome-dir:
         order: 2
         short: G

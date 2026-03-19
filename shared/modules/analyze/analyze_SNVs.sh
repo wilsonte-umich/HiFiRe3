@@ -17,11 +17,11 @@ TABIX="tabix --threads $N_CPU"
 # split name-sorted BAM alignments by chromosome
 # only on-target reads are retained for SNV calling
 # this represents a first sort action and supports downstream parallelization by chrom
-${SUITE_BIN_DIR}/hf3_tools split_bam_by_chrom_snv
+${HF3_TOOLS_BIN} split_bam_by_chrom_snv
 checkPipe
 
 # call SNVs and indels per chromosome
-${SUITE_BIN_DIR}/hf3_tools analyze_snvs
+${HF3_TOOLS_BIN} analyze_snvs
 checkPipe
 
 # concatenate and index the pileups

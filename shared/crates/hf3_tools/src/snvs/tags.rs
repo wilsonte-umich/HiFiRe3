@@ -167,7 +167,7 @@ impl CsTag {
         qual:         &[u8],
         mut qry_pos0: u32, 
         mut ref_pos0: u32,
-        sample_bit:   u16,
+        sample_bit:   u32,
         n_passes:     u8,
     ) {
         let mut chars = self.0.chars();
@@ -207,7 +207,7 @@ impl CsTag {
         qual:         &[u8],
         qry_pos0:     &mut u32, 
         ref_pos0:     &mut u32,
-        sample_bit:   u16,
+        sample_bit:   u32,
         n_passes:     u8,
         op:           char, 
         val:          &str, 

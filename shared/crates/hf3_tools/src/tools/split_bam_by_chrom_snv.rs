@@ -113,7 +113,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let samples_file = w.cfg.get_string(SNV_SAMPLES_FILE);
     let header = vec!["sample_bit", "sample_name"];
     let mut samples_file = OutputFile::open_file(&samples_file, b'\t', Some(&header)); 
-    let mut sample_bit: u16 = 1;
+    let mut sample_bit: u32 = 1;
     for name_bam_path in name_bam_paths {
         let bam_file_name = name_bam_path.split('/').last().unwrap();
         let sample_name = bam_file_name.split('.').nth(0).unwrap();
@@ -161,7 +161,7 @@ fn print_aln(
     min_avg_base_qual: u8,
     writers:      &mut FxHashMap<u32, Writer>,
     ctrs:         &mut Counters,
-    sample_bit:   u16,
+    sample_bit:   u32,
     sample_name:  &str,
 ) -> Result<(), Box<dyn Error>> {
     ctrs.increment(N_ALNS);
@@ -183,7 +183,7 @@ fn print_aln(
             ctrs.increment_keyed(N_ALNS_BY_SAMPLE, sample_name);
 
             // add the sample bit tag for multi-sample comparison
-            aln.push_aux(SB_TAG, Aux::U16(sample_bit)).unwrap();
+            aln.push_aux(SB_TAG, Aux::U32(sample_bit)).unwrap();
 
             // commit on-target reads to temporary BAM files
             writer.write(aln)?; 

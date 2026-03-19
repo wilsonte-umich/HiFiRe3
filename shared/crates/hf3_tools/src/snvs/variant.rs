@@ -37,7 +37,7 @@ struct VariantRecord<'a> {
     variant:      &'a ChromVariant, // specific variant observed at this position
     count:        usize, // number of times this variant was observed at this position
     coverage:     usize, // number of reads covering ref_pos0, including those without this variant
-    sample_bits:  u16,   // sample bits for this variant
+    sample_bits:  u32,   // sample bits for this variant
     n_samples:    u8,    // number of samples with this variant, derived from sample_bits
     max_n_passes: u8,    // maximum (best) number of PacBio passes among reads with this variant
     any_allowed:  u8,    // whether any read  with this variant passes duplex strand validation
@@ -78,7 +78,7 @@ impl ChromVariant {
 /// and the samples that contributed to the count.
 struct ChromVariantObs {
     count:        usize,
-    sample_bits:  u16,
+    sample_bits:  u32,
     max_n_passes: u8,
     any_allowed:  bool,
     all_allowed:  bool,
@@ -112,7 +112,7 @@ impl ChromVariants {
         n_ref_bases: u32, 
         alt_bases:   &str, 
         alt_qual:    &[u8],
-        sample_bit:  u16,
+        sample_bit:  u32,
         n_passes:    u8,
         mut allowed: bool,
         min_snv_indel_qual: usize,
