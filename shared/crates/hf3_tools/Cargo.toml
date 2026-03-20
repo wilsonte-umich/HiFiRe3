@@ -1,22 +1,22 @@
 [package]
 name = "hf3_tools"
-rust-version = "1.92"
+rust-version    = "1.92"
 edition = "2024"
 authors = ["Thomas E. Wilson"]
 
 [dependencies]
-rustc-hash = "2.1"
-crossbeam = "0.8.4"
-rayon = "1.11"
-csv = "1.4"
-serde = { version = "1.0", features = ["derive"] }
-flate2 = "1.1"
-rust-htslib = { version = "0.51", features = ["static"] }
-minimap2 = "0.1.28"
-faimm = "0.5"
+rustc-hash  = "2.1"
+crossbeam   = "0.8"
+rayon       = "1.11"
+csv         = "1.4"
+flate2      = "1.1"
+serde       = { version = "1.0", features = ["derive"] }
+rust-htslib = { version = "1.0", features = ["static"] }
+minimap2    = "0.1"
+faimm       = "0.5"
 
-mdi = { git = "https://github.com/MiDataInt/mdi-pipelines-framework", branch = "main" }
-# mdi = { path = "../../../../../../frameworks/developer-forks/mdi-pipelines-framework/crates/mdi" }
+mdi     = { git = "https://github.com/MiDataInt/mdi-pipelines-framework", branch = "main" }
+genomex = { git = "https://github.com/wilsontelab/genomex-mdi-tools",     branch = "main" }
 
-genomex = { git = "https://github.com/wilsontelab/genomex-mdi-tools", branch = "main" }
+# mdi     = { path = "../../../../../../frameworks/developer-forks/mdi-pipelines-framework/crates/mdi" }
 # genomex = { path = "../../../../genomex-mdi-tools/shared/crates/genomex" }
