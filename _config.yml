@@ -13,7 +13,7 @@ suite_dependencies:
 
 # OPTIONAL: declare support for suite-level singularity containers
 container:
-  supported:  false       # set to true if you maintain a container registry for this tool suite [false]
+  supported:  true        # set to true if you maintain a container registry for this tool suite [false]
   registry:   ghcr.io     # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]
   owner:      wilsontelab # REQUIRED: the name of the owner, e.g., user or organization, at 'registry'
   installer:  apt-get     # the installer program used by the container OS, typically apt-get or yum [apt-get]
