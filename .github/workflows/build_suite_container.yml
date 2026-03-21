@@ -34,5 +34,6 @@ jobs:
       - name: install MDI and build suite container
         run: |
           export SKIP_MDI_APPS_INSTALL=1
+          export FORCE_CONTAINER_BUILD=1
           ./install.sh --yes
           ./$RUN_COMMAND build --suite ${{ github.repository }}
