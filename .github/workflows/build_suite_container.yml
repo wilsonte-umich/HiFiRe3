@@ -36,4 +36,9 @@ jobs:
           export SKIP_MDI_APPS_INSTALL=1
           export FORCE_CONTAINER_BUILD=1
           ./install.sh --yes
+          which singularity
+          singularity --version
+          which apptainer
+          apptainer --version
+          echo $PATH
           ./$RUN_COMMAND build --suite ${{ github.repository }}
