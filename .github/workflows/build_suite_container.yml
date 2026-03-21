@@ -29,5 +29,8 @@ jobs:
       # perform single-suite MDI install
       - name: install MDI and build suite container
         run: |
-          ./install.sh
+          export SKIP_MDI_APPS_INSTALL=1
+          pwd
+          ./install.sh --yes
+          pwd
           ./run build --suite ${{ github.repository }}

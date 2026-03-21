@@ -130,6 +130,15 @@ cd $SUITE_DIR
 rm -fr docs .git pipelines shared shiny templates
 rm -f  aws-mdi.md .gitignore index.html .lintr overview.md
 
+#----------------------------------------------------------------------
+# when instructed, e.g., during container buiding in CI, never install apps
+#----------------------------------------------------------------------
+if [ "SKIP_MDI_APPS_INSTALL" != "" ]; then
+    echo "Skipping Stage 2 Apps installation."
+    echo "Installation complete."
+    exit
+fi
+
 # -----------------------------------------------------------------------
 # function to check for valid singularity
 # -----------------------------------------------------------------------
