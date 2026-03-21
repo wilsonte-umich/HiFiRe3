@@ -1,0 +1,33 @@
+name: build suite container
+on:
+  ## trigger on the first tags of a major or minor release, but not patch releases (e.g. v1.2.0 but not v1.2.1)
+  # push:
+  #   tags: [ 'v[0-9]+.[0-9]+.0' ] # MDI repos expect v.#.#.# as semantic versions
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      # checkout this tool suite
+      - uses: actions/checkout@v6
+
+      # install Singularity/Apptainer
+      - uses: eWaterCycle/setup-apptainer@v2
+
+      # log into GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # perform single-suite MDI install
+      - name: install MDI and build suite container
+        run: |
+          ./install.sh
+          ./run build --suite ${{ github.repository }}

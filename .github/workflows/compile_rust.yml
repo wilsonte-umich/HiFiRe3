@@ -4,7 +4,7 @@ on:
     tags: [ 'v[0-9]+.*' ] # MDI repos expect v.#.#.# as semantic versions
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-linux:

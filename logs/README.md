@@ -1,7 +1,7 @@
 ## Job log reports
 
 The `logs` folder carries text files containing the output
-of the follow commands applied to example job files.
+of the following commands applied to example HiFiRe3 job files.
 
 ```sh
 hf3 myJob.yml status # show the state of all submitted jobs
