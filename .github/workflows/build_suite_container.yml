@@ -20,7 +20,7 @@ jobs:
       - uses: eWaterCycle/setup-apptainer@v2
 
       # log into GitHub Container Registry
-        uses: docker/login-action@v2
+      - uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
