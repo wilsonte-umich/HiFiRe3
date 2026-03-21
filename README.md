@@ -18,7 +18,7 @@ template switching.
 
 The steps to using HiFiRe3 are to:
 - install the codebase in this repository
-- build the conda enviroment
+- build the conda environment
 - if needed, basecall reads using `basecall PacBio` or `basecall ONT`
 - align and analyze basecalled reads using `analyze fragments`
 - characterize variants:
