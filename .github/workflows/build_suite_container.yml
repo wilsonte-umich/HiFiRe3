@@ -40,13 +40,14 @@ jobs:
           ./$RUN_COMMAND build --suite ${{ github.repository }}
 
       # push container to registry
+      # MAJOR_MINOR_VERSION=${VERSION_TAG%.*}
       - name: push suite container to registry
         run: |
           SUITE_NAME=${{ github.repository }}
           SUITE_NAME=${SUITE_NAME#*/}
           LC_SUITE_NAME=${SUITE_NAME,,}
           VERSION_TAG=${{ github.ref_name }}
-          MAJOR_MINOR_VERSION=${VERSION_TAG%.*}
+          MAJOR_MINOR_VERSION="v0.0"
           SIF_FILE=./mdi/containers/${LC_SUITE_NAME}/${LC_SUITE_NAME}-${MAJOR_MINOR_VERSION}.sif
           URI=oras://ghcr.io/${{ github.repository_owner }}/${LC_SUITE_NAME}:${MAJOR_MINOR_VERSION}
           echo $SIF_FILE
