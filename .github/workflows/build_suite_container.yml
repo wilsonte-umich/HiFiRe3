@@ -12,6 +12,10 @@ permissions:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+
+    env:
+      RUN_COMMAND: hf3 # or the suite short name if ./run was renamed
+
     steps:
       # checkout this tool suite
       - uses: actions/checkout@v6
@@ -30,7 +34,5 @@ jobs:
       - name: install MDI and build suite container
         run: |
           export SKIP_MDI_APPS_INSTALL=1
-          pwd
           ./install.sh --yes
-          pwd
-          ./run build --suite ${{ github.repository }}
+          ./$RUN_COMMAND build --suite ${{ github.repository }}
