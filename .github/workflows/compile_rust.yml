@@ -1,5 +1,9 @@
+# MDI GitHub Continuous Integration Action to compile 
+# a Rust binary and attach it as a versioned release asset
+
 name: compile Rust
 on:
+  # trigger the action on any level of tag release (e.g., v1.2.3)
   push:
     tags: [ 'v[0-9]+.*' ] # MDI repos expect v.#.#.# as semantic versions
 
@@ -11,25 +15,26 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      BINARY_NAME: hf3_tools # change this one line to compile shared/crates/<BINARY_NAME>
+      BINARY_NAME: hf3_tools # change this line to compile shared/crates/<BINARY_NAME>
                              # the parent MDI repository must hold this file in .github/workflows
     steps:
+      # checkout this tool suite
       - uses: actions/checkout@v6
 
-      - name: install C support # required by rust-htslib
+      - name: Install C support # required by rust-htslib
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libssl-dev libbz2-dev liblzma-dev zlib1g-dev
 
-      - name: install Rust
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       
-      - name: install zig # for cross-compilation on an older GLIBC for distribution
+      - name: Install zig # for cross-compilation on an older GLIBC for distribution
         run: |
           sudo snap install zig --classic --edge
           cargo install cargo-zigbuild
 
-      - name: build and release binary
+      - name: Build and release binary
         uses: taiki-e/upload-rust-binary-action@v1
         env:
           RUSTFLAGS: "-C target-cpu=x86-64-v3" # AVX2/SIMD support with wide HPC compatibility

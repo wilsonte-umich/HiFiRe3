@@ -1,9 +1,12 @@
+# MDI GitHub Continuous Integration Action to build 
+# a suite-level Singularity/Apptainer container image
+# an push it to the GitHub Packages container registry
+
 name: build suite container
 on:
-  ## trigger on the first tags of a major or minor release, but not patch releases (e.g. v1.2.0 but not v1.2.1)
-  # push:
-  #   tags: [ 'v[0-9]+.[0-9]+.0' ] # MDI repos expect v.#.#.# as semantic versions
-  workflow_dispatch:
+  # trigger on the first tags of a major or minor release, but not patch releases (e.g., v1.2.0 but not v1.2.1)
+  push:
+    tags: [ 'v[0-9]+.[0-9]+.0' ] # MDI repos expect v.#.#.# as semantic versions
 
 permissions:
   contents: read
@@ -20,18 +23,17 @@ jobs:
       # checkout this tool suite
       - uses: actions/checkout@v6
 
-      # install Singularity/Apptainer
-      - uses: eWaterCycle/setup-apptainer@v2
+      - name: Install Singularity/Apptainer
+        uses: eWaterCycle/setup-apptainer@v2
 
-      # log into GitHub Container Registry
-      - uses: docker/login-action@v2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # perform single-suite MDI install
-      - name: install MDI and build suite container
+      - name: Install MDI and build container image
         run: |
           export SKIP_MDI_APPS_INSTALL=1
           export FORCE_CONTAINER_BUILD=1
@@ -39,17 +41,15 @@ jobs:
           ./install.sh --yes
           ./$RUN_COMMAND build --suite ${{ github.repository }}
 
-      # push container to registry
-      # MAJOR_MINOR_VERSION=${VERSION_TAG%.*}
-      - name: push suite container to registry
+      - name: Push container image to registry
         run: |
           SUITE_NAME=${{ github.repository }}
           SUITE_NAME=${SUITE_NAME#*/}
           LC_SUITE_NAME=${SUITE_NAME,,}
           VERSION_TAG=${{ github.ref_name }}
-          MAJOR_MINOR_VERSION="v0.0"
+          MAJOR_MINOR_VERSION=${VERSION_TAG%.*}
           SIF_FILE=./mdi/containers/${LC_SUITE_NAME}/${LC_SUITE_NAME}-${MAJOR_MINOR_VERSION}.sif
           URI=oras://ghcr.io/${{ github.repository_owner }}/${LC_SUITE_NAME}:${MAJOR_MINOR_VERSION}
-          echo $SIF_FILE
-          echo $URI
+          echo "SIF_FILE: "$SIF_FILE
+          echo "ORAS URI: "$URI
           singularity push ${SIF_FILE} ${URI}
