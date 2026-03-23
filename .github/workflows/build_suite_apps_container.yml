@@ -18,6 +18,7 @@ jobs:
 
     env:
       RUN_COMMAND: hf3 # or the suite short name if ./run was renamed
+      R_VERSION:   latest # or a specific version of R, e.g., 4.5 or 4.5.3
 
     steps:
       # checkout this tool suite
