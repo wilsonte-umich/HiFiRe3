@@ -1,8 +1,8 @@
 # MDI GitHub Continuous Integration Action to build 
-# a suite-level Singularity/Apptainer pipelines container image
+# a suite-level Singularity/Apptainer apps container image
 # an push it to the GitHub Packages container registry
 
-name: build pipelines container
+name: build apps container
 on:
   # trigger on the first tags of a major or minor release, but not patch releases (e.g., v1.2.0 but not v1.2.1)
   push:
@@ -33,23 +33,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # initial SKIP_MDI_APPS_INSTALL applies to the runner environment, not the apps container
       - name: Install MDI and build container image
         run: |
           export SKIP_MDI_APPS_INSTALL=1
           export FORCE_CONTAINER_BUILD=1
           export IS_GITHUB_ACTION=1
           ./install.sh --yes
-          ./$RUN_COMMAND build --suite ${{ github.repository }} --container-type pipelines
+          ./$RUN_COMMAND build --suite ${{ github.repository }} --container-type apps
 
       - name: Push container image to registry
         run: |
           SUITE_NAME=${{ github.repository }}
           SUITE_NAME=${SUITE_NAME#*/}
           LC_SUITE_NAME=${SUITE_NAME,,}
+          CONTAINER_NAME=${LC_SUITE_NAME}-apps
           VERSION_TAG=${{ github.ref_name }}
           MAJOR_MINOR_VERSION=${VERSION_TAG%.*}
-          SIF_FILE=./mdi/containers/${LC_SUITE_NAME}/${LC_SUITE_NAME}-${MAJOR_MINOR_VERSION}.sif
-          URI=oras://ghcr.io/${{ github.repository_owner }}/${LC_SUITE_NAME}:${MAJOR_MINOR_VERSION}
+          SIF_FILE=./mdi/containers/${LC_SUITE_NAME}/${CONTAINER_NAME}-${MAJOR_MINOR_VERSION}.sif
+          URI=oras://ghcr.io/${{ github.repository_owner }}/${CONTAINER_NAME}:${MAJOR_MINOR_VERSION}
           echo "SIF_FILE: "$SIF_FILE
           echo "ORAS URI: "$URI
           singularity push ${SIF_FILE} ${URI}

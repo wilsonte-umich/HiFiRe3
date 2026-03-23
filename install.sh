@@ -14,7 +14,7 @@ if [[ "$1" = "--yes" || "$1" = "-y" ]]; then
 fi
 
 #----------------------------------------------------------------------
-# base directory of this tool suite, after user cloned it from GitHub
+# root directory of this tool suite, after user cloned it from GitHub
 #----------------------------------------------------------------------
 export SUITE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 export SUITE_NAME=`basename $SUITE_DIR`
@@ -77,15 +77,6 @@ else
     cd $MDI_DIR
 fi
 $MDI_DIR/install.sh 1
-
-#----------------------------------------------------------------------
-# when installing into a container, copy over any existing base library
-#----------------------------------------------------------------------
-if [ -e $SUITE_DIR/mdi-tmp-library ]; then
-    rm -rf $MDI_DIR/library/*
-    mv $SUITE_DIR/mdi-tmp-library/* $MDI_DIR/library
-    rm -rf $SUITE_DIR/mdi-tmp-library
-fi
 
 #----------------------------------------------------------------------
 # programmatically write the suite-centric MDI installation's 'config/suites.yml' file
@@ -173,8 +164,7 @@ foreach my $dir(glob("'$NESTED_SUITES_DIR'/*/shiny/apps/*")){
     print "TRUE\n";
     exit;
 }'`
-if [ "$SUITE_NAME" = "mdi-singularity-base" ]; then IS_BASE_INSTALL=true; fi
-if [[ "$IS_APPS" = "TRUE" || "$IS_BASE_INSTALL" != "" ]]; then 
+if [[ "$IS_APPS" = "TRUE" ]]; then 
     echo -e "\n----------------------------------------------------------------------"
     echo "'$SUITE_NAME' additionally offers interactive Stage 2 Apps"
     echo "----------------------------------------------------------------------"
@@ -183,7 +173,7 @@ if [[ "$IS_APPS" = "TRUE" || "$IS_BASE_INSTALL" != "" ]]; then
     set_singularity_version
     SUPPORTS_CONTAINERS=`grep -A10 -P '^container:' $SUITE_DIR/_config.yml | grep -P '^\s+supported:\s+true'`
     CONTAINER_HAS_APPS=`grep -A10 -P '^container:' $SUITE_DIR/_config.yml | grep -P '^\s+apps:\s+true'`
-    if [[ "$SINGULARITY_VERSION" != "" && "$SUPPORTS_CONTAINERS" != "" && "$CONTAINER_HAS_APPS" != "" && "$IS_BASE_INSTALL" = "" ]]; then
+    if [[ "$SINGULARITY_VERSION" != "" && "$SUPPORTS_CONTAINERS" != "" && "$CONTAINER_HAS_APPS" != "" ]]; then
         echo -e "\n'$SUITE_NAME' apps server runs in a suite-level Singularity container."
         echo -e "Further installation not required."
 
