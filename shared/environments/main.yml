@@ -16,4 +16,4 @@ dependencies:
     - r-r.utils=2.13
 
   # for orthogonal validation of chimeras
-    - blast=2.17
+    # - blast=2.17
