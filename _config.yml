@@ -18,9 +18,9 @@ container:
   owner:      wilsontelab # REQUIRED: the name of the owner, e.g., user or organization, at 'registry'
   installer:  apt-get     # the installer program used by the container OS, typically apt-get or yum [apt-get]
   stages:
-    pipelines: true    # set to true to install pipeline conda environments in the suite container [true]
-    apps:      false   # OBSOLETE: no longer used
-
+    pipelines: true  # set to true to install conda environments into a suite-level pipelines container [false]
+    apps:      true  # set to true to install conda environments into a suite-level apps container [false]
+                     # one of stages:pipelines or stages:apps must be true if container:supported is true
 #------------------------------------------------------------------------------
 # please do not edit any lines below this line
 #------------------------------------------------------------------------------
