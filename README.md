@@ -18,7 +18,7 @@ template switching.
 
 The steps to using HiFiRe3 are to:
 - install the codebase in this repository
-- build the conda environment
+- build the conda runtime environment, or use Singularity containers/Apptainer
 - if needed, basecall reads using `basecall PacBio` or `basecall ONT`
 - align and analyze basecalled reads using `analyze fragments`
 - characterize variants:
@@ -78,17 +78,34 @@ cd HiFiRe3
 ./hf3 --help
 ```
 
-## Build the required Conda environment
+## Build the required Conda runtime environment (if not using Singularity/Apptainer)
 
 HiFiRe3 pipelines use version-controlled 3rd-party software built into a 
 [conda](https://docs.conda.io/)
-environment. Build that environment in your HiFiRe3 installation as follows:
+environment. There are two ways to obtain or create that environment.
+
+### Use Singularity containers, i.e., Apptainers (recommended)
+
+HiFiRe3 supports Singularity containers that have the required
+conda environments pre-installed. No action is needed to support their use
+if either the `singularity` or `module load singularity` command is availalbe 
+on your server - the containers will download automatically and be used as needed.
+
+If you wish to use containers but need to run a different command
+to make `singularity` available, follow the instructions in
+`.../mdi/config/singularity.yml` to communicate that command to the MDI.
+
+### Build the Conda environments locally
+
+If you don't have Singularity or Apptainer available on your system,
+or prefer or need to build the Conda environments yourself, you can
+build them in your HiFiRe3 installation as follows:
 
 ```sh
 hf3 analyze conda --create
 ```
 
-You must have `conda` available in your environment. If you need to run
+You must have `conda` available on your system. If you need to run
 a command to make conda available, follow the instructions in
 `.../mdi/config/stage1-pipelines.yml`, which is pre-configured to work on
 the University of Michigan Great Lakes cluster.
@@ -104,8 +121,12 @@ hf3 analyze conda --create
 exit
 ```
 
-> **PENDING**: we will soon release Singularity containers (Apptainers)
-> that can be used instead of building the conda environment yourself.
+### Communicate your environment choice using option `--runtime`
+
+Option `--runtime` defaults to value 'auto', which will prefer to use
+Singularity containers and fall back to local conda environments if that fails. 
+To force the use of a specific runtime environment, set the option to 
+either `--runtime singularity` or `--runtime conda`.
 
 ## Execute a pipeline from the command line
 

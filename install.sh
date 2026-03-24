@@ -138,7 +138,7 @@ function set_singularity_version_ {
 }
 function set_singularity_version {
     set_singularity_version_ # use system singularity if present
-    if [ "$SINGULARITY_VERSION" = "" ]; then # otherwise attempt to load it
+    if [ "$SINGULARITY_VERSION" = "" ]; then # otherwise attempt to load it from config
         CONFIG_FILE=$MDI_DIR/config/singularity.yml
         if [ -f $CONFIG_FILE ]; then
             LOAD_COMMAND=`grep -P '^load-command:\s+' $CONFIG_FILE | sed -e 's/\"//g' -e 's/load-command:\s*//' | grep -v null | grep -v '~'`
@@ -148,6 +148,10 @@ function set_singularity_version {
             fi
         fi
     fi 
+    if [ "$SINGULARITY_VERSION" = "" ]; then # otherwise attempt to fall back to "module load singularity"
+        module load singularity > /dev/null 2>&1
+        set_singularity_version_
+    fi
 }
 
 #----------------------------------------------------------------------
@@ -180,7 +184,7 @@ if [[ "$IS_APPS" = "TRUE" ]]; then
     # if not, proceed with direct apps server installation if confirmed
     else
         echo -e "\nNOTE: The apps server installation requires R and takes many minutes to complete."
-        echo -e "Please decline if you will only use Stage 1 data analysis pipelines from this installation.\n"
+        echo -e "Please decline if you will only use Stage 1 data analysis pipelines from this installation.\n";
         if [ "$MDI_SKIP_APPS" != "" ]; then
             PERMISSION=n
         elif [ "$MDI_FORCE_APPS" != "" ]; then
