@@ -18,7 +18,7 @@ template switching.
 
 The steps to using HiFiRe3 are to:
 - install the codebase in this repository
-- build the conda runtime environment, or use Singularity containers/Apptainer
+- obtain or build the required runtime environment
 - if needed, basecall reads using `basecall PacBio` or `basecall ONT`
 - align and analyze basecalled reads using `analyze fragments`
 - characterize variants:
@@ -78,39 +78,37 @@ cd HiFiRe3
 ./hf3 --help
 ```
 
-## Build the required Conda runtime environment (if not using Singularity/Apptainer)
+## Obtain or build the required runtime environment
 
 HiFiRe3 pipelines use version-controlled 3rd-party software built into a 
 [conda](https://docs.conda.io/)
-environment. There are two ways to obtain or create that environment.
+runtime environment. There are two ways to obtain or create that environment.
 
 ### Use Singularity containers, i.e., Apptainers (recommended)
 
 HiFiRe3 supports Singularity containers that have the required
 conda environments pre-installed. No action is needed to support their use
-if either the `singularity` or `module load singularity` command is availalbe 
+if either the `singularity` or `module load singularity` command is available 
 on your server - the containers will download automatically and be used as needed.
 
 If you wish to use containers but need to run a different command
 to make `singularity` available, follow the instructions in
-`.../mdi/config/singularity.yml` to communicate that command to the MDI.
+`.../mdi/config/singularity.yml` to communicate that command to the CLI.
 
 ### Build the Conda environments locally
 
 If you don't have Singularity or Apptainer available on your system,
-or prefer or need to build the Conda environments yourself, you can
+or prefer or need to build the environments yourself, you can
 build them in your HiFiRe3 installation as follows:
 
 ```sh
 hf3 analyze conda --create
 ```
 
-You must have `conda` available on your system. If you need to run
-a command to make conda available, follow the instructions in
-`.../mdi/config/stage1-pipelines.yml`, which is pre-configured to work on
-the University of Michigan Great Lakes cluster.
+Note that internally conda environments are built using
+[micromamba](https://mamba.readthedocs.io/).
 
-In a shared server environment, the conda build command may get killed by the host.
+In a shared server environment, the environment build command may get killed by the host.
 If that happens, run the command on a cluster worker node with sufficient resources,
 e.g., 4 CPU with 4G RAM per CPU works well.
 
@@ -124,9 +122,9 @@ exit
 ### Communicate your environment choice using option `--runtime`
 
 Option `--runtime` defaults to value 'auto', which will prefer to use
-Singularity containers and fall back to local conda environments if that fails. 
-To force the use of a specific runtime environment, set the option to 
-either `--runtime singularity` or `--runtime conda`.
+Singularity containers and fall back to locally built environments only if 
+that fails. To force the use of a specific runtime environment, set the 
+option to either `--runtime singularity` or `--runtime conda`.
 
 ## Execute a pipeline from the command line
 
