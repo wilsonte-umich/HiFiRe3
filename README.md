@@ -535,15 +535,17 @@ into the app interface.
 HiFiRe3 requires a reference genome assembly and supporting annotation files,
 including tables of _in silico_ restriction enzyme (RE) sites.
 Usually, these files are automatically prepared on first use of a given `--genome`.
-However, two special use cases require you to prepare genome files manually.
+However, a few special use cases require you to prepare genome files manually.
 
-### Manually prepare a genome if your worker nodes don't have internet access
+### Manually prepare a genome before running jobs
 
-If you run HiFiRe3 on a server without internet access, you must
-prepare the genome in advance from a computer/node that does:
+Starting multiple jobs at the same time with the same unprepared genome will
+create problems as the jobs try to modify the same genome files. In these and 
+perhaps other situations, you should prepare the genome in advance as follows:
 
 ```sh
 hf3 prepare genome --help
+# substitute hs1 with your desired genome
 hf3 prepare genome --genome hs1 --output-dir $PWD/_prepare_hs1 --data-name hs1
 ```
 
@@ -561,6 +563,7 @@ option `--is-composite-genome`.
 
 ```sh
 hf3 combine genomes --help
+# substitute hs1 and dm6 with your desired genomes
 hf3 combine genomes --genome1 hs1 --genome2 dm6 --output-dir $PWD/_prepare_hs1_dm6 --data-name hs1_dm6
 ```
 
@@ -624,3 +627,54 @@ without compiling it yourself.
 
 Use of the developer binary in the `dev` folder is activated using
 the `hf3 -d` option on all HiFiRe3 calls as used during development.
+
+## Alternative container-only method of using HiFiRe3 pipelines
+
+Some users may only be interested in using HiFiRe3 pipelines
+as a standalone program, e.g., if HiFiRe3 actions are to be
+incorporated into a pre-existing workflow managment system.
+HiFiRe3 pipeline containers support this installation-free usage.
+
+Importantly, running pipelines via a direct call to a container,
+rather than via the CLI installed on your server, disables
+all of the worflow/job manager helpers in favor of your 
+pre-exiting solution. All data processing tasks and configuration 
+remain exactly the same since the container has the same installation
+in it as described above.
+
+### Download the relevant container
+
+You do not need to clone or install this repository, simply download the relevant 
+container image from:
+- <https://github.com/wilsontelab/HiFiRe3/pkgs/container/hifire3> 
+
+e.g. using command:
+- `singularity pull oras://ghcr.io/wilsontelab/hifire3:latest`
+
+### Use the container with directory bind mounts and direct action calls
+
+As always for a container, you must bind mount all relevant server paths to 
+the container so that running pipeline jobs have access to your files. The 
+recommended directory organization above makes this easy by requiring only one bind
+mount of the HiFiRe3 root directory (even that is unnecessary
+if you work from within that directory as the current working directory is implicitly
+mounted).
+
+Then simply follow a `singularity run <image>.sif` command with  your
+pipeline, action, and options as you would for any typical data analysis program, e.g.:
+
+```sh
+# every relevant directory option should be prefixed with a bind mount directory
+ROOT_DIR=/path/to/HiFiRe3
+singularity run \
+    --bind $ROOT_DIR \
+    <image>.sif \
+        <pipeline> <action> \
+            --tmp-dir        $ROOT_DIR/tmp \
+            --output-dir     $ROOT_DIR/output \
+            --data-name      my-data-name \
+            --option-name    123
+            # etc.
+```
+
+The job report log is printed to STDOUT for you to consume as needed.
