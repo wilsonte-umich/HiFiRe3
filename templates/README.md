@@ -1,3 +1,7 @@
+---
+published: false
+---
+
 ## Job file templates
 
 The `templates` folder carries YAML job file templates

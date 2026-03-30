@@ -12,8 +12,10 @@ create_options_file () {
     local COMMAND="$PIPELINE $ACTION --help"
 
     echo $PIPELINE $ACTION
+
+    echo -e "---\npublished: false\n---\n" > $FILE
     
-    echo -e "## $PIPELINE $ACTION options\n" > $FILE
+    echo -e "## $PIPELINE $ACTION options\n" >> $FILE
 
     echo -e "|Tool Suite|Pipeline|Action|" >> $FILE
     echo -e "|---|---|---|" >> $FILE

@@ -103,7 +103,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         exclusions: Exclusions::from_env(&mut w, false),
         group_breakpoint_distance: *w.cfg.get_usize(GROUP_BREAKPOINT_DISTANCE),
         group_stem_distance:       *w.cfg.get_usize(GROUP_STEM_DISTANCE) as u32,
-        is_ont:                     w.cfg.get_string(SEQUENCING_PLATFORM).to_lowercase() == "ONT",
+        is_ont:                     w.cfg.equals_string(SEQUENCING_PLATFORM, "ONT"),
         deduplicate_reads:         *w.cfg.get_bool(DEDUPLICATE_READS),
         final_jxns_file_1:          w.cfg.get_string(SV_FINAL_JUNCTIONS_FILE_1).to_string(),
         final_jxns_file_2:          w.cfg.get_string(SV_FINAL_JUNCTIONS_FILE_2).to_string(),
