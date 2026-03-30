@@ -1,3 +1,7 @@
+---
+published: false
+---
+
 ## Job log reports
 
 The `logs` folder carries text files containing the output

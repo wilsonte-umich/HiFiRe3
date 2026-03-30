@@ -1,3 +1,7 @@
+---
+published: false
+---
+
 ## GitHub Continuous Integration (CI) worflows
 
 This folder carries YAML files that define GitHub

@@ -37,17 +37,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # initial SKIP_MDI_APPS_INSTALL applies to the runner environment, not the apps container
+      # uncomment these lines if the repo is private
+      #   git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      #   export APPTAINERENV_GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
       - name: Install MDI and build container image
         run: |
           export SKIP_MDI_APPS_INSTALL=1
           export FORCE_CONTAINER_BUILD=1
           export IS_GITHUB_ACTION=1
+          echo "::group::Installing runner MDI instance"
+          # git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
           ./install.sh --yes
+          echo "::endgroup::"
+          echo "::group::Building container image"
+          # export APPTAINERENV_GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           ./$RUN_COMMAND build --suite ${{ github.repository }} --container-type apps
+          echo "::endgroup::"
 
       - name: Push container image to registry
         run: |
+          GITHUB_OWNER=${{ github.repository_owner }}
+          LC_GITHUB_OWNER=${GITHUB_OWNER,,}
           SUITE_NAME=${{ github.repository }}
           SUITE_NAME=${SUITE_NAME#*/}
           LC_SUITE_NAME=${SUITE_NAME,,}
@@ -55,7 +65,7 @@ jobs:
           VERSION_TAG=${{ github.ref_name }}
           MAJOR_MINOR_VERSION=${VERSION_TAG%.*}
           SIF_FILE=./mdi/containers/${LC_SUITE_NAME}/${CONTAINER_NAME}-${MAJOR_MINOR_VERSION}.sif
-          URI=oras://ghcr.io/${{ github.repository_owner }}/${CONTAINER_NAME}:${MAJOR_MINOR_VERSION}
+          URI=oras://ghcr.io/${LC_GITHUB_OWNER}/${CONTAINER_NAME}:${MAJOR_MINOR_VERSION}
           echo "SIF_FILE: "$SIF_FILE
           echo "ORAS URI: "$URI
           singularity push ${SIF_FILE} ${URI}

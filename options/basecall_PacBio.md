@@ -1,3 +1,7 @@
+---
+published: false
+---
+
 ## basecall PacBio options
 
 |Tool Suite|Pipeline|Action|
@@ -19,7 +23,7 @@ pacbio:
   -X,--force-basecalling    <boolean> force basecalling of all reads, ignoring any existing ubam files 
 
 genome:
-  -g,--genome          <string> name of the reference genome to use (e.g., hg38) *REQUIRED*
+  -g,--genome          <string> UCSC-compatible name of the reference genome to use (e.g., hg38) *REQUIRED*
   -G,--genome-dir      <string> directory with indexed <--genome>.fa or genome.fa file [.../mdi/resources/genomes/<--genome>] 
   --use-all-chroms     <boolean> use all chromosomes as they are found in genome fasta file without filtering 
   --is-composite-genome     <boolean> <--genome> is a composite of >1 reference (e.g., hs1_dm6 with cross-species spike-in) 

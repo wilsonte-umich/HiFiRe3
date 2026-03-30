@@ -1,3 +1,7 @@
+---
+published: false
+---
+
 ## prepare genome options
 
 |Tool Suite|Pipeline|Action|
@@ -14,7 +18,7 @@ prepare: Perform one-time preparative actions on genomes prior to data analysis
 genome: download a reference genome and perform in silico digestion with blunt restriction enzymes
 
 prepare-genome:
-  -g,--genome          <string> the reference genome to download (hs1|CHM13|hg38|GRCh38|mm39|GRCm39) [hs1]
+  -g,--genome          <string> UCSC-compatible name of the reference genome to prepare (e.g., hg38) [hs1]
   -G,--genomes-dir     <string> directory to be filled with sub-directories, one per reference genome [${MDI_DIR}/resources/genomes]
 
 digestion:
