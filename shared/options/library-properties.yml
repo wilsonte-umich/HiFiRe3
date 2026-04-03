@@ -6,7 +6,7 @@ options:
         type: string
         required: true
         default: null
-        description: "platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBio)" 
+        description: "platform used to sequence reads (Illumina_2x150|Aviti_2x150|Aviti_1x300|Ultima|ONT|PacBioMolecule|PacBioStrand)" 
     library-type: 
         order: 2
         short: L
