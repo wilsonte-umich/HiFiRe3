@@ -14,7 +14,8 @@ pub mod analyze_inserts;    // applied to all alignments after site localization
 
 // structural variant analysis
 pub mod split_bam_by_chrom_sv; // create temporary chrom-level BAM files
-pub mod analyze_svs;        // analyze chrom-level BAM files then aggregate SV data
+pub mod analyze_svs;           // analyze chrom-level BAM files then aggregate SV data
+pub mod merge_svs;             // combine final junctions files across different library types
 
 // single-nucleotide variant/indel analysis
 pub mod split_bam_by_chrom_snv; // create temporary chrom-level BAM files for SNV/indel analysis

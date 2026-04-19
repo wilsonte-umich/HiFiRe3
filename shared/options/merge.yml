@@ -1,0 +1,17 @@
+---
+# options that set the path to the input read files for alignment
+options:
+    merge-project-dir: 
+        order: 1
+        short: P
+        type: string
+        required: false
+        default: null
+        description: "directory with multiple subfolders whose final junction tables will be merged [TASK_DIR]"
+    merge-sample-dirs: 
+        order: 2
+        short: S
+        type: string
+        required: false
+        default: null
+        description: "override --merge-project-dir with a comma-delimited list of `analyze|compare SVs` output directories [--merge-project-dir/*]"

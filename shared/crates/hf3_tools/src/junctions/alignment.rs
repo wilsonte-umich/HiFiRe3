@@ -206,4 +206,24 @@ impl AlignmentSegment {
         coverage_map[start0..end1].iter_mut()
             .for_each(|pos_cov| *pos_cov = pos_cov.saturating_add(self.n_observed));
     }
+
+    /// Merge two or more alignment segment files.
+    pub fn merge_and_write_sorted(
+        merge_input_dirs: &[&str],
+        filepath: &str,
+        ncpu:     u32,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut aln_segments: Vec<AlignmentSegment> = Vec::new();
+        for dir in merge_input_dirs {
+            let mut reader = InputCsv::open_file_from_glob(
+                dir, "alignments.txt.bgz", 
+                b'\t', true
+            )?;
+            for result in reader.deserialize(){
+                let aln_segment = result?;
+                aln_segments.push(aln_segment);
+            }
+        }
+        AlignmentSegment::write_sorted(aln_segments, filepath, ncpu)
+    }
 }

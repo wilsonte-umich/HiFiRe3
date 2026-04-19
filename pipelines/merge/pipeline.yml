@@ -1,0 +1,88 @@
+---
+pipeline:
+    name: merge
+    description: "Combine variants called across multiple related samples of different library types"
+    version: v0.0.1
+actions:
+    _global:
+        environment: hf3Main
+        condaFamilies:
+            - base
+            - main
+        optionFamilies:
+            - genome
+    SVs:
+        order: 1
+        optionFamilies:
+            - targets
+            - merge
+        resources:
+            required:
+                total-ram: 24G
+            recommended: 
+                n-cpu: 8 # fragment indexing, the slowest step, is parallelized by chromosome
+                ram-per-cpu: 6G
+        job-manager:
+            recommended:
+                time-limit: 12:00:00
+        description: "combine structural variant final junction tables across multiple library types"
+package:
+    SVs: # the pipeline action after which a data package should assembled
+        uploadType: hf3AnalyzeSVs # a signal to the Stage 2 framework regarding the package contents
+        files:
+            samplesFile:
+                type: txt
+                file: $SV_SAMPLES_FILE
+            chromsFile:
+                type: txt
+                file: $ANALYSIS_CHROMS_FILE
+            targetsBed:
+                type: bed
+                file: $TARGETS_BED
+            genesBed:
+                type: bed
+                file: $GENES_BED
+            exclusionsBed:
+                type: bed
+                file: $GENOME_EXCLUSIONS_BED
+            svAlignmentsBgz:
+                type: txt.bgz
+                file: $SV_ALIGNMENTS_FILE
+                maxSize: 250M
+            svAlignmentsTbi:
+                type: txt.bgz.tbi
+                file: $SV_ALIGNMENTS_FILE.tbi
+                maxSize: 250M
+            svCoverageBgz:
+                type: txt.bgz
+                file: $SV_COVERAGE_FILE
+                maxSize: 250M
+            svCoverageTbi:
+                type: txt.bgz.tbi
+                file: $SV_COVERAGE_FILE.tbi
+                maxSize: 250M
+            svReadPaths:
+                type: txt.bgz
+                file: $SV_READ_PATHS_FILE
+                maxSize: 250M
+            svReadPathsTbi:
+                type: txt.bgz.tbi
+                file: $SV_READ_PATHS_FILE.tbi
+                maxSize: 250M
+            svJunctions1Bgz:
+                type: txt.bgz
+                file: $SV_FINAL_JUNCTIONS_FILE_1
+            svJunctions1Tbi:
+                type: txt.bgz.tbi
+                file: $SV_FINAL_JUNCTIONS_FILE_1.tbi
+            svJunctions2Bgz:
+                type: txt.bgz
+                file: $SV_FINAL_JUNCTIONS_FILE_2
+            svJunctions2Tbi:
+                type: txt.bgz.tbi
+                file: $SV_FINAL_JUNCTIONS_FILE_2.tbi
+# container:
+#     supported: false    # set to true if you maintain a container registry for this pipeline [false]
+#     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]
+#     owner:     wilsontelab # REQUIRED: the name of the owner, e.g., user or organization, at 'registry'
+#     installer: apt-get  # the installer program used by the container OS, typically apt-get or yum [apt-get]
