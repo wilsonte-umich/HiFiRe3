@@ -6,8 +6,8 @@ use std::error::Error;
 use std::cmp::Ordering;
 use std::str::from_utf8_unchecked;
 use rayon::prelude::*;
-use rust_htslib::bam::{record::Record as BamRecord, HeaderView};
-use mdi::OutputCsv;
+use rust_htslib::{bam::{HeaderView, record::Record as BamRecord}};
+use mdi::{InputCsv, OutputCsv};
 use genomex::bam::{tags, cigar};
 use crate::formats::hf3_tags::*;
 
@@ -117,6 +117,26 @@ impl SvReadPath {
         writer.serialize_all(&read_paths);
         Ok(())
     }  
+
+    /// Merge two or more read path files.
+    pub fn merge_and_write_sorted(
+        merge_input_dirs: &[&str],
+        filepath: &str,
+        ncpu:     u32,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut read_paths: Vec<SvReadPath> = Vec::new();
+        for dir in merge_input_dirs {
+            let mut reader = InputCsv::open_file_from_glob(
+                dir, "read_paths.txt.bgz", 
+                b'\t', true
+            )?;
+            for result in reader.deserialize(){
+                let read_path = result?;
+                read_paths.push(read_path);
+            }
+        }
+        SvReadPath::write_sorted(read_paths, filepath, ncpu)
+    }
 }
 
 // support sorting of read paths by qname and read length

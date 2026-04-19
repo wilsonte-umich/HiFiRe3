@@ -1,9 +1,5 @@
 # HiFiRe3 Tool Suite
 
-> **NOTICE**: HiFiRe3 is under final active development. While most
-> portions of the codebase are mature and stable, we may still make 
-> breaking changes in file formats and usage without notice.
-
 **HiFiRe3** ("high fire") carries pipelines and apps for analyzing
 sequencing data from libraries that achieve **Hi**gh **Fi**delity 
 error-corrected scoring of single nucleotide variants (SNVs) and 
@@ -24,6 +20,7 @@ The steps to using HiFiRe3 are to:
 - characterize variants:
     - in single samples using `analyze SVs` and/or `analyze SNVs`
     - comparing across multiple samples using `compare SVs` and/or `compare SNVs`
+    - comparing across muliple library types using `merge SVs`
 - visualize results in the R Shiny apps
 
 ## Single-suite installation (recommended)
@@ -38,7 +35,7 @@ a single-suite installation, which is accomplished by:
 - optionally running _alias.pl_ to create an `hf3` alias to the command line interface (CLI)
 
 See the bottom of this README for information on an alternative 
-container-only way of using of __TOOL_SUITE_NAME__ pipelines.
+container-only way of using of HiFiRe3 pipelines.
 
 ### Install this tool suite
 
@@ -101,14 +98,13 @@ to make `singularity` available, follow the instructions in
 
 If you don't have Singularity or Apptainer available on your system,
 or prefer or need to build the environments yourself, you can
-build them in your HiFiRe3 installation as follows:
+build them in your HiFiRe3 installation using
+[micromamba](https://mamba.readthedocs.io/)
+as follows:
 
 ```sh
 hf3 analyze conda --create
 ```
-
-Note that internally conda environments are built using
-[micromamba](https://mamba.readthedocs.io/).
 
 In a shared server environment, the environment build command may get killed by the host.
 If that happens, run the command on a cluster worker node with sufficient resources, e.g.:
@@ -164,6 +160,7 @@ listed here in execution order of the most common actions:
 - `analyze fragments`
 - `analyze SVs`  or `compare SVs`
 - `analyze SNVs` or `compare SNVs`
+- `merge SVs`
 
 Required/common options are described below; use 
 `hf3 <pipeline> <action> --help` or `hf3 <pipeline> template` 
@@ -202,7 +199,7 @@ read configurations, and library types, communicated via options
 
 All tools assume any insert size selection was performed _before adapter ligation_. 
 However, the pipeline is flexible with regard to which error correction methods you 
-exploit, e.g., you can forego size selection or RE-mediated DNA fragmentation as 
+exploit, e.g., you can forego size selection and/or RE-mediated DNA fragmentation as 
 suits your needs. 
 
 Different library types use restriction enyzmes in different ways.
@@ -370,7 +367,7 @@ Alternatively, you can set option `--site-override-file` to a file containing
 a properly constructed HiFiRe3 RE site list instead of performing _de novo_ 
 RE site discovery from the current sample's reads.
 
-## Mosaic variant calling
+## Clonal and mosaic variant calling
 
 Depending on your application and sequencing platform, you may wish to call 
 SVs, SNVs/indels, or both from your processed reads, which is done in distinct 
@@ -415,7 +412,8 @@ calculated from `--min-selected-size` and `--selected-size-cv` can be overridden
 1N insert size value used to enforce size-based SV error correction.
 
 RE-based and size-based SV error correction methods are substantially redundant but 
-independent, so both can be used to achieve maximal SV error correction.
+independent, so both can be used to achieve maximal SV error correction. The pipelines
+will also call SVs when neither error correction method was in use.
 
 Importantly, each SV error correction method only allows the pipeline to reliably reject 
 end-to-end chimeras. Many middle-to-middle chimeras arising from DNA fragmentation after 
@@ -449,7 +447,7 @@ artifacts, single-molecule junctions, etc. This supports comparisons of the prop
 of real vs. artifact junctions. Filtering the table yields lists of SV junctions of 
 greatest interest for different applications, e.g., clonal vs. mosaic SVs. 
 
-Some essential filtering information is found in bit-encoded alignment-level and 
+Some important filtering information is found in bit-encoded alignment-level and 
 junction-level "failure flags", where a bit that is set means that quality check failed. 
 Please see this summary of the 
 [failure flag bit encoding](https://github.com/wilsontelab/HiFiRe3/blob/main/shiny/shared/session/utilities/jxn_filters.R#L16)
@@ -489,16 +487,24 @@ input DNA molecules in PCR-free libraries, whereas single-molecule variants
 are consistent with mutations that occurred during an experiment or recently 
 in a tissue or cell lineage.
 
-Sensitivity for detecting multiply-sequenced variants increases if data from 
-many samples from the same DNA source can be combined, which is the
+Sensitivity for detecting multiply-sequenced variants, including variants
+that arose in a clonal ancestor of the samples under study, increases if data  
+from many samples from the same source genotype can be combined, which is the
 job of `compare SVs` and `compare SNVs`. 
 
 The processes and file formats for comparing variants across samples are the 
 same as those applied to a single sample above. Aligned reads from multiple samples 
 are analyzed together with tracking of the samples that contributed to each called 
-variant. This approach requires that `analyze fragments` has been run on all input 
-samples, but `analyze SVs` and `analyze SNVs` are not required to run `compare SVs` 
-or `compare SNVs`, as variant calling is repeated anew.
+variant. This approach requires that all input samples are of the same library 
+type, including sequencing platform and restriction enzyme, and that `analyze fragments`
+has been run on all samples individually. However, `analyze SVs` and `analyze SNVs` 
+are not required to run `compare SVs` or `compare SNVs`, as variant calling is 
+repeated anew.
+
+To compare SVs across different types of libaries, e.g., to compare the final junction 
+tables of short and long reads from the sample source, use `merge SVs` instead. 
+Variant merging does not apply to SNVs since only PacBioStrand libraries support 
+SNV calling.
 
 ## Targeted genomic analysis
 

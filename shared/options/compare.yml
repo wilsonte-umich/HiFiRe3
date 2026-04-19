@@ -14,4 +14,4 @@ options:
         type: string
         required: false
         default: null
-        description: "override --project-dir with a comma-delimited list of `analyze` output directories [--compare-project-dir/*]"
+        description: "override --compare-project-dir with a comma-delimited list of `analyze` output directories [--compare-project-dir/*]"

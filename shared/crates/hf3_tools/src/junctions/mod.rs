@@ -38,6 +38,7 @@ mod read_path;
 mod alignment;
 mod grouping;
 mod deduplication;
+mod samples;
 
 // re-exports
 pub use flag::*;
@@ -45,6 +46,7 @@ pub use junction::*;
 pub use read_path::*;
 pub use alignment::*;
 pub use grouping::*;
+pub use samples::*;
 
 // dependencies
 use crossbeam::channel::Sender;

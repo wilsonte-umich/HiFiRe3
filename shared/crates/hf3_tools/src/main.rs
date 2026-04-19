@@ -74,6 +74,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         "analyze_snvs" => tools::analyze_snvs::main(),
 
         /*--------------------------------------------------------------
+        merge SVs
+        ------------------------------------------------------------- */
+        // fuzzy merge final junctions across related sample of different library types
+        "merge_svs" => tools::merge_svs::main(),
+
+        /*--------------------------------------------------------------
         unrecognized pipeline action tool
         ------------------------------------------------------------- */
         _ => Err(format!("{}: unknown tool or command: {}", TOOLS_NAME, tool))?

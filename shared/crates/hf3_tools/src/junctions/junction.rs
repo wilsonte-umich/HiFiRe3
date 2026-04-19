@@ -1,7 +1,6 @@
 //! Structure and methods for aggregating and describing detected junctions.
 
 // dependencies
-// use std::io::Write;
 use std::mem::take;
 use rustc_hash::FxHashMap;
 use rust_htslib::bam::record::Record as BamRecord;
@@ -280,17 +279,17 @@ pub fn extract_junction(
 /// A FinalJunction describes one fully grouped, deduplicated and 
 /// resolved junction call. Some fields are initially printed 
 /// with null values to be updated later.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct FinalJunction {
     /* ------------------------------------------- */
     // two best ordered breakpoint nodes and an alignment offset define a junction
     #[serde(rename(serialize = "#chrom_index1_1", deserialize = "chrom_index1_1"))]
     pub chrom_index1_1:  u8,  // node1, broken into its constituent parts for chrom-pos sorting
     pub ref_pos1_1:      u32,
-    strand_index0_1:     u8,
+    pub strand_index0_1:     u8,
     pub chrom_index1_2:  u8,  // node2
     pub ref_pos1_2:      u32,
-    strand_index0_2:     u8,
+    pub strand_index0_2:     u8,
     pub offset:  i16,    // most frequent junction offset in a fuzzy-matched group
     jxn_seq:     String, // most frequent junction bases among instances with the best junction offset
     /* ------------------------------------------- */
@@ -302,7 +301,7 @@ pub struct FinalJunction {
     // values maintained as lists of values per junction instance
     /* ------------------------------------------- */
     // values expanded and updated from read_data (ReadLevelMetadata); includes all instances, even duplicates
-    qnames:        String, // comma-delimited of read QNAMEs that sequenced this junction; may have duplicates if a read had multiple identical junctions
+    pub qnames:        String, // comma-delimited of read QNAMEs that sequenced this junction; may have duplicates if a read had multiple identical junctions
     insert_sizes:  String, // comma-delimited insert sizes of qnames
     outer_node1s:  String, // comma-delimited outer node1 values of qnames
     outer_node2s:  String, // comma-delimited outer node2 values of qnames
@@ -358,7 +357,7 @@ pub struct FinalJunction {
     is_excluded_2:  u8,     // integer bool; true if breakpoint 2 overlaps an excluded region
     /* ------------------------------------------- */
     // additional read-level properties that derive deterministically from the global config
-    sample_bits:  u32, // bitwise OR of the sample bits of all samples that sequenced this SV
+    pub sample_bits:  u32, // bitwise OR of the sample bits of all samples that sequenced this SV
     n_samples:    u8,  // number of unique samples that sequenced this SV
     /* ------------------------------------------- */
     // additional junction properties added later, initialized to zero
@@ -505,6 +504,115 @@ impl FinalJunction {
         }
     }
 
+    /// Convert two or more merging FinalJunctions into a single output FinalJunction.
+    pub fn from_merged_junctions(jxns: &[FinalJunction]) -> Self {
+        let sample_bits = jxns.iter().fold(0_u32, |acc, jxn| acc | jxn.sample_bits); // previously bit-shifted by source
+        let best_jxn  = jxns.iter().max_by_key(|jxn| jxn.n_instances_dedup).unwrap();
+        FinalJunction {
+            /* ------------------------------------------- */
+            chrom_index1_1:  best_jxn.chrom_index1_1,
+            ref_pos1_1:      best_jxn.ref_pos1_1,
+            strand_index0_1: best_jxn.strand_index0_1,
+            chrom_index1_2:  best_jxn.chrom_index1_2,
+            ref_pos1_2:      best_jxn.ref_pos1_2,
+            strand_index0_2: best_jxn.strand_index0_2,
+            offset:          best_jxn.offset,
+            jxn_seq:         best_jxn.jxn_seq.clone(),
+            /* ------------------------------------------- */
+            jxn_type:        best_jxn.jxn_type,
+            strands:         best_jxn.strands,
+            sv_size:         best_jxn.sv_size,
+            /* ------------------------------------------- */
+            qnames:        Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.qnames[1..jxn.qnames.len() - 1].to_string()).collect::<Vec<_>>(),
+                              1000),
+            insert_sizes:  Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.insert_sizes[1..jxn.insert_sizes.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              60),
+            outer_node1s:  Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.outer_node1s[1..jxn.outer_node1s.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              140),
+            outer_node2s:  Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.outer_node2s[1..jxn.outer_node2s.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              140),
+            channels:      Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.channels[1..jxn.channels.len() - 1].to_string()).collect::<Vec<_>>(),  
+                              60),
+            n_jxns:        Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.n_jxns[1..jxn.n_jxns.len() - 1].to_string()).collect::<Vec<_>>(),     
+                              20),
+            is_duplicates: Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.is_duplicates[1..jxn.is_duplicates.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            is_duplexes:   Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.is_duplexes[1..jxn.is_duplexes.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            /* ------------------------------------------- */
+            aln5_is:            Self::join_with_flanked_commas(
+                                &jxns.iter().map(|jxn| jxn.aln5_is[1..jxn.aln5_is.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            qry_pos1_aln5_end3s: Self::join_with_flanked_commas(
+                                &jxns.iter().map(|jxn| jxn.qry_pos1_aln5_end3s[1..jxn.qry_pos1_aln5_end3s.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            /* ------------------------------------------- */
+            jxn_orientations:   Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.jxn_orientations[1..jxn.jxn_orientations.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            jxn_failure_flags:  Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.jxn_failure_flags[1..jxn.jxn_failure_flags.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            aln_failure_flags:  Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.aln_failure_flags[1..jxn.aln_failure_flags.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              10),
+            /* ------------------------------------------- */
+            min_stem_lengths:  Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.min_stem_lengths[1..jxn.min_stem_lengths.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              1),
+            min_mapqs:         Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.min_mapqs[1..jxn.min_mapqs.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              1),
+            max_divergences:   Self::join_with_flanked_commas(
+                              &jxns.iter().map(|jxn| jxn.max_divergences[1..jxn.max_divergences.len() - 1].to_string()).collect::<Vec<_>>(), 
+                              1),
+            /* ------------------------------------------- */
+            n_instances:       jxns.iter().map(|jxn| jxn.n_instances).sum(),
+            n_reads:           jxns.iter().map(|jxn| jxn.n_reads).sum(),
+            n_instances_dedup: jxns.iter().map(|jxn| jxn.n_instances_dedup).sum(),
+            n_reads_dedup:     jxns.iter().map(|jxn| jxn.n_reads_dedup).sum(),
+            /* ------------------------------------------- */
+            has_multi_jxn_read:      jxns.iter().any(|jxn| jxn.has_multi_jxn_read == 1) as u8,
+            has_multi_instance_read: jxns.iter().any(|jxn| jxn.has_multi_instance_read == 1) as u8,
+            has_duplex_read:         jxns.iter().any(|jxn| jxn.has_duplex_read == 1) as u8,
+            is_bidirectional:        jxns.iter().any(|jxn| jxn.is_bidirectional == 1) as u8,
+            jxn_failure_flag:        jxns.iter().fold(0u8, |acc, jxn| acc | jxn.jxn_failure_flag),
+            aln_failure_flag:        jxns.iter().fold(0u8, |acc, jxn| acc | jxn.aln_failure_flag),
+            any_was_chimeric:        jxns.iter().any(|jxn| jxn.any_was_chimeric == 1) as u8,
+            any_was_not_chimeric:    jxns.iter().any(|jxn| jxn.any_was_not_chimeric == 1) as u8,
+            min_stem_length:     jxns.iter().map(|jxn| jxn.min_stem_length).min().unwrap(),
+            max_min_mapq:        jxns.iter().map(|jxn| jxn.max_min_mapq).max().unwrap(),
+            min_max_divergence:  jxns.iter().map(|jxn| (jxn.min_max_divergence * 10000.0) as u32).min().unwrap() as f32 / 10000.0,
+            /* ------------------------------------------- */
+            is_intergenomic: best_jxn.is_intergenomic,
+            target_1:        best_jxn.target_1.clone(), // targets are non-overlapping, only ever a single value expected
+            target_dist_1:   best_jxn.target_dist_1,
+            target_2:        best_jxn.target_2.clone(),
+            target_dist_2:   best_jxn.target_dist_2,
+            genes_1:         best_jxn.genes_1.clone(), // genes may overlap each other, so join with commas
+            gene_dists_1:    best_jxn.gene_dists_1.clone(),
+            genes_2:         best_jxn.genes_2.clone(),
+            gene_dists_2:    best_jxn.gene_dists_2.clone(),
+            is_excluded_1:   best_jxn.is_excluded_1,
+            is_excluded_2:   best_jxn.is_excluded_2,
+            /* ------------------------------------------- */
+            // sample_names: Self::join_with_flanked_commas(&vec![tool.data_name.clone()], tool.data_name.len()),
+            sample_bits: sample_bits,
+            n_samples:   sample_bits.count_ones() as u8,
+            /* ------------------------------------------- */
+            bkpt_coverage_1: jxns.iter().map(|jxn| jxn.bkpt_coverage_1).sum(),
+            bkpt_coverage_2: jxns.iter().map(|jxn| jxn.bkpt_coverage_2).sum(),
+        }
+    }
+
     /// Join values to strings with beginning and trailing comma separators.
     fn join_with_flanked_commas<T: std::fmt::Display>(d: &[T], unit_size: usize) -> String {
         use std::fmt::Write; // scope to avoid conflict with std::io::Write
@@ -564,5 +672,4 @@ impl FinalJunction {
          else if self.n_instances == 2 { "two instances" }
                                   else { ">=3 instances" }
     }
-
 }

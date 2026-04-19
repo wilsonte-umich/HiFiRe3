@@ -74,10 +74,10 @@ pub fn fuzzy_match_junctions(
             });
 
             // group junctions by variant_chrom_len statistic
-            for variant_chrom_len_group in node2_group.chunk_by(|a, b| {
+            for group_jxns in node2_group.chunk_by(|a, b| {
                 variant_chrom_len(b, &tool.chroms) - variant_chrom_len(a, &tool.chroms) <= tool.group_stem_distance
             }){
-                commit_junction(variant_chrom_len_group, &mut jxns_in, &mut jxns_out, tool, &mut ont_cache, &mut other_cache)?;
+                commit_junction(group_jxns, &mut jxns_in, &mut jxns_out, tool, &mut ont_cache, &mut other_cache)?;
             }
         }
     }
@@ -134,6 +134,80 @@ fn commit_junction(
     Ok(())
 }
 
+/// Group a set of FinalJunctions by fuzzy matching their breakpoint nodes
+/// within specified tolerances. Commit groups as merged FinalJunction calls.
+pub fn fuzzy_merge_junctions(
+    mut jxns_in: Vec<FinalJunction>,
+    tool: &JunctionAnalysisTool,
+) -> Result<Vec<FinalJunction>, Box<dyn Error>> {
+    let mut jxns_out: Vec<FinalJunction> = Vec::new();
+
+    // sort junctions by their first breakpoint node, ascending
+    // bottom (-) strand sorts last chrom/pos to first, then top (+) strand sorts first chrom/pos to last
+    // this is fine for grouping, but requires care when comparing two positions to the tolerance distances
+    jxns_in.par_sort_unstable_by(|a, b| {
+        let node_a = SamRecord::pack_signed_node_index(a.chrom_index1_1, a.ref_pos1_1, a.strand_index0_1 == 1);
+        let node_b = SamRecord::pack_signed_node_index(b.chrom_index1_1, b.ref_pos1_1, b.strand_index0_1 == 1);
+        node_a.cmp(&node_b)
+    });
+
+    // group junctions by their first breakpoint node
+    for node1_group in jxns_in.chunk_by_mut(|a, b| {
+        let node_a = SamRecord::pack_signed_node_index(a.chrom_index1_1, a.ref_pos1_1, a.strand_index0_1 == 1);
+        let node_b = SamRecord::pack_signed_node_index(b.chrom_index1_1, b.ref_pos1_1, b.strand_index0_1 == 1);
+        (node_b.abs() - node_a.abs()).unsigned_abs() <= tool.group_breakpoint_distance
+    }){
+
+        // if only one jxn in the group, commit it as is
+        if node1_group.len() == 1 {
+            jxns_out.push(node1_group[0].clone());
+            continue;
+        }
+
+        // sort multiple node1_group jxn by their second breakpoint node
+        node1_group.par_sort_unstable_by(|a, b| {
+            let node_a = SamRecord::pack_signed_node_index(a.chrom_index1_2, a.ref_pos1_2, a.strand_index0_2 == 1);
+            let node_b = SamRecord::pack_signed_node_index(b.chrom_index1_2, b.ref_pos1_2, b.strand_index0_2 == 1);
+            node_a.cmp(&node_b)
+        });
+
+        // group junctions by their second breakpoint node
+        for node2_group in node1_group.chunk_by_mut(|a, b| {
+            let node_a = SamRecord::pack_signed_node_index(a.chrom_index1_2, a.ref_pos1_2, a.strand_index0_2 == 1);
+            let node_b = SamRecord::pack_signed_node_index(b.chrom_index1_2, b.ref_pos1_2, b.strand_index0_2 == 1);
+            (node_b.abs() - node_a.abs()).unsigned_abs() <= tool.group_breakpoint_distance
+        }){
+
+            // if only one jxn in the group, commit it as is
+            if node2_group.len() == 1 {
+                jxns_out.push(node2_group[0].clone());
+                continue;
+            }
+
+            // sort multiple node2_group jxns by their variant_chrom_len statistic
+            node2_group.sort_unstable_by(|a, b| {
+                variant_chrom_len_jxn(&a, &tool.chroms).cmp(&variant_chrom_len_jxn(&b, &tool.chroms))
+            });
+
+            // group junctions by variant_chrom_len statistic
+            for group_jxns in node2_group.chunk_by(|a, b| {
+                variant_chrom_len_jxn(&b, &tool.chroms) - variant_chrom_len_jxn(&a, &tool.chroms) <= tool.group_stem_distance
+            }){
+
+                // if only one jxn in the group, commit it as is
+                if group_jxns.len() == 1 {
+                    jxns_out.push(group_jxns[0].clone());
+
+                // merge a set of jxn from different library types
+                } else {
+                    jxns_out.push(FinalJunction::from_merged_junctions(group_jxns));
+                }
+            }
+        }
+    }
+    Ok(jxns_out)
+}
+
 // Estimate the number of genome bp still present as the chromosome stem length on each side of a junction.
 // 1     7                   9       1 (i.e., count rightward stems from the end of the chrom)
 // -----------------------------------
@@ -180,6 +254,24 @@ fn variant_chrom_len(
         chrom_index_2, 
         ref_pos1_2,
         if is_reverse_2 { LEFTWARD } else { RIGHTWARD },
+        chroms,
+    );
+    (chrom_stem_1 as i32 + chrom_stem_2 as i32 + jxn.offset as i32) as u32 // should always be positive
+}
+fn variant_chrom_len_jxn(
+    jxn:    &FinalJunction,
+    chroms: &Chroms,
+) -> u32 {
+    let chrom_stem_1 = chrom_stem_len(
+        jxn.chrom_index1_1, 
+        jxn.ref_pos1_1,
+        if jxn.strand_index0_1 == 1 { RIGHTWARD } else { LEFTWARD },
+        chroms,
+    );
+    let chrom_stem_2 = chrom_stem_len(
+        jxn.chrom_index1_2, 
+        jxn.ref_pos1_2,
+        if jxn.strand_index0_2 == 1 { LEFTWARD } else { RIGHTWARD },
         chroms,
     );
     (chrom_stem_1 as i32 + chrom_stem_2 as i32 + jxn.offset as i32) as u32 // should always be positive
