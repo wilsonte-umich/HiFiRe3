@@ -8,9 +8,13 @@
 MDI_CENTRIC="mdi-centric"
 SUITE_CENTRIC="suite-centric"
 export SUPPRESS_MDI_BASHRC=TRUE
-if [[ "$1" = "--yes" || "$1" = "-y" ]]; then
+if [[ "$1" = "--yes" || "$1" = "-y" || "$1" = "2" ]]; then
     MDI_FORCE_GIT=TRUE
     MDI_FORCE_APPS=TRUE
+fi
+if [ "$1" = "1" ]; then
+    MDI_FORCE_GIT=TRUE
+    SKIP_MDI_APPS_INSTALL=TRUE
 fi
 
 #----------------------------------------------------------------------
