@@ -39,14 +39,13 @@ container-only way of using of HiFiRe3 pipelines.
 
 ### Install this tool suite
 
+Run the following to install the tool suite and command line interface (CLI).
+
 ```bash
 git clone https://github.com/wilsontelab/HiFiRe3.git
 cd HiFiRe3
-./install.sh
+./install.sh 1
 ```
-
-Answer 'y' (yes) to install the Stage 1 Pipelines, then after a
-minute, answer 'n' (no) to skip installation of the Stage 2 Apps (for now).
 
 ### Create an alias to the command line interface (optional)
 
