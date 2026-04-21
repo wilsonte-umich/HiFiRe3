@@ -27,6 +27,7 @@ checkPipe
 ${HF3_TOOLS_BIN}  analyze_svs
 checkPipe
 rm -f $INDEX_FILE_PREFIX_WRK.first_alns.chr*.gz
+echo
 
 # index output files for app
 echo "indexing read paths" # indexed by QNAME and read_len as a convenient way of indexed read retrieval

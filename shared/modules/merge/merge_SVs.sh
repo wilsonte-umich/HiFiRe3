@@ -14,6 +14,7 @@ TABIX="tabix --threads $N_CPU"
 # fuzzy-match final junctions to yield final SV calls
 ${HF3_TOOLS_BIN} merge_svs
 checkPipe
+echo
 
 # index output files for app
 echo "indexing read paths" # indexed by QNAME and read_len as a convenient way of indexed read retrieval

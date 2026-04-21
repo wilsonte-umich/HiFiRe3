@@ -23,6 +23,7 @@ checkPipe
 # call SNVs and indels per chromosome
 ${HF3_TOOLS_BIN} analyze_snvs
 checkPipe
+echo
 
 # concatenate and index the pileups
 echo "concatenating and indexing pileup files"

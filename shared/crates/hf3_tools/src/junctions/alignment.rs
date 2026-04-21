@@ -217,7 +217,7 @@ impl AlignmentSegment {
         for dir in merge_input_dirs {
             let mut reader = InputCsv::open_file_from_glob(
                 dir, "alignments.txt.bgz", 
-                b'\t', true
+                b'\t', false
             )?;
             for result in reader.deserialize(){
                 let aln_segment = result?;

@@ -37,7 +37,7 @@ if [[ ! -f ${GENOME_FASTA} || ! -f ${GENOME_GAPS_FILE} || ! -f ${GENOME_EXCLUSIO
 fi
 
 # if needed, check RE site file existence; perform in silico digestion if missing
-if [ "${ENZYME_NAME}" != "NA" ]; then
+if [[ "${ENZYME_NAME}" != "NA" && "${ENZYME_NAME}" != "null" && "${ENZYME_NAME}" != "" ]]; then
     GENOME_SITES_BGZ_LOCK=${GENOME_SITES_BGZ}.lock
     while [ -f ${GENOME_SITES_BGZ_LOCK} ]; do # prevent two jobs from creating the same file at the same time
         echo "waiting for $GENOME genome to be digested in silico"

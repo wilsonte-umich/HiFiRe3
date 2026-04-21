@@ -22,7 +22,7 @@ const PHRED_OFFSET: u8 = 33;
 pub struct SvReadPath {
     /* ------------------------------------------- */
     // read identifier and read-level metadata
-    #[serde(rename(serialize = "#qname", deserialize = "qname"))]
+    #[serde(rename = "#qname")]
     qname:          String,
     read_len:       u32, // length of SEQ
     insert_size:    i32, // INSERT_SIZE tag value, or read_len if insert_size not available
