@@ -30,6 +30,7 @@ impl Sample {
         let mut sample_slots_used_all: u32 = 0;
         let mut jxns: Vec<FinalJunction> = Vec::new();
         for dir in merge_input_dirs {
+            eprintln!("  {}", dir);
 
             // input and re-output sample from one merge source
             let mut sample_slots_used_dir = 0;

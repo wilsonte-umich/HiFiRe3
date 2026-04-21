@@ -39,7 +39,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_usize_env( &[N_CPU]);
-    cfg.set_string_env(&[SV_READ_PATHS_FILE, SV_ALIGNMENTS_FILE, SV_COVERAGE_FILE,
+    cfg.set_string_env(&[MERGE_INPUT_DIRS, 
+                              SV_READ_PATHS_FILE, SV_ALIGNMENTS_FILE, SV_COVERAGE_FILE,
                               SV_FINAL_JUNCTIONS_FILE_1, SV_FINAL_JUNCTIONS_FILE_2,
                               ANALYSIS_CHROMS_FILE, SV_SAMPLES_FILE]);
 
@@ -88,6 +89,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // merge samples files, bit shifting later samples as needed
+    w.log.print("parsing samples to merge");
     let jxns_in = Sample::parse_merge_samples(&mut w.cfg, &merge_input_dirs)?;
     let n_jxns_in = jxns_in.len();
 

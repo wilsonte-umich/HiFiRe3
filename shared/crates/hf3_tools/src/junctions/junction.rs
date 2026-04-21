@@ -279,11 +279,11 @@ pub fn extract_junction(
 /// A FinalJunction describes one fully grouped, deduplicated and 
 /// resolved junction call. Some fields are initially printed 
 /// with null values to be updated later.
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct FinalJunction {
     /* ------------------------------------------- */
     // two best ordered breakpoint nodes and an alignment offset define a junction
-    #[serde(rename(serialize = "#chrom_index1_1", deserialize = "chrom_index1_1"))]
+    #[serde(rename = "#chrom_index1_1")]
     pub chrom_index1_1:  u8,  // node1, broken into its constituent parts for chrom-pos sorting
     pub ref_pos1_1:      u32,
     pub strand_index0_1:     u8,
