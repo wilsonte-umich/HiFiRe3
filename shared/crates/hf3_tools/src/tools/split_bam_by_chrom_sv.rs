@@ -37,6 +37,7 @@ pub_key_constants!(
     // counter keys
     N_READS
     N_USABLE_READS
+    N_SV_READS
     N_UNIQ_ALNS
     N_ALNS
     N_BASES
@@ -63,6 +64,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut ctrs = Counters::new(TOOL, &[
         (N_READS,        "reads processed"),
         (N_USABLE_READS, "usable on-target reads in output"),
+        (N_SV_READS,     "usable on-target reads with at least one SV junction in output"),
         (N_UNIQ_ALNS,    "unique (deduplicated) alignments in on-target reads"),
         (N_ALNS,         "total  (deduplicated) alignments in on-target reads"),
         (N_BASES,        "(deduplicated) reference bases in on-target alignments"),
@@ -168,7 +170,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     w.log.print("calling tally_read_bases");
     tally_read_bases(&mut channel_alns, &chroms, &mut w, samples);
     w.ctrs.print_grouped(&[
-        &[N_READS, N_USABLE_READS],
+        &[N_READS, N_USABLE_READS, N_SV_READS],
         &[N_UNIQ_ALNS, N_ALNS, N_BASES],
         &[N_READS_BY_GENOME],
         &[N_BASES_BY_GENOME],
@@ -203,6 +205,7 @@ fn print_alns(
 
         // commit on-target reads to temporary BAM files
         ctrs.increment(N_USABLE_READS);
+        if alns.len() > 1 { ctrs.increment(N_SV_READS); }
         ctrs.increment_keyed(N_READS_BY_SAMPLE, sample_name);
         for aln in alns.iter_mut() {
 

@@ -49,6 +49,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         /*--------------------------------------------------------------
         analyze fragments
         ------------------------------------------------------------- */
+
+        // perform pre- and post-alignment processing steps on Ultima aligned reads
+        "post_process_ultima" => tools::post_process_ultima::main(),
+
         // sort (per read) and examine read alignments in the output stream from minimap2
         "analyze_alignments" => tools::analyze_alignments::stream(),
 

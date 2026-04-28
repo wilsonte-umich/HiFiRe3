@@ -40,6 +40,10 @@ if [ "$READ_1_FILES" = "" ]; then
     export READ_1_FILES=`ls -1 $READ_FILE_DIR/$READ_FILE_PREFIX*.$READ_FILE_TYPE 2>/dev/null`
 fi
 if [ "$READ_1_FILES" = "" ]; then
+    export READ_FILE_TYPE=cram # as used by Ultima with on-device alignment
+    export READ_1_FILES=`ls -1 $READ_FILE_DIR/$READ_FILE_PREFIX*.$READ_FILE_TYPE 2>/dev/null`
+fi
+if [ "$READ_1_FILES" = "" ]; then
     echo "no valid input read files found in $READ_FILE_DIR"
     echo "check your values for options --read-file-dir, --read-file-prefix, and --read-number-format"
     exit 1

@@ -31,7 +31,7 @@ my $platformI = getOptionI(
 my $libTypeI = getOptionI(
     "--library-type",
     "LIBRARY_TYPE", 
-    qw(Nextera TruSeq Elevate Ultima Ligation Rapid HiFi)
+    qw(Nextera TruSeq Elevate Solaris Ligation Rapid HiFi)
 );
 
 # read default option values for the selected platform and library type

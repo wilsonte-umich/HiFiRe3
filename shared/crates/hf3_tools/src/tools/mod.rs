@@ -9,8 +9,9 @@ pub mod reformat_ont; // alternative to reformat legacy basecall and trim files
 pub mod basecall_pacbio;
 
 // read alignment analysis
-pub mod analyze_alignments; // applied to the minimap2 alignment stream
-pub mod analyze_inserts;    // applied to all alignments after site localization
+pub mod post_process_ultima; // replace the pre-aignment actions on non-Ultima reads
+pub mod analyze_alignments;  // applied to the minimap2 alignment stream
+pub mod analyze_inserts;     // applied to all alignments after site localization
 
 // structural variant analysis
 pub mod split_bam_by_chrom_sv; // create temporary chrom-level BAM files

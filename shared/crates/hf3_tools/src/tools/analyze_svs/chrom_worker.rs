@@ -9,7 +9,7 @@ use rust_htslib::bam::{Reader, Read, Record as BamRecord};
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
 use genomex::genome::Chroms;
-use genomex::bam::tags as bam_tags;
+use genomex::bam::{tags as bam_tags, chrom::get_chrom_index};
 use genomex::sam::{junction::JunctionType};
 use crate::formats::hf3_tags::*;
 use crate::junctions::*;
@@ -55,7 +55,7 @@ pub fn process_chrom <'a>(
         let first_alns_capacity = if expecting_endpoint_re_sites {
             chrom_read_count / 4 // RE-digested inserts are expected to have fewer unique first alignments
         } else {
-            chrom_read_count     // uses 17 bytes per read, so 100M reads requires 1.7GB RAM, more than expected per chrom
+            chrom_read_count     // uses 19 bytes per read, so 100M reads requires 1.9GB RAM, more than expected per chrom
         };
 
         // assemble the chromosome worker tool
@@ -110,11 +110,16 @@ fn process_alns(
     alns:   &[BamRecord], 
     tool:   &mut JunctionChromWorker,
 ) -> Result<(), Box<dyn Error>>{
+
+    // skip reads with any alignment to a non-canonical chromosome
+    if alns.iter().any(|aln| {
+        get_chrom_index(aln, &tool.header, &tool.chroms, false).is_none()
+    }) { return Ok(()); }
+
+    // get read-level metadata from first alignment
     let n_alns = alns.len();
     let max_aln_i = n_alns - 1;
     let sample_bit = bam_tags::get_tag_u32(&alns[0], SAMPLE_BIT);
-
-    // get read-level metadata from first alignment
     let read_data = ReadLevelMetadata::from_bam_records(alns, sample_bit);
     let qlen = alns[0].seq_len() as u32;
 

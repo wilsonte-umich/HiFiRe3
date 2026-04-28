@@ -95,7 +95,7 @@ impl SvReadPath {
             read_path.qry_end1s        .push_str(&(cigar::get_query_end1(aln, read_len).to_string() + COMMA));
             read_path.block_ns         .push_str(&(tags::get_tag_u8_default(aln, BLOCK_N, 1).to_string() + COMMA));
             read_path.mapqs            .push_str(&(aln.mapq().to_string() + COMMA));
-            read_path.divergences      .push_str(&(tags::get_tag_f32(aln, DIVERGENCE).to_string() + COMMA));
+            read_path.divergences      .push_str(&(tags::get_tag_f32_default(aln, DIVERGENCE, 0.0).to_string() + COMMA));
             read_path.aln_failure_flags.push_str(&(tags::get_tag_u8_default(aln, ALN_FAILURE_FLAG, 0).to_string() + COMMA));
             read_path.jxn_failure_flags.push_str(&(tags::get_tag_u8_default(aln, JXN_FAILURE_FLAG, 0).to_string() + COMMA));
             read_path.cigars           .push_str(&(aln.cigar().to_string() + COMMA));

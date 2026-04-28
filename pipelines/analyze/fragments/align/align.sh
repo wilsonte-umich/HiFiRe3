@@ -52,8 +52,30 @@ echo "    $NAME_BAM_FILE"
 echo
 
 #------------------------------------------------------------------
+# short-circuit typical alignment actions for pre-aligned Ultima reads
+#------------------------------------------------------------------
+if [ "$SEQUENCING_PLATFORM" = "Ultima" ]; then
+
+# perform the pre- and post-alignment processing steps on Ultima aligned reads
+# that are performed on non-Ultima reads by prepare_fastq.pl, fastp, and minimap2
+${HF3_TOOLS_BIN} post_process_ultima | 
+
+# convert coordinate-sorted uncompressed BAM to name-sorted SAM
+# we do the BAM-SAM-BAM conversion here to use analyze_alignments for Ultima  
+# just as we do for other platforms where reads arrive as SAM from minimap2
+samtools collate --threads ${SAMTOOLS_CPU} -u -O - | 
+samtools view -h - |
+
+# process reads to determine if variants are present according to the reference genome
+${HF3_TOOLS_BIN} analyze_alignments |
+samtools view -b -@ ${SAMTOOLS_CPU} -o ${NAME_BAM_FILE} -
+checkPipe
+
+#------------------------------------------------------------------
 # as needed, create and save the appropriate minimap2 genome alignment index
 #------------------------------------------------------------------
+else
+
 export GENOME_FASTA_WRK=${GENOME_FASTA}
 export ALIGNMENT_MODE_WRK=${ALIGNMENT_MODE}
 export CREATE_MM2_INDEX_MESSAGE="continuing with alignment"
@@ -122,6 +144,8 @@ minimap2 \
 ${HF3_TOOLS_BIN} analyze_alignments |
 samtools view -b -@ ${SAMTOOLS_CPU} -o ${NAME_BAM_FILE} -
 checkPipe
+
+fi
 
 echo "done"
 
