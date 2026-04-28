@@ -190,7 +190,7 @@ read configurations, and library types, communicated via options
 | Aviti_1x300 | Nextera |
 | Aviti_1x300 | TruSeq |
 | Aviti_1x300 | Elevate |
-| Ultima | Ultima |
+| Ultima | Solaris |
 | ONT | Rapid |
 | ONT | Ligation |
 | PacBioMolecule | HiFi |

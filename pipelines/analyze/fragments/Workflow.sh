@@ -17,7 +17,7 @@ export ALIGN_DIR=${ACTION_DIR}/align
 # set working directory to READ_FILE_DIR to avoid too-long argument list with multiple read files
 cd ${READ_FILE_DIR}
 
-# align read sequences to reference genome
+# align read sequences to reference genome, or just analyze Ultima aligned reads
 runWorkflowStep 2 align align/align.sh
 
 # reset working directory

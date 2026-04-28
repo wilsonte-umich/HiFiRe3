@@ -27,7 +27,7 @@ pub const STRAND_DIFFERENCE_TYPES: &str = "dt:i:";   // bit-encoded flag of the 
 pub const STRAND_DIFFERENCES: &str      = "dd:Z:";   // cs-like encoding of strand differences, includes reference-resolved heteroduplex (+, -, >, <)
 pub const SUBSTITUTION_KINETICS: &str   = "sk:B:S,"; // kinetics values surrounding base substitution differences
 
-// Alignment, added by fastp and minimap2
+// Alignment, added by fastp, minimap2, or the Ultima Aligner
 pub const FASTP_MERGE: &str             = "fm:Z:";   // serialized encoding of read1,read2 retained bases; only on merged read pairs
 pub const ALN_SCORE: &str               = "AS:i:";   // minimap2 tags 
 pub const DIVERGENCE: &str              = "de:f:";

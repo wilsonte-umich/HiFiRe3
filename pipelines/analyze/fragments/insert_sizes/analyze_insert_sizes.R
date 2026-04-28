@@ -23,6 +23,7 @@ checkEnvVars(list(
         'FILTERED_INSERT_SIZES_FILE',
         'FILTERED_STEM_LENGTHS_FILE',
         'PLOT_PREFIX',
+        'PLOTS_DIR',
         'DATA_NAME',
         'TARGETS_BED'
     ),
@@ -55,6 +56,9 @@ minAllowedSize <- if (env$MIN_ALLOWED_SIZE > 0) {
     env$MIN_SELECTED_SIZE / (1 + env$SELECTED_SIZE_CV)
 }
 maxAllowedSize <- minAllowedSize * 2
+env$IND_PLOTS_DIR <- file.path(env$PLOTS_DIR, "individual")
+dir.create(env$IND_PLOTS_DIR, showWarnings = FALSE, recursive = FALSE)
+env$IND_PLOT_PREFIX <- file.path(env$IND_PLOTS_DIR, env$DATA_NAME)
 #=====================================================================================
 
 #=====================================================================================
@@ -135,6 +139,34 @@ addVLines <- function(xScaleFactor){
         abline(v = c(minAllowedSize, maxAllowedSize) / xScaleFactor, col = "black")
     }
 }
+plotInsertSizes_type <- function(level, type, insertSizeFreqs, insertSizeTypeName){
+    pngFile <- paste(env$IND_PLOT_PREFIX, level, type, insertSizeTypeName, "png", sep = ".")
+    png(filename = pngFile,
+        width = 3, height = 3, units = "in", pointsize = 8,
+        bg = "white", res = 600, type = "cairo")
+    xScaleFactor <- if(isShortRead) 1 else 1000
+    maxX <- getMaxX()
+    insertSizeFreqs <- insertSizeFreqs[[insertSizeTypeName]]
+    maxY  <- max(insertSizeFreqs)
+    plot(
+        x = NA,
+        y = NA,
+        xlab = if(isShortRead) "Insert Size (bp)" else "Insert Size (kb)",
+        ylab = "Frequency",
+        xlim = c(0, maxX) / xScaleFactor,
+        ylim = c(0, maxY) * 1.05,
+        main = paste(level, type, insertSizeTypeName)
+    )
+    addVLines(xScaleFactor)
+    points(
+        x = insertSizeCounts$sizeBin / xScaleFactor,
+        y = insertSizeFreqs,
+        col = insertSizeTypes[[insertSizeTypeName]],
+        pch = 19,
+        cex = 0.75
+    )
+    dev.off()
+}
 plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x2xFreqs = NULL){
     pngFile <- paste(env$PLOT_PREFIX, level, type, "png", sep = ".")
     png(filename = pngFile,
@@ -156,11 +188,11 @@ plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x
         main = paste(env$DATA_NAME, level, type)
     )
     addVLines(xScaleFactor)
-    for(type in insertSizeTypeNames){
+    for(insertSizeTypeName in insertSizeTypeNames){
         points(
             x = insertSizeCounts$sizeBin / xScaleFactor,
-            y = insertSizeFreqs[[type]],
-            col = insertSizeTypes[[type]],
+            y = insertSizeFreqs[[insertSizeTypeName]],
+            col = insertSizeTypes[[insertSizeTypeName]],
             pch = 19,
             cex = 0.75
         )
@@ -190,6 +222,9 @@ plotInsertSizes <- function(level, type, insertSizeFreqs, insertSizeTypeNames, x
         cex = 0.8
     )
     dev.off()
+    for(insertSizeTypeName in insertSizeTypeNames){
+        plotInsertSizes_type(level, type, insertSizeFreqs, insertSizeTypeName)
+    }
 }
 #=====================================================================================
 

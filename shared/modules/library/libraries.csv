@@ -1,4 +1,4 @@
-category,environment_variable,Nextera,TruSeq,Elevate,Ultima,Ligation,Rapid,HiFi,description
+category,environment_variable,Nextera,TruSeq,Elevate,Solaris,Ligation,Rapid,HiFi,description
 platform_matching,SUPPORTED_PLATFORMS,|Illumina_2x150|Aviti_2x150|Aviti_1x300|,|Illumina_2x150|Aviti_2x150|Aviti_1x300|,|Aviti_2x150|Aviti_1x300|,|Ultima|,|ONT|,|ONT|,|PacBioMolecule|PacBioStrand|,used to ensure that option --library-type is compatible with option --sequencing-platform
 pre-alignment processing (fastp),ADAPTER_SEQUENCE,CTGTCTCTTATACACATCT,AGATCGGAAGAGCACACGTCTGAACTCCAGTCA,,,ACTTCGTTCAGTTACGTATTGCT,AGATGTGTATAAGAGACAG,,read1 adapter sequence
 ,ADAPTER_SEQUENCE_R2,CTGTCTCTTATACACATCT,AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT,,,,,,read2 adapter sequence for paired end libraries

@@ -13,7 +13,7 @@ options:
         type: string
         required: true
         default: null
-        description: "how inserts were prepared for --sequencing-platform (Nextera|TruSeq|Elevate|Ultima|Ligation|Rapid|HiFi)" 
+        description: "how inserts were prepared for --sequencing-platform (Nextera|TruSeq|Elevate|Solaris|Ligation|Rapid|HiFi)" 
     min-selected-size: 
         order: 3
         short: I

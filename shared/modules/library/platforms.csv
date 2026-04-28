@@ -13,8 +13,8 @@ pre-alignment processing (fastp),PLATFORM_MIN_INSERT_SIZE,50,50,50,50,250,250,25
 ,QUALIFIED_QUALITY_PHRED,30,32,30,30,18,30,30,same as the similarly named fastp option
 ,UNQUALIFIED_PERCENT_LIMIT,25,25,25,25,25,25,25,same as the similarly named fastp option
 ,AVERAGE_QUAL,30,32,30,30,18,30,30,same as the similarly named fastp option
-read alignment (minimap2),BANDWIDTH,100,100,100,100,500;3300,500;3300,500;3300,minimap2 option -r (semicolon will be replaced by comma)
-,ALIGNMENT_MODE,sr,sr,sr,sr,lr:hq,map-hifi,map-hifi,minimap2 option -x; use lr:hq not map-ont
+read alignment (minimap2),BANDWIDTH,100,100,100,,500;3300,500;3300,500;3300,minimap2 option -r (semicolon will be replaced by comma)
+,ALIGNMENT_MODE,sr,sr,sr,,lr:hq,map-hifi,map-hifi,minimap2 option -x; use lr:hq not map-ont
 RE fragment analysis,PLATFORM_MAX_INSERT_SIZE,1000,1000,1000,1000,5000000,100000,100000,maximum insert size expected/allowed for platform or considered a potential proper insert
 ,MIN_TRAVERSAL_DELTA,50,50,50,50,1000,1000,1000,a set of junctions with less than this many bp difference in reference vs. read traversal are disregarded as suspect
 ,MIN_MAPQ,50,50,50,50,50,50,50,minimum minimap2 MAPQ for an alignment to be used for analysis
