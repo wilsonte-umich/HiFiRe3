@@ -112,6 +112,7 @@ hf3_enforceFlagFilters <- function(failure_flags, failure_bits, filter_mode){
     sapply(readFlagsList, fn, flagBits)
 }
 hf3_applyJunctionFilters <- function(jxns, settings, input){
+    if (nrow(jxns) == 0) return(jxns)
     startSpinner(session, message = paste("filtering junctions"))
 
     # enforce filters from setting, generally less commonly used

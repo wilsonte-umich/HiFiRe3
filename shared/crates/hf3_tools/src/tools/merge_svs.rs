@@ -13,6 +13,8 @@ const TOOL: &str = "analyze_svs";
 pub_key_constants!(
     // from environment variables
     N_CPU
+    MIN_N_OBSERVED
+    MIN_SV_MAPQ
     MERGE_INPUT_DIRS
     SV_READ_PATHS_FILE
     SV_ALIGNMENTS_FILE
@@ -39,6 +41,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_usize_env( &[N_CPU]);
+    cfg.set_u32_env(   &[MIN_N_OBSERVED]);
+    cfg.set_u8_env(    &[MIN_SV_MAPQ]);
     cfg.set_string_env(&[MERGE_INPUT_DIRS, 
                               SV_READ_PATHS_FILE, SV_ALIGNMENTS_FILE, SV_COVERAGE_FILE,
                               SV_FINAL_JUNCTIONS_FILE_1, SV_FINAL_JUNCTIONS_FILE_2,
@@ -84,6 +88,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         group_stem_distance:       5,
         is_ont:                    false,
         deduplicate_reads:         false,
+        min_n_observed:           *w.cfg.get_u32(MIN_N_OBSERVED) as u16,
+        min_sv_mapq:              *w.cfg.get_u8(MIN_SV_MAPQ),
         final_jxns_file_1:         w.cfg.get_string(SV_FINAL_JUNCTIONS_FILE_1).to_string(),
         final_jxns_file_2:         w.cfg.get_string(SV_FINAL_JUNCTIONS_FILE_2).to_string(),
     };
@@ -93,12 +99,23 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let jxns_in = Sample::parse_merge_samples(&mut w.cfg, &merge_input_dirs)?;
     let n_jxns_in = jxns_in.len();
 
+    // fuzzy group final junctions
+    w.log.print("fuzzy grouping final junctions");
+    let final_jxns = fuzzy_merge_junctions(jxns_in, &tool)?;
+    w.ctrs.add_to(N_FINAL_JUNCTIONS_IN,  n_jxns_in);
+    w.ctrs.add_to(N_FINAL_JUNCTIONS_OUT, final_jxns.len());
+
     // sort and print merged SV read paths
     w.log.print("sorting and printing merged SV read paths");
     SvReadPath::merge_and_write_sorted(
         &merge_input_dirs, 
         w.cfg.get_string(SV_READ_PATHS_FILE),
         n_cpu,
+        if tool.min_n_observed > 1 || tool.min_sv_mapq > 0 {
+            Some(&final_jxns)
+        } else {
+            None
+        },
     )?;
 
     // sort and print merged alignment segments
@@ -108,12 +125,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         w.cfg.get_string(SV_ALIGNMENTS_FILE),
         n_cpu,
     )?;
-
-    // fuzzy group final junctions
-    w.log.print("fuzzy grouping final junctions");
-    let final_jxns = fuzzy_merge_junctions(jxns_in, &tool)?;
-    w.ctrs.add_to(N_FINAL_JUNCTIONS_IN,  n_jxns_in);
-    w.ctrs.add_to(N_FINAL_JUNCTIONS_OUT, final_jxns.len());
 
     // collect final junction statistics
     w.log.print("collecting final junction statistics");

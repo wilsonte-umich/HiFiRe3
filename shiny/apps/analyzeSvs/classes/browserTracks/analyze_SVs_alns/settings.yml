@@ -1,0 +1,14 @@
+trackType:
+    - genome_spans
+settings:
+    Alignments:
+        Max_Window_Width:
+            type:   numericInput
+            value:  2000000
+override:
+    Track:
+        Height: 1.5
+    Spans:
+        Plot_Spans_As: scored_spans
+        Spans_Color_Palette: greyscale
+        Stranded: false

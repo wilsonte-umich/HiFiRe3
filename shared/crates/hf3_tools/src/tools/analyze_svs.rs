@@ -23,6 +23,8 @@ pub_key_constants!(
     GROUP_BREAKPOINT_DISTANCE
     GROUP_STEM_DISTANCE
     DEDUPLICATE_READS
+    MIN_N_OBSERVED
+    MIN_SV_MAPQ
     SEQUENCING_PLATFORM
     INDEX_FILE_PREFIX_WRK
     SV_READ_PATHS_FILE
@@ -58,6 +60,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut cfg = Config::new();
     cfg.set_usize_env( &[N_CPU, GROUP_BREAKPOINT_DISTANCE, GROUP_STEM_DISTANCE]);
     cfg.set_bool_env(  &[DEDUPLICATE_READS]);
+    cfg.set_u32_env(   &[MIN_N_OBSERVED]);
+    cfg.set_u8_env(    &[MIN_SV_MAPQ]);
     cfg.set_string_env(&[SEQUENCING_PLATFORM, SV_READ_PATHS_FILE,
                               INDEX_FILE_PREFIX_WRK, SV_ALIGNMENTS_FILE, SV_COVERAGE_FILE,
                               SV_FINAL_JUNCTIONS_FILE_1, SV_FINAL_JUNCTIONS_FILE_2,
@@ -105,6 +109,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         group_stem_distance:       *w.cfg.get_usize(GROUP_STEM_DISTANCE) as u32,
         is_ont:                     w.cfg.equals_string(SEQUENCING_PLATFORM, "ONT"),
         deduplicate_reads:         *w.cfg.get_bool(DEDUPLICATE_READS),
+        min_n_observed:            *w.cfg.get_u32(MIN_N_OBSERVED) as u16,
+        min_sv_mapq:               *w.cfg.get_u8(MIN_SV_MAPQ),
         final_jxns_file_1:          w.cfg.get_string(SV_FINAL_JUNCTIONS_FILE_1).to_string(),
         final_jxns_file_2:          w.cfg.get_string(SV_FINAL_JUNCTIONS_FILE_2).to_string(),
     };
@@ -166,6 +172,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         }
     }).expect("Crossbeam scope panicked");
 
+    // fuzzy group final junctions
+    w.log.print("fuzzy grouping final junctions");
+    let mut final_jxns = fuzzy_match_junctions(jxns, &mut tool)?;
+    w.ctrs.add_to(N_FINAL_JUNCTIONS, final_jxns.len());
+
     // sort and print aggregated SV read paths
     w.log.print("sorting and printing aggregated SV read paths");
     w.ctrs.add_to(N_SV_READS, read_paths.len());
@@ -173,12 +184,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         read_paths, 
         w.cfg.get_string(SV_READ_PATHS_FILE),
         tool.n_cpu,
+        if tool.min_n_observed > 1 || tool.min_sv_mapq > 0 {
+            Some(&final_jxns)
+        } else {
+            None
+        }
     )?;
-
-    // fuzzy group final junctions
-    w.log.print("fuzzy grouping final junctions");
-    let mut final_jxns = fuzzy_match_junctions(jxns, &mut tool)?;
-    w.ctrs.add_to(N_FINAL_JUNCTIONS, final_jxns.len());
 
     // merge distal alignments into first alignments
     // use AlignmentSegments to update final junction breakpoint coverage fields
