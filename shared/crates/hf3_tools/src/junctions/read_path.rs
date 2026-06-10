@@ -5,11 +5,13 @@
 use std::error::Error;
 use std::cmp::Ordering;
 use std::str::from_utf8_unchecked;
+use rustc_hash::FxHashSet;
 use rayon::prelude::*;
 use rust_htslib::{bam::{HeaderView, record::Record as BamRecord}};
 use mdi::{InputCsv, OutputCsv};
 use genomex::bam::{tags, cigar};
 use crate::formats::hf3_tags::*;
+use crate::junctions::FinalJunction;
 
 // constants
 const COMMA: &str = ",";
@@ -109,9 +111,22 @@ impl SvReadPath {
     /// unique sorted segment with a count.
     pub fn write_sorted(
         mut read_paths: Vec<SvReadPath>, 
-        filepath: &str,
-        ncpu:     u32,
+        filepath:       &str,
+        ncpu:           u32,
+        final_jxns:     Option<&[FinalJunction]>,
     ) -> Result<(), Box<dyn Error>> {
+        // if final_jxns were filtered, only report read paths with QNAMEs from those filtered junctions
+        if let Some(final_jxns) = final_jxns {
+            let mut qnames = FxHashSet::default();
+            final_jxns.iter().for_each(|jxn|{
+                jxn.qnames.split(',').for_each(|qname|{
+                    qnames.insert(qname.to_string());
+                });
+            });
+            read_paths = read_paths.into_iter().filter(|read_path|{
+                qnames.contains(&read_path.qname)
+            }).collect();            
+        }
         read_paths.par_sort_unstable();
         let writer = OutputCsv::open(filepath, Some(ncpu));
         writer.serialize_all(&read_paths);
@@ -121,8 +136,9 @@ impl SvReadPath {
     /// Merge two or more read path files.
     pub fn merge_and_write_sorted(
         merge_input_dirs: &[&str],
-        filepath: &str,
-        ncpu:     u32,
+        filepath:         &str,
+        ncpu:             u32,
+        final_jxns:       Option<&[FinalJunction]>,
     ) -> Result<(), Box<dyn Error>> {
         let mut read_paths: Vec<SvReadPath> = Vec::new();
         for dir in merge_input_dirs {
@@ -135,7 +151,7 @@ impl SvReadPath {
                 read_paths.push(read_path);
             }
         }
-        SvReadPath::write_sorted(read_paths, filepath, ncpu)
+        SvReadPath::write_sorted(read_paths, filepath, ncpu, final_jxns)
     }
 }
 

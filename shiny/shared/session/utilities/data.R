@@ -136,17 +136,17 @@ hf3_junctionClasses <- list(
         "unexpected1"
     ),
     indexToClassLabel = c(
-        "intergenome, all n",
-        "artifact,   n=1",
-        "validated,  n>=3",
-        "unexpected, n=2",
-        "unexpected, n=1"
+        "intergenome\nall n",
+        "artifact\nn=1",
+        "validated\nn>=3",
+        "unexpected\nn=2",
+        "unexpected\nn=1"
     ),
     sizedLabels = c(
-        "artifact,   n=1",
-        "validated,  n>=3",
-        "unexpected, n=2",
-        "unexpected, n=1"
+        "artifact\nn=1",
+        "validated\nn>=3",
+        "unexpected\nn=2",
+        "unexpected\nn=1"
     ),
     classToIndex = list(
         intergenome = 1L,
@@ -181,9 +181,9 @@ hf3_junctionStrata <- list(
         "validated"
     ),
     indexToStratumLabel = c(
-        "unexpected, n=1",
-        "unexpected, n=2",
-        "validated,  n>=3"
+        "unexpected\nn=1",
+        "unexpected\nn=2",
+        "validated\nn>=3"
     ),
     stratumToIndex = list(
         unexpected1 = 1L,
@@ -421,7 +421,7 @@ hf3_getExcludedRegions <- function(sourceId){
 }
 
 # general track data retrieval, uses tabix random access not sessionCache
-hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE, debug = FALSE){
+hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE, debug = FALSE, end_col = 3){
     if(!use_chrom) coord$chromosome <- hf3_getChromIndex(sourceId, coord$chromosome)
     bgzFile <- getSourceFilePath(sourceId, fileType)
     # debug <- TRUE
@@ -434,7 +434,7 @@ hf3_getTrackData_bgz <- function(sourceId, fileType, coord, use_chrom = FALSE, d
         # dstr(fread(bgzFile))
     }
     if(!isTruthy(bgzFile) || !file.exists(bgzFile)) return(data.table()) # no data of this type
-    getCachedTabix(bgzFile, create = debug, force = debug) %>% 
+    getCachedTabix(bgzFile, create = debug, force = debug, end_col = end_col) %>% 
     getTabixRangeData(
         coord, 
         col.names  =  names(hf3_bgzColumns[[fileType]]), 
@@ -451,7 +451,7 @@ hf3_getSites_padded <- function(sourceId, coord){
 }
 # get and parse read alignments
 hf3_getAlignments <- function(sourceId, coord){
-    hf3_getTrackData_bgz(sourceId, "svAlignmentsBgz", coord)
+    hf3_getTrackData_bgz(sourceId, "svAlignmentsBgz", coord, end_col = 2)
 }
 # get and parse unique junction nodes in region ...
 hf3_getJunctions <- function(sourceId, coord){

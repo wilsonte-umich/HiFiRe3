@@ -156,9 +156,10 @@ createSizePlot <- function(settings, plot) {
 
     # initialize plot
     lwd  <- settings$get("Points_and_Lines","Line_Width")
+    dpi  <- settings$get("Junctions_Plot","Dots_Per_Inch")
     xlim <- c(-0.25, 10.25) # 1e9 to 1e10 used for plotting translocations
     ylim <- c(0.45, d$nStrata + 0.55)
-    layout <- plot$initializePng() %>% plot$initializeFrame(
+    layout <- plot$initializePng(dpi = dpi) %>% plot$initializeFrame(
         xlim = xlim,
         ylim = ylim,
         # title = d$samples,
@@ -172,12 +173,12 @@ createSizePlot <- function(settings, plot) {
     # size guide rules
     Alu1_size <- 300
     L1_size   <- 6000
-    abline(v = log10(c(1e1,1e2,1e3,1e4,1e5,1e6,1e7,1e8,1e9)), col = "grey80")
+    abline(v = log10(c(1e1,1e2,1e3,1e4,1e5,1e6,1e7,1e8,1e9)), col = "grey80", lwd = lwd * 0.75)
     abline(v = log10(c(Alu1_size, L1_size)), col = CONSTANTS$plotlyColors$purple, lwd = lwd * 1.25)
-    abline(h = 1:d$nStrata,       col = "grey60")
-    abline(h = 1:d$nStrata + 1/3, col = "grey60")
-    abline(h = 1:d$nStrata - 1/3, col = "grey60")
-    abline(h = 1:(d$nStrata - 1) + 0.5, col = "black")
+    abline(h = 1:d$nStrata,       col = "grey60", lwd = lwd * 0.75)
+    abline(h = 1:d$nStrata + 1/3, col = "grey60", lwd = lwd * 0.75)
+    abline(h = 1:d$nStrata - 1/3, col = "grey60", lwd = lwd * 0.75)
+    abline(h = 1:(d$nStrata - 1) + 0.5, col = "black", lwd = lwd)
 
     # add individual junction points, with downsampling for speed
     plot_jxns <- if(input$maxPlottedPoints > 0 && nrow(d$jxns) > input$maxPlottedPoints){
@@ -190,10 +191,13 @@ createSizePlot <- function(settings, plot) {
         CONSTANTS$plotlyColors$black,
         plot_jxns$color
     )
+    pointColors <- colors %>% addAlphaToColors(settings$get("Junctions_Plot","Point_Alpha"))
     plot$addPoints(
         x   = plot_jxns$x,
         y   = plot_jxns$y,
-        col = colors %>% addAlphaToColors(settings$get("Junctions_Plot","Point_Alpha"))
+        col = pointColors,
+        bg  = pointColors,
+        lwd = 0.1
     )
 
     # # overplot violin distributions
@@ -241,7 +245,7 @@ createSizePlot <- function(settings, plot) {
             col     = NA,
             border  = "black",
             lwd     = 1.25,
-            lty     = 2
+            lty     = 3
         )
     }
 
@@ -305,23 +309,27 @@ sizePlot <- mdiInteractivePlotBoxServer(
                 min = 0.1,
                 max = 1,
                 step = 0.1
+            ),
+            Dots_Per_Inch = list(
+                type = "numericInput",
+                value = 300
             )
         )
     ),
     defaults = list(
         Plot_Frame = list(
-            Width_Inches  = 10,
-            Height_Inches = 4, # was 5
-            Font_Size     = 12,
+            Width_Inches  = 3.4,
+            Height_Inches = 2,
+            Font_Size     = 7,
             Bottom_Margin = 4.1,
-            Left_Margin   = 6.6,
+            Left_Margin   = 4.75,
             Top_Margin    = 1.9,
             Right_Margin  = 6.1
         ),
         Points_and_Lines = list(
             Point_Size = 0.5,
-            Point_Type = 19,
-            Line_Width = 1.75
+            Point_Type = 21,
+            Line_Width = 1
         )
     )
 )
@@ -368,6 +376,10 @@ offsetPlotSettings <- list(
             min = 0,
             max = 100,
             step = 10
+        ),
+        Dots_Per_Inch = list(
+            type = "numericInput",
+            value = 300
         )
     )
 )
@@ -398,8 +410,10 @@ createOffsetPlot <- function(settings, plot, v) {
         settings$get("Offset_Plot","Max_Offset")
     )
     # initialize plot
+    lwd  <- settings$get("Points_and_Lines","Line_Width")
+    dpi  <- settings$get("Offset_Plot","Dots_Per_Inch")
     ylim <- c(0, max(dd$y, na.rm = TRUE) * 1.05)
-    layout <- plot$initializePng() %>% plot$initializeFrame(
+    layout <- plot$initializePng(dpi = dpi) %>% plot$initializeFrame(
         xlim = xlim,
         ylim = ylim,
         xlab = "Alignment Offset",
@@ -422,8 +436,8 @@ createOffsetPlot <- function(settings, plot, v) {
             ytop    = ylim[2] / 1.025,
             col     = NA,
             border  = "black",
-            lwd     = 1.25,
-            lty     = 2
+            lwd     = lwd,
+            lty     = 3
         )
     }
 
@@ -443,7 +457,7 @@ createOffsetPlot <- function(settings, plot, v) {
                     x = c(d$x[i], d$x[i]),
                     y = c(ybottom, ytop),
                     col = color,
-                    lwd = 1.5
+                    lwd = lwd
                 )
                 rect(
                     xleft   = d$x[i] - 0.5,
@@ -451,7 +465,8 @@ createOffsetPlot <- function(settings, plot, v) {
                     ybottom = ybottom,
                     ytop    = ytop,
                     col     = color,
-                    border  = NA
+                    border  = NA,
+                    lwd = lwd
                 )
                 ybottom <- ytop
             }
@@ -465,7 +480,7 @@ createOffsetPlot <- function(settings, plot, v) {
                 x = 0:-maxRandomMH,
                 y = randomOffsetProbs * nJxnsInRandomWindow,
                 col = CONSTANTS$plotlyColors$black,
-                lwd = 2
+                lwd = lwd * 1.5
             )            
         }
 
@@ -493,7 +508,7 @@ createOffsetPlot <- function(settings, plot, v) {
     }
     plot$finishPng(layout)
 }
-offsetPlot <- function(id, xlim, lwd, v){
+offsetPlot <- function(id, xlim, v){
     settings <- offsetPlotSettings
     settings$Offset_Plot$Min_Offset$value <- xlim[[1]]
     settings$Offset_Plot$Max_Offset$value <- xlim[[2]]
@@ -512,16 +527,16 @@ offsetPlot <- function(id, xlim, lwd, v){
         settings = settings,
         defaults = list(
             Plot_Frame = list(
-                Width_Inches  = 5,
-                Height_Inches = 3,
-                Font_Size     = 12,
+                Width_Inches  = 2.5,
+                Height_Inches = 1.45,
+                Font_Size     = 7,
                 Bottom_Margin = 4.1,
                 Left_Margin   = 4.1,
                 Top_Margin    = 1.9,
                 Right_Margin  = 6.25
             ),
             Points_and_Lines = list(
-                Line_Width = lwd
+                Line_Width = 1
             )
         )
     )
@@ -544,13 +559,11 @@ offsetPlot <- function(id, xlim, lwd, v){
 offsetPlotWide <- offsetPlot(
     id   = "offsetPlotWide",
     xlim = c(-210, 210),
-    lwd  = 1.5, 
     v    = c(seq(-1000, 1000, 100), -10, 10)
 )
 offsetPlotNarrow <- offsetPlot(
     id   = "offsetPlotNarrow",
     xlim = c(-21, 21),
-    lwd  = 3, 
     v    = c(seq(-100, 100, 10), c(-5, -2, -1))
 )
 
@@ -694,7 +707,7 @@ readPathExpandData <- reactive({
         stopSpinner(session)
         req(FALSE)
     }
-    rp[, .(
+    d <- rp[, .(
         qName      = qname,
         qLen       = read_len,
         chroms     = .(strsplit(chroms, ",")[[1]]),
@@ -713,6 +726,8 @@ readPathExpandData <- reactive({
         seq        = seq,
         qual       = .(sapply(strsplit(qual, "")[[1]], function(x) as.integer(charToRaw(x)) - 33L))
     )]
+    stopSpinner(session)
+    d
 })
 output$nExpansionReads <- renderText({
     paste("out of ", nrow(junctionExpandData()), "reads")
@@ -1014,11 +1029,11 @@ createChromPlot <- function(jxn, chromIndex1, refPos1, chrom_, chromSize){
     )
 }
 output$chrom1Plot <- renderPlot({
-    jxn <- chromExpandData()[currReadI1()] 
+    jxn <- chromExpandData()
     createChromPlot(jxn, jxn$chromIndex1_1, jxn$refPos1_1, jxn$chrom_1, jxn$chromSize_1)
 }, height = dpi * 1.5, res = dpi)
 output$chrom2Plot <- renderPlot({
-    jxn <- chromExpandData()[currReadI1()] 
+    jxn <- chromExpandData()
     createChromPlot(jxn, jxn$chromIndex1_2, jxn$refPos1_2, jxn$chrom_2, jxn$chromSize_2)
 }, height = dpi * 1.5, res = dpi)
 

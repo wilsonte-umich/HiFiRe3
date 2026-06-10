@@ -74,6 +74,10 @@ pub struct JunctionAnalysisTool {
     pub is_ont: bool,
     pub deduplicate_reads: bool,
 
+    // reporting parameters
+    pub min_n_observed: u16,
+    pub min_sv_mapq:    u8,
+
     // final junction output files
     pub final_jxns_file_1: String,
     pub final_jxns_file_2: String,

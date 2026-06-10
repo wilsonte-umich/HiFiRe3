@@ -18,6 +18,7 @@ actions:
         optionFamilies:
             - targets
             - compare
+            - SV
         resources:
             required:
                 total-ram: 24G

@@ -129,8 +129,10 @@ fn commit_junction(
     };
 
     // store the resulting FinalJunction
-    // TODO: ready to print instead?
-    jxns_out.push(final_jxn);
+    if final_jxn.n_instances_dedup >= tool.min_n_observed &&
+       final_jxn.max_min_mapq      >= tool.min_sv_mapq   {
+        jxns_out.push(final_jxn);
+    }
     Ok(())
 }
 
@@ -205,7 +207,12 @@ pub fn fuzzy_merge_junctions(
             }
         }
     }
-    Ok(jxns_out)
+    Ok(
+        jxns_out.into_iter().filter(|jxn|{
+            jxn.n_instances_dedup >= tool.min_n_observed && 
+            jxn.max_min_mapq      >= tool.min_sv_mapq
+        }).collect()
+    )
 }
 
 // Estimate the number of genome bp still present as the chromosome stem length on each side of a junction.

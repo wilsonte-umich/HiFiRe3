@@ -32,8 +32,10 @@ build.analyze_SVs_arcsTrack <- function(track, reference, coord, layout){
 
     # get junctions with >=1 node in window
     startSpinner(session, message = "building SVs arcs.")
-    jxns <- hf3_getFilteredJunctions(sourceId, coord)[isTruthy(chrom_index1_1) & isTruthy(chrom_index1_2)]
+    jxns <- hf3_getFilteredJunctions(sourceId, coord)
+    if (nrow(jxns) == 0) return(trackInfo(track, coord, layout, "no matching junctions in window"))
     startSpinner(session, message = "building SVs arcs..")
+    jxns <- jxns[isTruthy(chrom_index1_1) & isTruthy(chrom_index1_2)]
 
     # set plot configuration
     padding <- padding(track, layout)
@@ -42,6 +44,7 @@ build.analyze_SVs_arcsTrack <- function(track, reference, coord, layout){
     # Color_By  <- track$settings$get("SV_Arcs","Color_By")
     Line_Width  <- track$settings$get("SV_Arcs","Arc_Line_Width")
     Max_Y_BP    <- track$settings$get("SV_Arcs","Max_Y_BP")
+
     ymax <- switch(
         Max_Y_BP,
         window_width = diff(coord$range) * 0.51,

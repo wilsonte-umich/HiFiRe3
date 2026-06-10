@@ -35,6 +35,7 @@ actions:
         optionFamilies:
             - localization
             - targets
+            - SV
         resources:
             required:
                 total-ram: 24G

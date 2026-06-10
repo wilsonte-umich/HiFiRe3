@@ -340,7 +340,7 @@ pub struct FinalJunction {
     pub any_was_chimeric:    u8,  // integer bool; true if any jxn_failure_flag had a chimeric bit set
     any_was_not_chimeric:    u8,  // integer bool; true if any jxn_failure_flag did not have a chimeric bit set
     min_stem_length:         u32, // best stem length over all instances; thus, whether any instance was a high-quality detection
-    max_min_mapq:            u8,  // best min_mapq over all instances
+    pub max_min_mapq:            u8,  // best min_mapq over all instances
     min_max_divergence:      f32, // best max_divergence over all instances
     /* ------------------------------------------- */
     // additional junction properties that derive deterministically from nodes

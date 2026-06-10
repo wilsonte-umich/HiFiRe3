@@ -16,6 +16,7 @@ actions:
         optionFamilies:
             - targets
             - merge
+            - SV
         resources:
             required:
                 total-ram: 24G
