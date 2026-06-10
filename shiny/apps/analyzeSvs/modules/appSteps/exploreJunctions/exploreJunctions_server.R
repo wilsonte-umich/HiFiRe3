@@ -245,7 +245,7 @@ createSizePlot <- function(settings, plot) {
             col     = NA,
             border  = "black",
             lwd     = 1.25,
-            lty     = 2
+            lty     = 3
         )
     }
 
@@ -410,6 +410,7 @@ createOffsetPlot <- function(settings, plot, v) {
         settings$get("Offset_Plot","Max_Offset")
     )
     # initialize plot
+    lwd  <- settings$get("Points_and_Lines","Line_Width")
     dpi  <- settings$get("Offset_Plot","Dots_Per_Inch")
     ylim <- c(0, max(dd$y, na.rm = TRUE) * 1.05)
     layout <- plot$initializePng(dpi = dpi) %>% plot$initializeFrame(
@@ -435,8 +436,8 @@ createOffsetPlot <- function(settings, plot, v) {
             ytop    = ylim[2] / 1.025,
             col     = NA,
             border  = "black",
-            lwd     = 1.25,
-            lty     = 2
+            lwd     = lwd,
+            lty     = 3
         )
     }
 
@@ -456,7 +457,7 @@ createOffsetPlot <- function(settings, plot, v) {
                     x = c(d$x[i], d$x[i]),
                     y = c(ybottom, ytop),
                     col = color,
-                    lwd = 1.5
+                    lwd = lwd
                 )
                 rect(
                     xleft   = d$x[i] - 0.5,
@@ -464,7 +465,8 @@ createOffsetPlot <- function(settings, plot, v) {
                     ybottom = ybottom,
                     ytop    = ytop,
                     col     = color,
-                    border  = NA
+                    border  = NA,
+                    lwd = lwd
                 )
                 ybottom <- ytop
             }
@@ -478,7 +480,7 @@ createOffsetPlot <- function(settings, plot, v) {
                 x = 0:-maxRandomMH,
                 y = randomOffsetProbs * nJxnsInRandomWindow,
                 col = CONSTANTS$plotlyColors$black,
-                lwd = 2
+                lwd = lwd * 1.5
             )            
         }
 
@@ -506,7 +508,7 @@ createOffsetPlot <- function(settings, plot, v) {
     }
     plot$finishPng(layout)
 }
-offsetPlot <- function(id, xlim, lwd, v){
+offsetPlot <- function(id, xlim, v){
     settings <- offsetPlotSettings
     settings$Offset_Plot$Min_Offset$value <- xlim[[1]]
     settings$Offset_Plot$Max_Offset$value <- xlim[[2]]
@@ -534,7 +536,7 @@ offsetPlot <- function(id, xlim, lwd, v){
                 Right_Margin  = 6.25
             ),
             Points_and_Lines = list(
-                Line_Width = lwd
+                Line_Width = 1
             )
         )
     )
@@ -557,13 +559,11 @@ offsetPlot <- function(id, xlim, lwd, v){
 offsetPlotWide <- offsetPlot(
     id   = "offsetPlotWide",
     xlim = c(-210, 210),
-    lwd  = 1.5, 
     v    = c(seq(-1000, 1000, 100), -10, 10)
 )
 offsetPlotNarrow <- offsetPlot(
     id   = "offsetPlotNarrow",
     xlim = c(-21, 21),
-    lwd  = 3, 
     v    = c(seq(-100, 100, 10), c(-5, -2, -1))
 )
 
