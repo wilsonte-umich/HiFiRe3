@@ -16,7 +16,7 @@ sourceTypes: upload # ... and of the module(s) on which it depends
 # dependencies
 #----------------------------------------------------------------------
 packages: # required R packages
-    R: null
+    R: UpSetR
     Bioconductor: null
 
 ## optional data classes and UI modules this module will use

@@ -96,6 +96,16 @@ junctions_selected_both <- reactive({
         }
     ]
 })
+junctions_selected_both_allow_unselected <- reactive({
+    if (length(selectedJxnI$sizePlot) == 0 && length(selectedJxnI$offsetPlot) == 0) junctions_filtered() 
+    else junctions_filtered()[
+        jxnI %in% if(length(selectedJxnI$sizePlot) > 0 && length(selectedJxnI$offsetPlot) > 0){
+            intersect(selectedJxnI$sizePlot, selectedJxnI$offsetPlot)
+        } else {
+            c(selectedJxnI$sizePlot, selectedJxnI$offsetPlot)
+        }
+    ]
+})
 
 #----------------------------------------------------------------------
 # SV size distributions
@@ -396,6 +406,49 @@ createOffsetPlot <- function(settings, plot, v) {
         req(FALSE)
     }
     startSpinner(session, message = "plotting offsets")
+    xlim <- c(
+        settings$get("Offset_Plot","Min_Offset"),
+        settings$get("Offset_Plot","Max_Offset")
+    )
+
+    flags <- d[offset %between% xlim, 
+        .(n_jxns = .N), 
+        keyby = .(aln_failure_flag, jxn_failure_flag)
+    ][, .(
+        aln_failure_flag, jxn_failure_flag, n_jxns,
+        Mapq        = ifelse(bitwAnd(aln_failure_flag, hf3_alnFailureBits$Mapq)        == 0, 0, n_jxns),
+        # Divergence  = ifelse(bitwAnd(aln_failure_flag, hf3_alnFailureBits$Divergence)  == 0, 0, n_jxns),
+        # FlankLen    = ifelse(bitwAnd(aln_failure_flag, hf3_alnFailureBits$FlankLen)    == 0, 0, n_jxns),
+        # BaseQual    = ifelse(bitwAnd(aln_failure_flag, hf3_alnFailureBits$BaseQual)    == 0, 0, n_jxns),
+        Foldback = ifelse(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$FoldbackInv) == 0, 0, n_jxns),
+        LowQualIns  = ifelse(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$LowQualIns)  == 0, 0, n_jxns),
+        HasAdapter  = ifelse(bitwAnd(jxn_failure_flag, 16) == 0, 0, n_jxns),
+        SiteMatch   = ifelse(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$SiteMatch)   == 0, 0, n_jxns),
+        StemLength  = ifelse(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$StemLength)  == 0, 0, n_jxns),
+        AllPass   = ifelse(
+            bitwAnd(aln_failure_flag, hf3_alnFailureBits$Mapq) == 0 & jxn_failure_flag == 0,
+            n_jxns,
+            0
+        )
+    )][, .(
+        n_jxns      = sum(n_jxns),
+        Mapq        = sum(Mapq),
+        # Divergence  = sum(Divergence),
+        # FlankLen    = sum(FlankLen),
+        # BaseQual    = sum(BaseQual),
+        Foldback = sum(Foldback),
+        LowQualIns  = sum(LowQualIns),
+        HasAdapter  = sum(HasAdapter),
+        SiteMatch   = sum(SiteMatch),
+        StemLength  = sum(StemLength),
+        AllPass   = sum(AllPass)
+    )]
+    n_jxns <- flags$n_jxns
+    flags$n_jxns <- NULL
+    for (col in names(flags)) if (sum(flags[[col]]) == 0) {
+        flags[[col]] <- NULL
+    } 
+    flagNames <- names(flags)
 
     # aggregate by offset
     d <- d[, .(y = .N), keyby = .(
@@ -405,10 +458,6 @@ createOffsetPlot <- function(settings, plot, v) {
         jxnTypeI = hf3_junctions$bitsToIndex[jxn_type] + is_intergenomic)
     ]
     dd <- d[, .(y = sum(y)), keyby = .(x)]
-    xlim <- c(
-        settings$get("Offset_Plot","Min_Offset"),
-        settings$get("Offset_Plot","Max_Offset")
-    )
     # initialize plot
     lwd  <- settings$get("Points_and_Lines","Line_Width")
     dpi  <- settings$get("Offset_Plot","Dots_Per_Inch")
@@ -485,14 +534,14 @@ createOffsetPlot <- function(settings, plot, v) {
         }
 
         # event counts by type
-        d <- colSums(d[, .SD, .SDcols = jxnTypeIs_])
+        dd <- colSums(d[, .SD, .SDcols = jxnTypeIs_])
         inc <- ylim[2] / 10
         for(j in 1:length(jxnTypeIs_)) {
             color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[jxnTypeIs[j]]]]
             mtext(
                 text = paste(
                     hf3_junctions$indexToTypeLabel[jxnTypeIs[j]],
-                    sprintf("%5d", d[jxnTypeIs_[j]]),
+                    sprintf("%5d", dd[jxnTypeIs_[j]]),
                     sep = " "
                 ),
                 side = 4,
@@ -504,6 +553,40 @@ createOffsetPlot <- function(settings, plot, v) {
                 cex  = 0.8,
                 family = "monospace"
             )
+        }
+
+        # add flag count legend
+        Legend_Placement <- settings$get('Plot_Frame', 'Legend_Placement')
+        if (Legend_Placement != "none"){
+            if (Legend_Placement == "topleft"){
+                x   <- min(xlim)
+                adj <- c(0, 1)
+                flags <- sapply(1:ncol(flags), function(j){
+                    paste0(
+                        sprintf("%2d", round(flags[[j]] / n_jxns * 100)), "% ", 
+                        flagNames[[j]]
+                    )
+                })
+            } else {
+                x <- max(xlim)
+                adj <- c(1, 1)
+                flags <- sapply(1:ncol(flags), function(j){
+                    paste0(
+                        flagNames[[j]], " ",
+                        sprintf("%2d", round(flags[[j]] / n_jxns * 100)), "%" 
+                    )
+                })
+            }
+            text(
+                x = x * 0.95,
+                y = max(ylim) * 0.95,
+                labels = paste(flags, collapse = "\n"),
+                cex = 0.7,
+                adj = adj,
+                family = "mono",
+                font = 2,
+                NULL
+            )            
         }
     }
     plot$finishPng(layout)
@@ -519,7 +602,7 @@ offsetPlot <- function(id, xlim, v){
         create   = function(...) createOffsetPlot(..., plot, v), # a function or reactive that creates the plot as a png file using settings and helpers
         points   = FALSE, # set to TRUE to expose relevant plot options
         lines    = TRUE,
-        legend   = FALSE,
+        legend   = TRUE,
         margins  = TRUE,
         title    = TRUE,
         data     = FALSE,
@@ -565,6 +648,87 @@ offsetPlotNarrow <- offsetPlot(
     id   = "offsetPlotNarrow",
     xlim = c(-21, 21),
     v    = c(seq(-100, 100, 10), c(-5, -2, -1))
+)
+
+#----------------------------------------------------------------------
+# upset plot
+#----------------------------------------------------------------------
+upsetPlotSettings <- list(
+    Upset_Plot = list(
+        Vertical_Matrix_Fraction = list(
+            type  = "numericInput",
+            value = 0.4,
+            min   = 0.1,
+            max   = 0.9,
+            step  = 0.05
+        ),
+        Text_Scale = list(
+            type  = "numericInput",
+            value = 1,
+            min   = 0.5,
+            max   = 1.5,
+            step  = 0.05
+        ),
+        Show_Numbers = list(
+            type  = "checkboxInput",
+            value = FALSE
+        )
+    )
+)
+createUpsetPlot <- function() {
+    req(!input$suspendPlotting)
+    jxns <- junctions_selected_both_allow_unselected()
+    if(nrow(jxns) == 0) {
+        stopSpinner(session)
+        req(FALSE)
+    }
+    startSpinner(session, message = "plotting upset")
+
+    flags <- jxns[, .(
+        Mapq        = as.integer(bitwAnd(aln_failure_flag, hf3_alnFailureBits$Mapq) != 0),
+        # Divergence  = as.integer(bitwAnd(aln_failure_flag, hf3_alnFailureBits$Divergence) != 0),
+        # FlankLen    = as.integer(bitwAnd(aln_failure_flag, hf3_alnFailureBits$FlankLen) != 0),
+        # BaseQual    = as.integer(bitwAnd(aln_failure_flag, hf3_alnFailureBits$BaseQual) != 0),
+        Foldback = as.integer(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$FoldbackInv) != 0),
+        LowQualIns  = as.integer(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$LowQualIns)  != 0),
+        HasAdapter  = as.integer(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits[["HasAdapter ||"]]) != 0),
+        SiteMatch   = as.integer(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$SiteMatch)   != 0),
+        StemLength  = as.integer(bitwAnd(jxn_failure_flag, hf3_jxnFailureBits$StemLength)  != 0),
+        AllPass   = as.integer(
+            bitwAnd(aln_failure_flag, hf3_alnFailureBits$Mapq) == 0 & jxn_failure_flag == 0
+        )
+    )]
+    for (col in names(flags)) if (sum(flags[[col]]) == 0) {
+        flags[[col]] <- NULL
+    }
+
+    matrix_fraction <- upsetPlot$settings$get("Upset_Plot","Vertical_Matrix_Fraction")
+    text.scale      <- upsetPlot$settings$get("Upset_Plot","Text_Scale")
+    show.numbers    <- upsetPlot$settings$get("Upset_Plot","Show_Numbers")
+
+    upset <- UpSetR::upset(
+        flags,
+        sets = rev(names(flags)),
+        keep.order   = TRUE,
+        order.by     = "freq",
+        mb.ratio     = c(1 - matrix_fraction, matrix_fraction), # Ratio between matrix plot and main bar plot (Keep in terms of hundredths)
+        text.scale   = text.scale,
+        show.numbers = show.numbers, # Show numbers of intersection sizes above bars
+        NULL
+    ) 
+    stopSpinner(session)
+    print(upset)
+}
+upsetPlot <- staticPlotBoxServer(
+    'upsetPlot',
+    maxHeight = "400px",
+    points  = FALSE,
+    lines   = FALSE,
+    legend  = FALSE,
+    margins = FALSE,
+    title   = FALSE,
+    settings = upsetPlotSettings,
+    create = createUpsetPlot
 )
 
 #----------------------------------------------------------------------
@@ -797,7 +961,7 @@ cigars_rp <- reactive({
     })
 })
 
-output$readQualPlot <- renderPlot({
+readQualPlot <- function(){
     rp <- readPathExpandData()
     qual <- rp$qual[[1]]
     if (rp$seqStrand0 == BOTTOM_STRAND0) qual <- rev(qual)
@@ -816,11 +980,14 @@ output$readQualPlot <- renderPlot({
         xaxt = "n"
     )
     abline(h = seq(0, 50, 10), col = "grey80")
-    abline(v = c(rp$qryStart0s[[1]] + 1 - 0.5, rp$qryEnd1s[[1]] + 0.5), col = "black")
+    abline(v = c(rp$qryStart0s[[1]] + 1 - 0.5, rp$qryEnd1s[[1]] + 0.5), col = "black")    
+}
+output$readQualPlot <- renderPlot({
+    readQualPlot()
 }, height = dpi * 0.75, res = dpi)
 
 # plot the read to reference alignment in read coordinates
-output$refAlnPlot <- renderPlot({
+refAlnPlot <- function(){
     rp <- readPathExpandData()
     jxn <- junctionExpandData()[currReadI1()]
     cigars_rp <- cigars_rp()
@@ -871,8 +1038,28 @@ output$refAlnPlot <- renderPlot({
             if(cgg$op %in% c("M", "I", "S")) readOffset0 <- readOffset0 + cgg$n
             if(cgg$op %in% c("M", "D"))      refOffset0  <- refOffset0  + cgg$n * refMultiplier
         }
-    }
+    }    
+}
+output$refAlnPlot <- renderPlot({
+    refAlnPlot()
 }, height = dpi * 3, res = dpi)
+createSelectedJunctionPlots <- function() {
+    mat <- matrix(c(1, 2), nrow = 2, ncol = 1)
+    layout(mat, heights = c(1, 2)) 
+    readQualPlot() 
+    refAlnPlot()
+}
+selectedJunctionPlots <- staticPlotBoxServer(
+    'selectedJunctionPlots',
+    maxHeight = "400px",
+    points  = FALSE,
+    lines   = FALSE,
+    legend  = FALSE,
+    margins = FALSE,
+    title   = FALSE,
+    # settings = upsetPlotSettings,
+    create = createSelectedJunctionPlots
+)
 
 # provide a more human readable summary of the junction
 output$expandedJunctionSummary <- renderUI({
@@ -1050,6 +1237,8 @@ bookmarkObserver <- observe({
         sizePlot$settings$replace(bm$outcomes$sizePlotSettings)
         offsetPlotWide$settings$replace(bm$outcomes$offsetPlotWideSettings)
         offsetPlotNarrow$settings$replace(bm$outcomes$offsetPlotNarrowSettings)
+        upsetPlot$settings$replace(bm$outcomes$upsetPlotSettings)
+        selectedJunctionPlots$settings$replace(bm$outcomes$selectedJunctionPlotsSettings)
     }
     bookmarkObserver$destroy()
 })
@@ -1063,7 +1252,9 @@ list(
     outcomes = reactive({ list(
         sizePlotSettings = sizePlot$settings$all_(),
         offsetPlotWideSettings = offsetPlotWide$settings$all_(),
-        offsetPlotNarrowSettings = offsetPlotNarrow$settings$all_()
+        offsetPlotNarrowSettings = offsetPlotNarrow$settings$all_(),
+        upsetPlotSettings = upsetPlot$settings$all_(),
+        selectedJunctionPlotsSettings = selectedJunctionPlots$settings$all_()
     ) }),
     settingsObject = settings,
     junctions_filtered = junctions_filtered,

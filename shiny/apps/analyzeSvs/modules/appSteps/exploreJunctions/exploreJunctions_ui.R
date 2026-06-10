@@ -167,6 +167,16 @@ exploreJunctionsUI <- function(id, options) {
             )
         ),
         fluidRow(
+            staticPlotBoxUI(
+                ns('upsetPlot'), 
+                "Upset Plot, Filtered",
+                width = 12,
+                solidHeader = TRUE,
+                status = "primary",
+                collapsible = TRUE
+            )
+        ),
+        fluidRow(
             bufferedTableUI(
                 ns("junctionsTable"),
                 title = "Final Junctions, Filtered",
@@ -204,8 +214,14 @@ exploreJunctionsUI <- function(id, options) {
                         NULL
                     )
                 ),
-                plotOutput(ns("readQualPlot"), height = 96 * 0.75),
-                plotOutput(ns("refAlnPlot"),   height = 96 * 3),
+                # plotOutput(ns("readQualPlot"), height = 96 * 0.75),
+                # plotOutput(ns("refAlnPlot"),   height = 96 * 3),
+                staticPlotBoxUI(
+                    ns('selectedJunctionPlots'), 
+                    NULL,
+                    width = 12,
+                    solidHeader = FALSE
+                ),
                 fluidRow(
                     style = "margin: 10px; font-size: 1.2em;",
                     column(
