@@ -33,6 +33,10 @@ uploadTypes:
                 required: false
             filteringSitesTbi:
                 required: false
+            filteredInsertSizes:
+                required: false
+            filteredStemLengths:
+                required: false
             svAlignmentsBgz:
                 required: false
             svAlignmentsTbi:

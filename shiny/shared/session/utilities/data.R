@@ -410,6 +410,22 @@ hf3_getChromSize <- function(sourceId, chromIndex1_){
     hf3_chromIndex[[sourceId]][chrom_index1 == chromIndex1_, chrom_size]
 }
 
+# insert size and stem length reference distributions
+hf3_insertSizes <- list()  
+hf3_getInsertSizes <- function(sourceId){
+    if(is.null(hf3_insertSizes[[sourceId]])) {
+        hf3_insertSizes[[sourceId]] <<- list()
+        file <- getSourceFilePath(sourceId, "filteredInsertSizes")
+        hf3_insertSizes[[sourceId]]$insertSizes <<- if (length(file) > 0) {
+            x <- fread(file, col.names = c("type", "bin", "count"))
+            x <- x[type == "nonSV.projected"][order(bin)]
+            x$freq <- x$count / sum(x$count)
+            x
+        } else NULL
+    }
+    hf3_insertSizes[[sourceId]]
+}
+
 # genome excluded regions
 hf3_excludedRegions <- list()
 hf3_getExcludedRegions <- function(sourceId){

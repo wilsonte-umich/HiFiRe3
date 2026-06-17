@@ -493,33 +493,7 @@ createOffsetPlot <- function(settings, plot, v) {
     # add barplot
     d <- d[x %between% xlim]
     if(nrow(d) > 0) {
-        d <- dcast(d, x ~ jxnTypeI, value.var = "y", fun.aggregate = sum, fill = 0)
-        jxnTypeIs_ <- names(d)[2:ncol(d)]
-        jxnTypeIs  <- as.integer(jxnTypeIs_)
-        for(i in 1:nrow(d)) {
-            ybottom <- 0
-            for(jnxTypeI in jxnTypeIs){
-                ytop <- ybottom + d[i][[as.character(jnxTypeI)]]
-                if(ytop == ybottom) next
-                color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[jnxTypeI]]]
-                lines(# ensure at least a line is visible in case rectangle disappears in wide plot
-                    x = c(d$x[i], d$x[i]),
-                    y = c(ybottom, ytop),
-                    col = color,
-                    lwd = lwd
-                )
-                rect(
-                    xleft   = d$x[i] - 0.5,
-                    xright  = d$x[i] + 0.5,
-                    ybottom = ybottom,
-                    ytop    = ytop,
-                    col     = color,
-                    border  = NA,
-                    lwd = lwd
-                )
-                ybottom <- ytop
-            }
-        }
+        x <- barplotByJxnType(d, settings, 1)
 
         # random offset probabilities
         if(xlim[1] >= -21){
@@ -534,14 +508,14 @@ createOffsetPlot <- function(settings, plot, v) {
         }
 
         # event counts by type
-        dd <- colSums(d[, .SD, .SDcols = jxnTypeIs_])
+        dd <- colSums(x$d[, .SD, .SDcols = x$jxnTypeIs_])
         inc <- ylim[2] / 10
-        for(j in 1:length(jxnTypeIs_)) {
-            color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[jxnTypeIs[j]]]]
+        for(j in 1:length(x$jxnTypeIs_)) {
+            color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[x$jxnTypeIs[j]]]]
             mtext(
                 text = paste(
-                    hf3_junctions$indexToTypeLabel[jxnTypeIs[j]],
-                    sprintf("%5d", dd[jxnTypeIs_[j]]),
+                    hf3_junctions$indexToTypeLabel[x$jxnTypeIs[j]],
+                    sprintf("%5d", dd[x$jxnTypeIs_[j]]),
                     sep = " "
                 ),
                 side = 4,
@@ -648,6 +622,224 @@ offsetPlotNarrow <- offsetPlot(
     id   = "offsetPlotNarrow",
     xlim = c(-21, 21),
     v    = c(seq(-100, 100, 10), c(-5, -2, -1))
+)
+barplotByJxnType <- function(d, settings, binSize) {
+    lwd  <- settings$get("Points_and_Lines","Line_Width")
+    halfBinSize <- binSize / 2
+    d <- dcast(d, x ~ jxnTypeI, value.var = "y", fun.aggregate = sum, fill = 0)
+    jxnTypeIs_ <- names(d)[2:ncol(d)]
+    jxnTypeIs  <- as.integer(jxnTypeIs_)
+    for(i in 1:nrow(d)) {
+        ybottom <- 0
+        for(jnxTypeI in jxnTypeIs){
+            ytop <- ybottom + d[i][[as.character(jnxTypeI)]]
+            if(ytop == ybottom) next
+            color <- hf3_junctions$typeToColor[[hf3_junctions$indexToType[jnxTypeI]]]
+            lines(# ensure at least a line is visible in case rectangle disappears in wide plot
+                x = c(d$x[i], d$x[i]),
+                y = c(ybottom, ytop),
+                col = color,
+                lwd = lwd
+            )
+            rect(
+                xleft   = d$x[i] - halfBinSize,
+                xright  = d$x[i] + halfBinSize,
+                ybottom = ybottom,
+                ytop    = ytop,
+                col     = color,
+                border  = NA,
+                lwd = lwd
+            )
+            ybottom <- ytop
+        }
+    }
+    list(d = d, jxnTypeIs = jxnTypeIs, jxnTypeIs_ = jxnTypeIs_)
+}
+
+#----------------------------------------------------------------------
+# insert sizes plot
+#----------------------------------------------------------------------
+insertSizesPlotSettings <- list(
+    Insert_Sizes = list(
+        Max_Insert_Size = list(
+            type = "numericInput",
+            value = 0
+        ),
+        Max_Percent = list(
+            type = "numericInput",
+            value = 0
+        )
+    )
+)
+createInsertSizesPlot <- function() {
+    req(!input$suspendPlotting)
+    sizes <- hf3_getInsertSizes(sourceId())
+    if(is.null(sizes$insertSizes)) {
+        stopSpinner(session)
+        req(FALSE)
+    }
+    jxns <- junctions_selected_both_allow_unselected()
+    if(nrow(jxns) == 0) {
+        stopSpinner(session)
+        req(FALSE)
+    }
+    startSpinner(session, message = "plotting insert sizes")
+
+    binSize <- sizes$insertSizes$bin[2] - sizes$insertSizes$bin[1]
+    # chr [1:4937] ",15141," ",15660," ",11577," ",13640," ",21780," ",5491," ...
+    # THIS IS THE SLOW STEP
+    d <- do.call(rbind, lapply(1:nrow(jxns), function(i) {
+        x <- abs(as.numeric(unlist(strsplit(jxns$insert_sizes[i], ","))))
+        data.table(
+            bin = floor(x[2:length(x)] / binSize) * binSize,
+            jxn_type = jxns$jxn_type[i],
+            is_intergenomic = jxns$is_intergenomic[i]
+        )
+    }))
+    nInserts <- nrow(d)
+    d <- d[, 
+        .(y = .N / nInserts), 
+        keyby = .(
+            x = bin,
+            jxn_type = jxn_type, 
+            is_intergenomic = is_intergenomic,
+            jxnTypeI = hf3_junctions$bitsToIndex[jxn_type] + is_intergenomic
+        )
+    ]
+    dd <- d[, .(y = sum(y)), keyby = .(x)]
+    Max_Insert_Size <- insertSizesPlot$settings$get("Insert_Sizes","Max_Insert_Size")
+    if (Max_Insert_Size <= 0) Max_Insert_Size <- quantile(sizes$insertSizes$bin, 0.975)
+    Max_Percent <- insertSizesPlot$settings$get("Insert_Sizes","Max_Percent")
+    if (Max_Percent <= 0) Max_Percent <- max(dd$y, sizes$insertSizes$freq) * 100
+    xlim <- c(0, Max_Insert_Size)
+    ylim <- c(0, Max_Percent)
+    insertSizesPlot$initializeFrame(
+        xlim = xlim,
+        ylim = ylim,
+        xlab = "Insert Size",
+        ylab = "Junctions (%)",
+        xaxs = "i",
+        yaxs = "i"
+    )
+
+    # add barplot
+    d <- d[x %between% xlim]
+    lwd  <- insertSizesPlot$settings$get("Points_and_Lines","Line_Width")
+    if(nrow(d) > 0) {
+        d$y <- d$y * 100
+        barplotByJxnType(d, insertSizesPlot$settings, binSize)
+    }
+
+    # add reference insert sizes
+    insertSizesPlot$addLines(
+        x = sizes$insertSizes$bin,
+        y = sizes$insertSizes$freq * 100
+    )
+    stopSpinner(session)
+}
+insertSizesPlot <- staticPlotBoxServer(
+    'insertSizesPlot',
+    maxHeight = "400px",
+    points  = FALSE,
+    lines   = TRUE,
+    legend  = FALSE,
+    margins = FALSE,
+    title   = TRUE,
+    settings = insertSizesPlotSettings,
+    create = createInsertSizesPlot
+)
+
+#----------------------------------------------------------------------
+# stem lengths plot
+#----------------------------------------------------------------------
+stemLengthsPlotSettings <- list(
+    Stem_Lengths = list(
+        Max_Stem_Length = list(
+            type = "numericInput",
+            value = 0
+        ),
+        Max_Percent = list(
+            type = "numericInput",
+            value = 0
+        )
+    )
+)
+createStemLengthsPlotPlot <- function() {
+    req(!input$suspendPlotting)
+    sizes <- hf3_getInsertSizes(sourceId())
+    if(is.null(sizes$insertSizes)) {
+        stopSpinner(session)
+        req(FALSE)
+    }
+    jxns <- junctions_selected_both_allow_unselected()
+    if(nrow(jxns) == 0) {
+        stopSpinner(session)
+        req(FALSE)
+    }
+    startSpinner(session, message = "plotting stem lengths")
+    binSize <- sizes$insertSizes$bin[2] - sizes$insertSizes$bin[1]
+    # chr [1:4937] ",15141," ",15660," ",11577," ",13640," ",21780," ",5491," ...
+    # THIS IS THE SLOW STEP
+
+    d <- do.call(rbind, lapply(1:nrow(jxns), function(i) {
+        x <- abs(as.numeric(unlist(strsplit(jxns$min_stem_lengths[i], ","))))
+        data.table(
+            bin = floor(x[2:length(x)] / binSize) * binSize,
+            jxn_type = jxns$jxn_type[i],
+            is_intergenomic = jxns$is_intergenomic[i]
+        )
+    }))
+    nInserts <- nrow(d)
+    d <- d[, 
+        .(y = .N / nInserts), 
+        keyby = .(
+            x = bin,
+            jxn_type = jxn_type, 
+            is_intergenomic = is_intergenomic,
+            jxnTypeI = hf3_junctions$bitsToIndex[jxn_type] + is_intergenomic
+        )
+    ]
+    dd <- d[, .(y = sum(y)), keyby = .(x)]
+    Max_Stem_Length <- stemLengthsPlot$settings$get("Stem_Lengths","Max_Stem_Length")
+    if (Max_Stem_Length <= 0) Max_Stem_Length <- quantile(sizes$insertSizes$bin, 0.975)
+    Max_Percent <- stemLengthsPlot$settings$get("Stem_Lengths","Max_Percent")
+    if (Max_Percent <= 0) Max_Percent <- max(dd$y, sizes$insertSizes$freq) * 100
+    xlim <- c(0, Max_Stem_Length)
+    ylim <- c(0, Max_Percent)
+    stemLengthsPlot$initializeFrame(
+        xlim = xlim,
+        ylim = ylim,
+        xlab = "Min Stem Length",
+        ylab = "Junctions (%)",
+        xaxs = "i",
+        yaxs = "i"
+    )
+
+    # add barplot
+    d <- d[x %between% xlim]
+    lwd  <- stemLengthsPlot$settings$get("Points_and_Lines","Line_Width")
+    if(nrow(d) > 0) {
+        d$y <- d$y * 100
+        barplotByJxnType(d, stemLengthsPlot$settings, binSize)
+    }
+
+    # add reference insert sizes
+    stemLengthsPlot$addLines(
+        x = sizes$insertSizes$bin,
+        y = sizes$insertSizes$freq * 100
+    )
+    stopSpinner(session)
+}
+stemLengthsPlot <- staticPlotBoxServer(
+    'stemLengthsPlot',
+    maxHeight = "400px",
+    points  = FALSE,
+    lines   = TRUE,
+    legend  = FALSE,
+    margins = FALSE,
+    title   = TRUE,
+    settings = stemLengthsPlotSettings,
+    create = createStemLengthsPlotPlot
 )
 
 #----------------------------------------------------------------------
@@ -1237,6 +1429,8 @@ bookmarkObserver <- observe({
         sizePlot$settings$replace(bm$outcomes$sizePlotSettings)
         offsetPlotWide$settings$replace(bm$outcomes$offsetPlotWideSettings)
         offsetPlotNarrow$settings$replace(bm$outcomes$offsetPlotNarrowSettings)
+        insertSizesPlot$settings$replace(bm$outcomes$insertSizesPlotSettings)
+        stemLengthsPlot$settings$replace(bm$outcomes$stemLengthsPlotSettings)
         upsetPlot$settings$replace(bm$outcomes$upsetPlotSettings)
         selectedJunctionPlots$settings$replace(bm$outcomes$selectedJunctionPlotsSettings)
     }
@@ -1253,6 +1447,8 @@ list(
         sizePlotSettings = sizePlot$settings$all_(),
         offsetPlotWideSettings = offsetPlotWide$settings$all_(),
         offsetPlotNarrowSettings = offsetPlotNarrow$settings$all_(),
+        insertSizesPlotSettings = insertSizesPlot$settings$all_(),
+        stemLengthsPlotSettings = stemLengthsPlot$settings$all_(),
         upsetPlotSettings = upsetPlot$settings$all_(),
         selectedJunctionPlotsSettings = selectedJunctionPlots$settings$all_()
     ) }),
