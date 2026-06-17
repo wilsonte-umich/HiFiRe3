@@ -154,7 +154,8 @@ exploreJunctionsUI <- function(id, options) {
                 width = 6,
                 solidHeader = TRUE,
                 status = "primary",
-                collapsible = TRUE
+                collapsible = TRUE,
+                collapsed = FALSE
             ),
             mdiInteractivePlotBoxUI(
                 ns('offsetPlotNarrow'), 
@@ -163,7 +164,30 @@ exploreJunctionsUI <- function(id, options) {
                 width = 6,
                 solidHeader = TRUE,
                 status = "primary",
-                collapsible = TRUE
+                collapsible = TRUE,
+                collapsed = FALSE
+            )
+        ),
+        fluidRow(
+            staticPlotBoxUI(
+                ns('insertSizesPlot'), 
+                "Insert Sizes",
+                data = FALSE,
+                width = 6,
+                solidHeader = TRUE,
+                status = "primary",
+                collapsible = TRUE,
+                collapsed = TRUE
+            ),
+            staticPlotBoxUI(
+                ns('stemLengthsPlot'), 
+                "StemLengths",
+                data = FALSE,
+                width = 6,
+                solidHeader = TRUE,
+                status = "primary",
+                collapsible = TRUE,
+                collapsed = TRUE
             )
         ),
         fluidRow(
@@ -173,7 +197,8 @@ exploreJunctionsUI <- function(id, options) {
                 width = 12,
                 solidHeader = TRUE,
                 status = "primary",
-                collapsible = TRUE
+                collapsible = TRUE,
+                collapsed = TRUE
             )
         ),
         fluidRow(

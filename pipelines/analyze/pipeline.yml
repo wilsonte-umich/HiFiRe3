@@ -86,6 +86,12 @@ package:
             filteringSitesTbi:
                 type: txt.bgz.tbi
                 file: $FILTERING_SITES_FILE.tbi
+            filteredInsertSizes:
+                type: txt
+                file: $FILTERED_INSERT_SIZES_FILE
+            filteredStemLengths:
+                type: txt
+                file: $FILTERED_STEM_LENGTHS_FILE
             svAlignmentsBgz:
                 type: txt.bgz
                 file: $SV_ALIGNMENTS_FILE
