@@ -417,10 +417,11 @@ hf3_getInsertSizes <- function(sourceId){
         hf3_insertSizes[[sourceId]] <<- list()
         file <- getSourceFilePath(sourceId, "filteredInsertSizes")
         hf3_insertSizes[[sourceId]]$insertSizes <<- if (length(file) > 0) {
-            x <- fread(file, col.names = c("type", "bin", "count"))
-            x <- x[type == "nonSV.projected"][order(bin)]
-            x$freq <- x$count / sum(x$count)
-            x
+            sizes <- fread(file, col.names = c("type", "bin", "count"))
+            nonSvSizes <- sizes[type == "nonSV.projected"][order(bin)]
+            if(nrow(nonSvSizes) == 0) nonSvSizes <- sizes[type == "nonSV.actual"][order(bin)]
+            nonSvSizes$freq <- nonSvSizes$count / sum(nonSvSizes$count)
+            nonSvSizes
         } else NULL
     }
     hf3_insertSizes[[sourceId]]
