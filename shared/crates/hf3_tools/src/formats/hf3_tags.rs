@@ -1,9 +1,8 @@
-/// Keep track of HiFiRe3 SAM tags created, or to be retained, at
-/// various stages of HiFiRe3 data analysis.
+/// Keep track of HiFiRe3 SAM tags created, or to be retained, at various stages 
+/// of HiFiRe3 data analysis.
 /// 
-/// Not all tags are necessarily present on all reads, as some tags
-/// are only relevant to specific data types (e.g., ONT vs. PacBio)
-/// or read configurations.
+/// Not all tags are necessarily present on all reads, as some tags are only 
+/// relevant to specific data types (e.g., ONT vs. PacBio) or read configurations.
 
 /* -----------------------------------------------------------------
 map tag keys to SAM tag/aux prefixes
@@ -59,8 +58,8 @@ pub const SAMPLE_BIT: &str              = "sb:i:";   // bit-encoded sample index
 /* -----------------------------------------------------------------
 enumerate the tags added or retained at each analysis stage
 ----------------------------------------------------------------- */
-/// StageTags enumerate the analysis states at which SAM tags are
-/// added, or may be retained, in HiFiRe3 data processing stages.
+/// StageTags enumerate the analysis states at which SAM tags are added, or may 
+/// be retained, in HiFiRe3 data processing stages.
 pub enum StageTags {
     BaseCalling,
     Trimming,
@@ -124,8 +123,8 @@ impl StageTags {
     }
 
     /// Return a vector of SAM tags that may present and are to be retained 
-    /// after a specified analysis stage has completed, depending on the 
-    /// type of read data being analyzed.
+    /// after a specified analysis stage has completed, depending on the type of 
+    /// read data being analyzed.
     pub fn tags_after_stage(self) -> Vec<&'static str> {
         match self {
             Self::BaseCalling => vec![

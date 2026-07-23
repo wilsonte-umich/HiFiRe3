@@ -1,20 +1,36 @@
-//! Module to handle SNV/indel analysis according to expectations
-//! and encoding of HiFiRe3 libraries. 
+//! Module to handle SNV/indel analysis according to expectations and encoding 
+//! of HiFiRe3 libraries. 
 
 // modules 
+pub mod fragment;
 pub mod tags;
-pub mod pileup;
+pub mod simple_repeat;
 pub mod variant;
+pub mod consensus;
+pub mod encoding;
 
 // re-exports
-pub use pileup::*;
+pub use fragment::*;
+pub use simple_repeat::*;
 pub use variant::*;
+// pub use encoding::*;
 
 // dependencies
 use std::error::Error;
+use faimm::IndexedFasta;
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
 use genomex::genome::{Chroms, TargetRegions, Exclusions};
+use genomex::sequence::Aligner;
+
+/// type aliases
+type SampleBit = u32;
+type ChromName = String;
+type ChromIndex = u8;
+type ChromPos0 = u32;
+type ChromPos1 = u32; // as used for 0-based _exclusive_ end positions (same as 1-based ends)
+type ReadIndex = usize;
+type VariantBases = String;
 
 // constants
 pub_key_constants!(
@@ -23,8 +39,8 @@ pub_key_constants!(
     LIBRARY_TYPE
 );
 
-/// Ensure that PacBio SNV analysis is performed on a library from 
-/// the PacBioStrand sequencing platform.
+/// Ensure that PacBio SNV analysis is performed on a library from the 
+/// PacBioStrand sequencing platform.
 pub fn check_pacbio_strand(tool: &str, cfg: &mut Config) -> Result<(), Box<dyn Error>> {
     cfg.set_string_env(&[SEQUENCING_PLATFORM, LIBRARY_TYPE]);
     let sequencing_platform = cfg.get_string(SEQUENCING_PLATFORM);
@@ -39,8 +55,8 @@ pub fn check_pacbio_strand(tool: &str, cfg: &mut Config) -> Result<(), Box<dyn E
     Ok(())
 }
 
-/// The SnvAnalysisTool collects structs and methods for SNV analysis
-/// at the genome level after all chromosomes have been processed.
+/// SnvAnalysisTool collects tools for SNV analysis shared with all chromosome 
+/// workers.
 pub struct SnvAnalysisTool {
 
     // global configuration parameters
@@ -50,35 +66,33 @@ pub struct SnvAnalysisTool {
     pub chroms:     Chroms,
     pub targets:    TargetRegions,
     pub exclusions: Exclusions,
+    pub fa:         IndexedFasta,
 }
 
-/// The SnvChromWorker tool collects structs and methods 
-/// for SNV analysis while processing a single chromosome.
+/// SnvChromWorker collects tools for SNV analysis that are specific to 
+/// processing of a single specific chromosome in parallel.
 pub struct SnvChromWorker{
 
     // chromosome parsing
-    pub chrom:       String,
-    pub chrom_index: u8,
-
-    // the level of reads and bases to include
-    pub include_all_reads: bool,
-    pub min_n_passes:       u8,
-    pub min_snv_indel_qual: usize,
+    pub chrom:       ChromName,
+    pub chrom_index: ChromIndex,
+    pub chrom_tid:   usize,
+    pub simple_repeats: SimpleRepeats,
 
     // data structures for chromosome processing
-    pub pileup:   ChromPileup,
-    pub variants: ChromVariants,
+    pub aligner: Aligner,
+    // pub encodings: ReadEncodings,
 
     // output file paths
-    pub pileup_file_path:   String,
-    pub variants_file_path: String,
+    pub variants_file_path:  String,
+    pub encodings_file_path: String,
 }
 
-// SnvChromWorkerData enum allows difference types of metadata to be
-// trasmitted to the main thread for aggregation.
+// SnvChromWorkerData enum allows difference types of metadata to be trasmitted 
+// to the main thread for aggregation.
 pub enum SnvChromWorkerData {
     TotalAlnCount(usize),
-    ErrorCorrectedAlignmentCount((String, usize)),
-    PileupMetadata(PileupMetadata),
-    VariantMetadata(VariantMetadata),
+    UsableAlnCount((ChromName, usize)),
+    // VariantMetadata(VariantMetadata),
+    // EncodingMetadata(EncodingMetadata),
 }

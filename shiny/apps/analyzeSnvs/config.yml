@@ -27,14 +27,18 @@ uploadTypes:
                 required: false
             exclusionsBed:
                 required: true
-            allReadsPileupBgz:
-                required: true
-            allReadsPileupTbi:
-                required: true
-            allReadsVariantsBgz:
-                required: true
-            allReadsVariantsTbi:
-                required: true
+            # allReadsPileupBgz:
+            #     required: true
+            # allReadsPileupTbi:
+            #     required: true
+            # allReadsVariantsBgz:
+            #     required: true
+            # allReadsVariantsTbi:
+            #     required: true
+            # allReadsEncodingsBgz:
+            #     required: true
+            # allReadsEncodingsTbi:
+            #     required: true
             errorCorrectedPileupBgz:
                 required: true
             errorCorrectedPileupTbi:
@@ -42,6 +46,10 @@ uploadTypes:
             errorCorrectedVariantsBgz:
                 required: true
             errorCorrectedVariantsTbi:
+                required: true
+            errorCorrectedEncodingsBgz:
+                required: true
+            errorCorrectedEncodingsTbi:
                 required: true
 #----------------------------------------------------------------------
 # labels and definitions for all sequential analysis steps shown in sidebar
@@ -58,10 +66,12 @@ uploadTypes:
 appSteps:
     upload: # nearly always the 1st step of every app
         module: sourceFileUpload
-    exploreVariants:
-        module: exploreVariants
-    browser:
-        module: genomex-mdi-tools//trackBrowser
-        # options:
-        #     tracks:
-        #         - RE_sites
+    summarizeLibraries:
+        module: summarizeLibraries
+    exploreFragments:
+        module: exploreFragments
+    # browser:
+    #     module: genomex-mdi-tools//trackBrowser
+    #     # options:
+    #     #     tracks:
+    #     #         - RE_sites

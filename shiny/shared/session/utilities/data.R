@@ -315,37 +315,67 @@ hf3_bgzColumns <- list(
         qual              = "character"
     ),
     allReadsPileupBgz = c(
-        chrom_index1 = "integer",
-        start        = "integer",
-        end          = "integer",
-        M            = "integer",
-        A            = "integer",
-        C            = "integer",
-        G            = "integer",
-        T            = "integer",
-        N            = "integer",
-        D            = "integer",
-        I            = "integer",
-        D_allowed    = "integer",
-        I_allowed    = "integer"
+        chrom_index1 = "integer", # 1
+        start        = "integer", # 2
+        end          = "integer", # 3
+        M            = "integer", # 4
+        A            = "integer", # 5
+        C            = "integer", # 6
+        G            = "integer", # 7
+        T            = "integer", # 8
+        N            = "integer", # 9
+        D            = "integer", # 10
+        I            = "integer", # 11
+        D_allowed    = "integer", # 12
+        I_allowed    = "integer"  # 13
     ),
     allReadsVariantsBgz = c(
-        chrom_index1 = "integer",
-        start0       = "integer",
-        n_ref_bases  = "integer",
-        alt_bases    = "character",
-        count        = "integer",
-        coverage     = "integer",
-        sample_bits  = "integer",
-        n_samples    = "integer",
-        max_n_passes = "integer",
-        any_allowed  = "integer",
-        all_allowed  = "integer"
+        chrom_index1 = "integer", # 1
+        start0       = "integer", # 2
+        n_ref_bases  = "integer", # 3
+        alt_bases    = "character", # 4
+        count        = "integer", # 5
+        coverage     = "integer", # 6
+        sample_bits  = "integer", # 7
+        n_samples    = "integer", # 8
+        max_n_passes = "integer", # 9
+        any_allowed  = "integer", # 10
+        all_allowed  = "integer", # 11
+        simple_repeat= "integer", # 12
+        qnames       = "character"# 13
+    ),
+    allReadsEncodingsBgz = c(
+        chrom_index1  = "integer", # 1
+        start0        = "integer", # 2
+        end1          = "integer",
+        n_reads       = "integer",
+        n_match       = "integer",
+        n_alt         = "integer",
+        n_masked      = "integer",
+        n_del         = "integer",
+        n_ins         = "integer",
+        n_alt_high_qual = "integer",
+        n_reverse     = "integer",
+        n_matches      = "character",
+        n_alts         = "character",
+        n_maskeds      = "character",
+        n_dels         = "character",
+        n_inss         = "character",
+        n_alt_high_quals = "character",
+        read_start0s   = "character",
+        strands        = "character",
+        encodings      = "character",
+        insertions     = "character",
+        sample_bits    = "integer",
+        sample_bitss   = "character",
+        qnames         = "character",
+        seq            = "character"
     )
 )
-hf3_bgzColumns$svJunctions2Bgz           <- hf3_bgzColumns$svJunctions1Bgz
-hf3_bgzColumns$errorCorrectedPileupBgz   <- hf3_bgzColumns$allReadsPileupBgz
-hf3_bgzColumns$errorCorrectedVariantsBgz <- hf3_bgzColumns$allReadsVariantsBgz
+hf3_bgzColumns$svJunctions2Bgz            <- hf3_bgzColumns$svJunctions1Bgz
+hf3_bgzColumns$errorCorrectedPileupBgz    <- hf3_bgzColumns$allReadsPileupBgz
+hf3_bgzColumns$errorCorrectedVariantsBgz  <- hf3_bgzColumns$allReadsVariantsBgz
+hf3_bgzColumns$errorCorrectedEncodingsBgz <- hf3_bgzColumns$allReadsEncodingsBgz
 
 # column display definitions
 hf3_bgzColumns_display <- list(
@@ -387,6 +417,12 @@ hf3_getSampleNames <- Vectorize(function(sourceId, sampleBits_, as_string = TRUE
     if(as_string) sample_names <- paste0(sample_names, collapse = " ")
     sample_names
 })
+hf3_sample_bits <- function(sourceId){
+    if(is.null(hf3_sampleIndex[[sourceId]])) {
+        hf3_sampleIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "samplesFile"))
+    }  
+    hf3_sampleIndex[[sourceId]]$sample_bit
+}
 
 # chrom to chromIndex conversion for bgz queries
 # simple cache, sessionCache not used

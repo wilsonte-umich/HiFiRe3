@@ -25,6 +25,22 @@ if [ ! -f $GENOME_EXCLUSIONS_BED ]; then
         > $GENOME_EXCLUSIONS_BED
 fi
 
+# concatenate simple repeats
+if [ ! -f $GENOME_REPEAT_MASKER_BED ]; then
+    echo "concatenating repeat masker simple repeats bed"
+    cat \
+        <(zcat $GENOME1_REPEAT_MASKER_BED | awk 'BEGIN{OFS="\t"}{$1 = $1"_'$GENOME1'"; print $0 }') \
+        <(zcat $GENOME2_REPEAT_MASKER_BED | awk 'BEGIN{OFS="\t"}{$1 = $1"_'$GENOME2'"; print $0 }') |
+        gzip -c > $GENOME_REPEAT_MASKER_BED
+fi
+if [ ! -f $GENOME_SIMPLE_REPEAT_BED ]; then
+    echo "concatenating tandem repeats finder simple repeats bed"
+    cat \
+        <(zcat $GENOME1_SIMPLE_REPEAT_BED | grep -v chromStart | awk 'BEGIN{OFS="\t"}{$1 = $1"_'$GENOME1'"; print $0 }') \
+        <(zcat $GENOME2_SIMPLE_REPEAT_BED | grep -v chromStart | awk 'BEGIN{OFS="\t"}{$1 = $1"_'$GENOME2'"; print $0 }') |
+        gzip -c > $GENOME_SIMPLE_REPEAT_BED
+fi
+
 # concatenate gene annotations
 if [ ! -f $GENES_BED ]; then
     echo "concatenating genes bed"

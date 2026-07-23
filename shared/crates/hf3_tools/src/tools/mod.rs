@@ -19,5 +19,5 @@ pub mod analyze_svs;           // analyze chrom-level BAM files then aggregate S
 pub mod merge_svs;             // combine final junctions files across different library types
 
 // single-nucleotide variant/indel analysis
-pub mod split_bam_by_chrom_snv; // create temporary chrom-level BAM files for SNV/indel analysis
-pub mod analyze_snvs;           // analyze chrom-level BAM files then aggregate SNV/indel data
+pub mod split_bam_by_chrom_snv;   // create temporary chrom-level BAM files for SNV/indel analysis
+pub mod analyze_snvs;             // analyze chrom-level BAM files then aggregate SNV/indel data

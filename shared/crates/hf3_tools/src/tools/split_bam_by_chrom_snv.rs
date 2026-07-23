@@ -1,12 +1,13 @@
-//! Split input name-sorted BAM file(s) into temporary per-chromosome BAM 
-//! files based on the chromosome of each alignment. Unlike for SVs,
-//! alignments from multi-alignment reads may be dispatched to different 
-//! files.
+//! Split input name-sorted BAM file(s) into temporary per-chromosome BAM files 
+//! based on the chromosome of each alignment. Unlike for SVs, only reads with
+//! single ~end-to-end alignments are printed and used for SNV calling.
 //! 
-//! Output only includes usable on-target PacBioStrand reads, as defined 
-//! by the presence of the minimap2 cs tag.
+//! Output only includes usable on-target duplex PacBioStrand reads, as defined 
+//! by the presence of the minimap2 `cs:Z:` and HiFiRe3 `dt:i:` tags, with the 
+//! requested minimum number of sequencing passes per insert to enforce duplex
+//! basecalling accuracy.
 //! 
-//! Support multiple BAM files for multi-sample variant calling.
+//! Support multiple input BAM files for multi-sample variant calling.
 
 // dependencies
 use std::error::Error;
@@ -18,7 +19,7 @@ use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
 use mdi::OutputFile;
 use genomex::genome::{Chroms, TargetRegions};
-use genomex::bam::qual::median_qual_aln;
+use genomex::bam::{tags as bam_tags, qual::median_qual_aln, cigar::{get_clip_left, get_clip_right}};
 use crate::formats::hf3_tags::*;
 use crate::snvs::check_pacbio_strand;
 
@@ -29,6 +30,7 @@ pub_key_constants!(
     N_CPU
     IS_COMPOSITE_GENOME
     MIN_AVG_BASE_QUAL
+    MIN_N_PASSES
     NAME_BAM_FILES
     INDEX_FILE_PREFIX_WRK
     SNV_SAMPLES_FILE
@@ -42,8 +44,10 @@ pub_key_constants!(
     N_BASES_BY_SAMPLE
 );
 const CS_TAG: &[u8] = DIFFERENCE_STRING.as_bytes();
+const DT_TAG: &[u8] = STRAND_DIFFERENCE_TYPES.as_bytes();
 const SB_TAG: &[u8] = SAMPLE_BIT.as_bytes();
-const MIN_MAPQ: u8  = 50; // TODO: expose as option if also done so for strand_merger
+const MIN_MAPQ: u8  = 50; // TODO: expose as options?
+const MAX_CLIP: u32 = 25;
 
 // main function called by xxx_tools main()
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -52,9 +56,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut cfg = Config::new();
     cfg.set_u32_env(&[N_CPU]);
     cfg.set_bool_env(&[IS_COMPOSITE_GENOME]);
-    cfg.set_u8_env(&[MIN_AVG_BASE_QUAL]);
+    cfg.set_u8_env(&[MIN_AVG_BASE_QUAL, MIN_N_PASSES]);
     cfg.set_string_env(&[NAME_BAM_FILES, INDEX_FILE_PREFIX_WRK, SNV_SAMPLES_FILE]);
     let min_avg_base_qual = *cfg.get_u8(MIN_AVG_BASE_QUAL);
+    let min_n_passes      = *cfg.get_u8(MIN_N_PASSES);
 
     // validate we are working with the expected read data type
     check_pacbio_strand(TOOL, &mut cfg)?;
@@ -131,6 +136,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     &header_view, 
                     is_composite, 
                     min_avg_base_qual,
+                    min_n_passes,
                     &mut writers, 
                     &mut w.ctrs, 
                     sample_bit, 
@@ -159,6 +165,7 @@ fn print_aln(
     header_view:  &HeaderView,
     is_composite: bool,
     min_avg_base_qual: u8,
+    min_n_passes:      u8,
     writers:      &mut FxHashMap<u32, Writer>,
     ctrs:         &mut Counters,
     sample_bit:   u32,
@@ -166,40 +173,55 @@ fn print_aln(
 ) -> Result<(), Box<dyn Error>> {
     ctrs.increment(N_ALNS);
 
-    // skip unmapped reads
-    // rare mapped reads lack a cs tag, so the presence of a cs tag is the most specific criterion
-    if let Some(_cs) = aln.aux(CS_TAG).ok() { 
+    // filters below are roughly ordered by likelihood to hit and computational cost
 
-        // skip low quality alignments
-        if aln.mapq() < MIN_MAPQ || 
-           median_qual_aln(aln) < min_avg_base_qual { 
-            return Ok(()); 
-        }
+    // skip low confidence alignments, including unmapped reads
+    if aln.mapq() < MIN_MAPQ || 
 
-        // skip reads in untargeted samples that map to other than nuclear chromosomes
-        let tid = aln.tid();
-        if let Some(writer) = writers.get_mut(&(tid as u32)){
-            ctrs.increment(N_USABLE_ALNS);
-            ctrs.increment_keyed(N_ALNS_BY_SAMPLE, sample_name);
+    // skip non-duplex reads used for SV calling but not SNV calling  
+        !aln.aux(DT_TAG).is_ok() ||
 
-            // add the sample bit tag for multi-sample comparison
-            aln.push_aux(SB_TAG, Aux::U32(sample_bit)).unwrap();
+    // require a minimum number of PacBio passes in duplex reads
+        bam_tags::get_tag_u8_default(aln, PACBIO_EFF_COVERAGE, 0) < min_n_passes || 
+    
+    // rare mapped reads lack a minimap2 cs tag for unknown reasons
+        !aln.aux(CS_TAG).is_ok() ||
 
-            // commit on-target reads to temporary BAM files
-            writer.write(aln)?; 
+    // require single ~end-to-end alignment on reads, which excludes:
+    //    - SV-containing reads
+    //    - reads with overly large end clips relative to their outermost RE sites
+        get_clip_left( aln) > MAX_CLIP ||
+        get_clip_right(aln) > MAX_CLIP ||
 
-            // increment counters
-            let cigar_view = aln.cigar();
-            let n_bases = cigar_view.end_pos() as usize - aln.pos() as usize;
-            ctrs.add_to(N_BASES, n_bases); 
-            ctrs.add_to_keyed(N_BASES_BY_SAMPLE, sample_name, n_bases);
-            if is_composite {
-                let chrom = unsafe{ from_utf8_unchecked(header_view.tid2name(aln.tid() as u32))}; 
-                let genome_name = chrom.split_once('_').unwrap().1; // e.g., chr1_hs1
-                ctrs.increment_keyed(N_ALNS_BY_GENOME, genome_name);
-                ctrs.add_to_keyed(N_BASES_BY_GENOME,  genome_name, n_bases);
-            }
-        }
+    // skip reads with low average base quality  
+        median_qual_aln(aln) < min_avg_base_qual
+    {
+        return Ok(()); 
+    }
+
+    // skip reads in untargeted samples that map to other than nuclear chromosomes
+    let tid = aln.tid() as u32;
+    if let Some(writer) = writers.get_mut(&(tid)){
+        ctrs.increment(N_USABLE_ALNS);
+        ctrs.increment_keyed(N_ALNS_BY_SAMPLE, sample_name);
+
+        // add the sample bit tag for multi-sample comparison
+        aln.push_aux(SB_TAG, Aux::U32(sample_bit)).unwrap();
+
+        // commit on-target reads to temporary BAM files
+        writer.write(aln)?; 
+
+        // increment counters
+        let cigar_view = aln.cigar();
+        let n_bases = cigar_view.end_pos() as usize - aln.pos() as usize;
+        ctrs.add_to(N_BASES, n_bases); 
+        ctrs.add_to_keyed(N_BASES_BY_SAMPLE, sample_name, n_bases);
+        if is_composite {
+            let chrom = unsafe{ from_utf8_unchecked(header_view.tid2name(tid))}; 
+            let genome_name = chrom.split_once('_').unwrap().1; // e.g., chr1_hs1
+            ctrs.increment_keyed(N_ALNS_BY_GENOME, genome_name);
+            ctrs.add_to_keyed(N_BASES_BY_GENOME,  genome_name, n_bases);
+        }                
     }
     Ok(())
 }

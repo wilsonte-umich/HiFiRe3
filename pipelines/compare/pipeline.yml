@@ -127,18 +127,24 @@ package:
             exclusionsBed:
                 type: bed
                 file: $GENOME_EXCLUSIONS_BED
-            allReadsPileupBgz:
-                type: bed.bgz
-                file: $SNV_ALL_READS_PILEUP_BGZ
-            allReadsPileupTbi:
-                type: bed.bgz.tbi
-                file: $SNV_ALL_READS_PILEUP_BGZ.tbi
-            allReadsVariantsBgz:
-                type: txt.bgz
-                file: $SNV_ALL_READS_VARIANTS_BGZ
-            allReadsVariantsTbi:
-                type: txt.bgz.tbi
-                file: $SNV_ALL_READS_VARIANTS_BGZ.tbi
+            # allReadsPileupBgz:
+            #     type: bed.bgz
+            #     file: $SNV_ALL_READS_PILEUP_BGZ
+            # allReadsPileupTbi:
+            #     type: bed.bgz.tbi
+            #     file: $SNV_ALL_READS_PILEUP_BGZ.tbi
+            # allReadsVariantsBgz:
+            #     type: txt.bgz
+            #     file: $SNV_ALL_READS_VARIANTS_BGZ
+            # allReadsVariantsTbi:
+            #     type: txt.bgz.tbi
+            #     file: $SNV_ALL_READS_VARIANTS_BGZ.tbi
+            # allReadsEncodingsBgz:
+            #     type: txt.bgz
+            #     file: $SNV_ALL_READS_ENCODINGS_BGZ
+            # allReadsEncodingsTbi:
+            #     type: txt.bgz.tbi
+            #     file: $SNV_ALL_READS_ENCODINGS_BGZ.tbi
             errorCorrectedPileupBgz:
                 type: bed.bgz
                 file: $SNV_ERROR_CORRECTED_PILEUP_BGZ
@@ -151,6 +157,12 @@ package:
             errorCorrectedVariantsTbi:
                 type: txt.bgz.tbi
                 file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ.tbi
+            errorCorrectedEncodingsBgz:
+                type: txt.bgz
+                file: $SNV_ERROR_CORRECTED_ENCODINGS_BGZ
+            errorCorrectedEncodingsTbi:
+                type: txt.bgz.tbi
+                file: $SNV_ERROR_CORRECTED_ENCODINGS_BGZ.tbi
 # container:
 #     supported: false    # set to true if you maintain a container registry for this pipeline [false]
 #     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]

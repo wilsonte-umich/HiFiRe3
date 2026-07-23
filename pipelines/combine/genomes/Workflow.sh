@@ -7,6 +7,8 @@ export GENOME1_METADATA_DIR=${GENOME1_DIR}/metadata
 export GENOME1_METADATA_PREFIX=${GENOME1_METADATA_DIR}/${GENOME1}
 export GENOME1_GAPS_FILE=${GENOME1_METADATA_PREFIX}.gaps.txt
 export GENOME1_EXCLUSIONS_BED=${GENOME1_METADATA_PREFIX}.exclusions.bed
+export GENOME1_REPEAT_MASKER_BED=${GENOME1_METADATA_PREFIX}.rmsk.simple_repeat.bed.gz
+export GENOME1_SIMPLE_REPEAT_BED=${GENOME1_METADATA_PREFIX}.trf.simple_repeat.bed.gz
 #------------------------------------------------------------------------
 export GENOME1_ANNOTATIONS_DIR=${GENOME1_DIR}/annotations
 export GENES1_BED=${GENOME1_ANNOTATIONS_DIR}/${GENOME1}.ncbiRefSeq.genes.bed.gz
@@ -21,6 +23,8 @@ export GENOME2_METADATA_DIR=${GENOME2_DIR}/metadata
 export GENOME2_METADATA_PREFIX=${GENOME2_METADATA_DIR}/${GENOME2}
 export GENOME2_GAPS_FILE=${GENOME2_METADATA_PREFIX}.gaps.txt
 export GENOME2_EXCLUSIONS_BED=${GENOME2_METADATA_PREFIX}.exclusions.bed
+export GENOME2_REPEAT_MASKER_BED=${GENOME2_METADATA_PREFIX}.rmsk.simple_repeat.bed.gz
+export GENOME2_SIMPLE_REPEAT_BED=${GENOME1_METADATA_PREFIX}.trf.simple_repeat.bed.gz
 #------------------------------------------------------------------------
 export GENOME2_ANNOTATIONS_DIR=${GENOME2_DIR}/annotations
 export GENES2_BED=${GENOME2_ANNOTATIONS_DIR}/${GENOME2}.ncbiRefSeq.genes.bed.gz

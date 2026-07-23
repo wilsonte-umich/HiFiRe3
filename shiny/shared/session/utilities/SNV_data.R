@@ -2,7 +2,6 @@
 # caller must call stopSpinner()
 snvData_create <- "asNeeded"
 
-
 # get track data
 hf3_getPileup <- function(sourceId, coord, readType){
     if(readType == "error_corrected"){
@@ -17,6 +16,71 @@ hf3_getVariants <- function(sourceId, coord, readType){
     } else {
         hf3_getTrackData_bgz(sourceId, "allReadsVariantsBgz", coord, use_chrom = FALSE, debug = FALSE)
     }
+}
+hf3_getEncodings <- function(sourceId, coord, readType){
+    if(readType == "error_corrected"){
+        hf3_getTrackData_bgz(sourceId, "errorCorrectedEncodingsBgz", coord, use_chrom = FALSE, debug = FALSE)
+    } else {
+        hf3_getTrackData_bgz(sourceId, "allReadsEncodingsBgz", coord, use_chrom = FALSE, debug = FALSE)
+    }
+}
+
+# get cached data, full tables
+hf3_cached_create <- "asNeeded"
+hf3_getVariants_cached <- function(sourceId){
+    fileType <-"errorCorrectedVariantsBgz"
+    sessionCache$get(
+        fileType, 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create,
+        createFn = function(...) {
+            startSpinner(session, message = "loading variants")
+            dataFilePath <- getSourceFilePath(sourceId, fileType)
+            d <- fread(
+                cmd = paste("zcat", dataFilePath),
+                col.names  =  names(hf3_bgzColumns[[fileType]]), 
+                colClasses = unname(hf3_bgzColumns[[fileType]])
+            )
+            d[, ":="(
+                n_alt_bases = nchar(alt_bases),
+                vaf = count / coverage
+            )]
+            d[, ":="(
+                is_snp = n_ref_bases == 1 & n_ref_bases == n_alt_bases,
+                is_mnp = n_ref_bases > 1  & n_ref_bases == n_alt_bases,
+                is_ins = n_ref_bases == 0,
+                is_del = n_alt_bases == 0,
+                vaf_bin = floor(vaf * 51) / 51
+            )]
+            d
+        }  
+    )$value
+}
+hf3_getEncodings_cached <- function(sourceId, coord){
+    fileType <-"errorCorrectedEncodingsBgz"
+    sessionCache$get(
+        fileType, 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create,
+        createFn = function(...) {
+            startSpinner(session, message = "loading encodings")
+            dataFilePath <- getSourceFilePath(sourceId, fileType)
+            d <- fread(
+                cmd = paste("zcat", dataFilePath),
+                col.names  =  names(hf3_bgzColumns[[fileType]]), 
+                colClasses = unname(hf3_bgzColumns[[fileType]])
+            )
+            d[, ":="(
+                n_bases = end1 - start0,
+                n_bases_bin = floor((end1 - start0) / 250) * 250
+            )]
+            d
+        }  
+    )$value
 }
 
 # varTypeIs <- list(
