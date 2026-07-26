@@ -2,9 +2,9 @@
 //! in the app.
 
 // modules
-mod read;
+mod fragment;
 mod variant;
 
 // re-exports
-pub use read::*;
+pub use fragment::*;
 pub use variant::*;

@@ -1,6 +1,9 @@
 
 // modules
 
+// general type aliases
+pub mod type_aliases;
+
 // ONT read processing
 pub mod trim_ont;     // the main trimming tool for HiFiRe3 ONT basecalling
 pub mod reformat_ont; // alternative to reformat legacy basecall and trim files

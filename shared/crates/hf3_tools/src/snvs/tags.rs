@@ -35,7 +35,7 @@
 // dd:Z  :  =  *  ^     !  +  -  #    ?  >  <  &
 
 // dependencies
-use crate::snvs::ReferenceVariant;
+use genomex::sequence::Alignment;
 use super::*;
 
 // strand_merger outcome flag bits
@@ -76,33 +76,176 @@ pub const HETERODUP_SUBS_THIS_REF:     &str = ">"; // this.seq base (listed firs
 pub const HETERODUP_SUBS_PREV_REF:     &str = "<"; // prev.seq base (listed second in the op value) matched the reference base
 pub const HETERODUP_SUBS_NEITHER_REF:  &str = "&"; // heteroduplex substitutions that DID NOT match reference on either strand 
 
+// variant calling parameters
+const INDEL_FLANK_BASES: usize = 2; // calculate indel base quality including this many bases on either side of the event
+const MIN_SNV_INDEL_QUAL: u8 = 27;
+
+/// The types of values found in a `dd:Z:` tag mask.
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DdMaskType {
+    Homoduplex = 0,
+    EndClipped = 1,
+    UnresolvedHeteroduplex = 2,
+    CorrectedToReference = 3,
+}
+
 // support for SNV consensus building
 impl SnvChromWorker {
 
-    /// Process a cs:Z:tag to add a read to the growing fragment variant list. 
-    pub fn fill_fragment_variants(
-        &self,
-        fvars: &mut FragmentReferenceVariants,
-        read_i: ReadIndex,
-        aln_start0: u32,
-        cs: &str,
-    ) { 
-        let mut ref_pos0 = aln_start0;
-        let mut var_ref_pos0: Option<u32> = None;
-        let mut n_ref_bases: u32 = 0;
-        let mut alt_bases: String = String::with_capacity(128);
-        let mut allowed = true;
-        let mut chars = cs.chars();
+    /// Convert a `dd:Z:` tag into a `Vec<DdMaskType>` indicating whether each 
+    /// read position was either:
+    ///     - error corrected to reference 
+    ///     - reported as an N base at an unresolved heteroduplex
+    /// during basecalling. Homoduplex bases can always call variants. 
+    /// EndClipped and UnresolvedHeteroduplex bases will never call variants  
+    /// since they were reported as N. CorrectedToReference bases will be 
+    /// reported in lower case to guard against the rare situation where the 
+    /// reference base was the incorrect choice, i.e., when heteroduplex bases 
+    /// were encountered at a true SNP. 
+    /// 
+    /// For reverse strand alignments, the read mask is reversed to match the read 
+    /// SEQ order in the BamRecord.
+    pub fn get_dd_mask(
+        read: &ReadInstance,
+    ) -> Vec<DdMaskType> {
+        let read_len = read.qual_bytes.len();
+        let mut mask: Vec<DdMaskType> = vec![DdMaskType::Homoduplex; read_len];
+        let mut offset0: usize = 0;
+        let mut chars = read.dd.chars();
         let mut op = chars.next().unwrap();
         let mut val: String = String::with_capacity(128);
         while let Some(char) = chars.next() {
             if char.is_alphanumeric() {
                 val.push(char);
             } else {
+                Self::add_to_dd_mask(&mut mask, &mut offset0, op, &val);
+                op = char;
+                val.clear();
+            }
+        }
+        Self::add_to_dd_mask(&mut mask, &mut offset0, op, &val);
+        if read.is_reverse { mask.reverse(); }
+        mask
+    }
+
+    /// Add one dd tag operation to the read mask.
+    fn add_to_dd_mask(
+        mask:    &mut Vec<DdMaskType>, 
+        offset0: &mut usize,
+        op:      char, 
+        val:     &str, 
+    ) {
+        match op {
+            // prev_on_this clip operations
+            //      two-strand validation of a reference variant is impossible
+            '~' => Self::set_dd_mask(mask, offset0, DdMaskType::EndClipped, val.parse::<usize>().unwrap()),
+            // homoduplex operations
+            //      always allowed to call variants, but only * operations are expected to do so
+            //      as alignment outcomes will presumably continue to be the same
+            ':' => Self::set_dd_mask(mask, offset0, DdMaskType::Homoduplex, val.parse::<usize>().unwrap()),
+            '=' => Self::set_dd_mask(mask, offset0, DdMaskType::Homoduplex, val.parse::<usize>().unwrap()),
+            '*' => Self::set_dd_mask(mask, offset0, DdMaskType::Homoduplex, 1), // always come one read base at a time
+            '^' => Self::set_dd_mask(mask, offset0, DdMaskType::Homoduplex, val.parse::<usize>().unwrap()),
+            // heteroduplex indel operations
+            //       ! and # never allowed to call variants since they weren't validated by both read strands
+            //       + and - are never expected to call variants as they were error-corrected to reference
+            '!' => Self::set_dd_mask(mask, offset0, DdMaskType::UnresolvedHeteroduplex, val.len()), // unknown read and op have same length
+            '+' => Self::set_dd_mask(mask, offset0, DdMaskType::CorrectedToReference, 0),      // heterodup insertions relative to ref not included in read
+            '-' => Self::set_dd_mask(mask, offset0, DdMaskType::CorrectedToReference,   val.len()), // whereas deletions were committed as ref bases
+            '#' => Self::set_dd_mask(mask, offset0, DdMaskType::UnresolvedHeteroduplex, val.len()),
+            // heteroduplex base substitution operations
+            //       ? and & never allowed to call variants since they weren't validated by both read strands
+            //       > and < are never expected to call variants as they were error-corrected to reference
+            '?' => Self::set_dd_mask(mask, offset0, DdMaskType::UnresolvedHeteroduplex, 1),
+            '>' => Self::set_dd_mask(mask, offset0, DdMaskType::CorrectedToReference,   1),
+            '<' => Self::set_dd_mask(mask, offset0, DdMaskType::CorrectedToReference,   1),
+            '&' => Self::set_dd_mask(mask, offset0, DdMaskType::UnresolvedHeteroduplex, 1),
+            _   => panic!("Unexpected operation in dd tag: {}", op),
+        }
+    }
+
+    /// Update a block of contiguous read positions in the mask to false as 
+    /// needed and increment the position offset.
+    fn set_dd_mask(
+        mask:    &mut Vec<DdMaskType>,
+        offset0: &mut usize, 
+        mask_type: DdMaskType, 
+        len: usize
+    ) {
+        if mask_type != DdMaskType::Homoduplex {
+            if len > 0 {
+                for i in *offset0..(*offset0 + len) {
+                    mask[i] = mask_type;
+                }
+            } else if *offset0 > 0 {
+                // heteroduplex insertions relative to ref were corrected to ref
+                // thus have no corresponding query base, record mask on previous query base
+                mask[*offset0 - 1] = mask_type;
+            }
+        }
+        *offset0 += len;
+    }
+
+    /// Process a cs:Z:tag to add a read to a growing fragment variant list. 
+    pub fn process_cs_tag(
+        &self,
+        haplotype:    Haplotype,
+        aln:          Option<Alignment>,
+        cs_tag:       Option<String>,
+        ref_pos0_map: Option<&Vec<ChromPos0>>,
+        frag_vars:    &mut FragmentVariants,
+        encoding:     &mut AlignmentEncoding,
+        read_i:       ReadIndex,
+        read:         &ReadInstance,
+    ) { 
+        let tgt_is_hap = haplotype != Haplotype::Unspecified;
+        let (
+            mask, 
+            qual,
+            mut tgt_pos0, // position on either chromosome or haplotype consensus
+            mut qry_pos0, // position on the query read
+            ref_pos0_map, // mapping of haplotype consensus to chromosome reference
+        ) = if tgt_is_hap {(
+            Self::get_dd_mask(read),
+            read.get_top_strand_qual(),
+            aln.as_ref().unwrap().tgt_start0 as u32,
+            aln.as_ref().unwrap().qry_start0 as u32,
+            ref_pos0_map.unwrap(),
+        )} else {(
+            Vec::new(),
+            Vec::new(),
+            read.ref_pos0,
+            read.qry_pos0,
+            &Vec::new()
+        )};
+
+        let mut var_tgt_pos0: Option<SeqPos0> = None;
+        let mut n_tgt_bases: u32 = 0;
+        let mut alt_bases: UppercaseACGTN = String::with_capacity(128);
+        let mut alt_qual: Vec<PhredQual> = Vec::with_capacity(128);
+        let mut allowed = true;
+
+        let cs: String;
+        let mut chars = if tgt_is_hap {
+            cs = cs_tag.unwrap();
+            cs.chars()
+        } else {
+            read.cs.chars()
+        };
+        let mut op = chars.next().unwrap();
+        let mut val: String = String::with_capacity(128);
+        
+        while let Some(char) = chars.next() {
+            if char.is_alphanumeric() {
+                val.push(char);
+            } else {
                 self.handle_cs_op(
-                    fvars, read_i, 
-                    &mut ref_pos0, &mut var_ref_pos0, &mut n_ref_bases, 
-                    &mut alt_bases, &mut allowed, 
+                    haplotype, tgt_is_hap, frag_vars, encoding, read_i,
+                    &mask, &qual, ref_pos0_map,
+                    &mut tgt_pos0, &mut qry_pos0, 
+                    &mut var_tgt_pos0, &mut n_tgt_bases, &mut alt_bases, 
+                    &mut alt_qual, &mut allowed, 
                     op, &val,
                 );
                 op = char;
@@ -110,78 +253,138 @@ impl SnvChromWorker {
             }
         }
         self.handle_cs_op(
-            fvars, read_i, 
-            &mut ref_pos0, &mut var_ref_pos0, &mut n_ref_bases, 
-            &mut alt_bases, &mut allowed, 
+            haplotype, tgt_is_hap, frag_vars, encoding, read_i,
+            &mask, &qual, ref_pos0_map,
+            &mut tgt_pos0, &mut qry_pos0, 
+            &mut var_tgt_pos0, &mut n_tgt_bases, &mut alt_bases, 
+            &mut alt_qual, &mut allowed, 
             op, &val,
         );
     }
 
-    /// Process one cs:Z:tag operation to add to the growing fragment variant list. 
+    /// Process one cs:Z:tag operation to add to the growing fragment variant 
+    /// list. 
     fn handle_cs_op(
         &self,
-        fvars: &mut FragmentReferenceVariants,
-        read_i: ReadIndex,
-        ref_pos0:     &mut u32,
-        var_ref_pos0: &mut Option<u32>,
-        n_ref_bases:  &mut u32,
-        alt_bases:    &mut String,
+        haplotype:    Haplotype,
+        tgt_is_hap:   bool,
+        frag_vars:    &mut FragmentVariants,
+        encoding:     &mut AlignmentEncoding,
+        read_i:       ReadIndex,
+        mask:         &[DdMaskType],
+        qual:         &[PhredQual],
+        ref_pos0_map: &[ChromPos0],
+        tgt_pos0:     &mut SeqPos0,
+        qry_pos0:     &mut SeqPos0, 
+        var_tgt_pos0: &mut Option<SeqPos0>,
+        n_tgt_bases:  &mut u32,
+        alt_bases:    &mut UppercaseACGTN,
+        alt_qual:     &mut Vec<PhredQual>,
         allowed:      &mut bool,
-        op:  char, 
-        val: &str, 
+        op:           char, 
+        val:          &str, 
     ) {
         match op {
 
-            // :[0-9]+	Identical sequence length
+            // :[0-9]+   Identical sequence length
             ':' => {
-                if var_ref_pos0.is_some() { // commit any preceding variant stretch
+                if var_tgt_pos0.is_some() { // commit any preceding variant stretch
                     if *allowed {
-                        let reference_variant = ReferenceVariant::new(
-                            var_ref_pos0.unwrap(),
-                            *n_ref_bases,
+                        let variant = Variant::new(
+                            var_tgt_pos0.unwrap(),
+                            *n_tgt_bases,
                             alt_bases,
-                        ); 
-                        fvars.insert(reference_variant, read_i);
+                            haplotype
+                        );
+                        let qual = if tgt_is_hap { 
+                            Some({
+                                alt_qual.iter().map(|&q| q as f64).sum::<f64>() / 
+                                alt_qual.len() as f64
+                            } as u8)
+                        } else { None };
+                        frag_vars.insert(variant, read_i, qual);
                     }
-                    *var_ref_pos0 = None;
-                    *n_ref_bases = 0;
+                    *var_tgt_pos0 = None;
+                    *n_tgt_bases = 0;
                     alt_bases.clear();
+                    alt_qual.clear();
                     *allowed = true;
                 }
                 let len = val.parse::<u32>().unwrap();
-                *ref_pos0 += len;
+                encoding.add_identity(len);
+                *qry_pos0 += len;
+                *tgt_pos0 += len;
             },
 
-            // *[acgtn][acgtn]	Substitution: ref to query
+            // *[acgtn][acgtn]   Substitution: target to query
             '*' => {
                 //     S
                 // rrrrRrrrr
                 // qqqqQqqqq
                 //     A
-                let alt = val.to_ascii_uppercase();
+                let alt = val[1..=1].to_ascii_uppercase();
                 *allowed &= alt != "N";
-                *allowed &= !self.simple_repeats.binary_search(*ref_pos0, 1);
+                *allowed &= if tgt_is_hap {
+                    let ref_pos0 = ref_pos0_map[*tgt_pos0 as usize];
+                    !self.simple_repeats.binary_search(ref_pos0, 1)
+                } else {
+                    !self.simple_repeats.binary_search(*tgt_pos0, 1)
+                };
                 alt_bases.push_str(&alt);
-                if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0); }
-                *n_ref_bases += 1;
-                *ref_pos0 += 1;
+                let low_qual = if tgt_is_hap {
+                    let i0 = *qry_pos0 as usize;
+                    alt_qual.push(qual[i0]);
+                    *allowed &= mask[i0] != DdMaskType::CorrectedToReference;   
+                    qual[i0] <= MIN_SNV_INDEL_QUAL
+                } else {
+                    false
+                };
+                encoding.add_substitution(&alt, *allowed, low_qual);
+                if var_tgt_pos0.is_none() { *var_tgt_pos0 = Some(*tgt_pos0); }
+                *n_tgt_bases += 1;
+                *qry_pos0 += 1;
+                *tgt_pos0 += 1;
             },
 
-            // +[acgtn]+	Insertion to the reference
+            // +[acgtn]+   Insertion to the target
             '+' => {
                 //    *INI     insertions may have heteroduplex bases within homoduplex query run
                 // rrrr   Rrrr
                 // qqqqQqqqqqq
                 //    aA Aa
+                let n_ins_bases = val.len();
                 let alt = val.to_ascii_uppercase();
                 *allowed &= !alt.contains("N");
-                *allowed &= !self.simple_repeats.binary_search(*ref_pos0 - 1, 2);
+                *allowed &= if tgt_is_hap {
+                    let ref_pos0 = ref_pos0_map[*tgt_pos0 as usize - 1];
+                    !self.simple_repeats.binary_search(ref_pos0, 2)
+                } else {
+                    !self.simple_repeats.binary_search(*tgt_pos0 - 1, 2)
+                };
                 alt_bases.push_str(&alt);
-                if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0 - 1); }
-                // no action on n_ref_bases or ref_pos0
+                let low_qual = if tgt_is_hap {
+                    let ins_start0 = *qry_pos0 as usize;
+                    let ins_end1 = ins_start0 + n_ins_bases;
+                    let qual_left0  = ins_start0.saturating_sub(INDEL_FLANK_BASES);
+                    let qual_right1 = (ins_end1 + INDEL_FLANK_BASES).min(qual.len());
+                    let q = &qual[qual_left0..qual_right1];
+                    alt_qual.extend_from_slice(q);
+                    *allowed &= mask[ins_start0] != DdMaskType::CorrectedToReference;
+                    let avg_qual = {
+                        q.iter().map(|&q| q as f64).sum::<f64>() / 
+                        q.len() as f64
+                    } as u8;
+                    avg_qual < MIN_SNV_INDEL_QUAL
+                } else {
+                    false
+                };
+                encoding.add_insertion(*allowed, low_qual);
+                if var_tgt_pos0.is_none() { *var_tgt_pos0 = Some(*tgt_pos0 - 1); }
+                *qry_pos0 += n_ins_bases as u32;
+                // no action on n_tgt_bases or tgt_pos0
             },
 
-            // -[acgtn]+	Deletion from the reference
+            // -[acgtn]+   Deletion from the target
             '-' => {
                 //     DDD
                 // rrrrRrrrrrr
@@ -190,354 +393,83 @@ impl SnvChromWorker {
                 // heteroduplex indels in read strands are always reported as N bases
                 // so do not expect heteroduplex indels to lead to falsely missing bases
                 let n_del_bases = val.len() as u32;
-                *allowed &= !self.simple_repeats.binary_search(*ref_pos0, n_del_bases);
-                if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0); }
-                *n_ref_bases += n_del_bases;
-                *ref_pos0 += n_del_bases;
-                // no action on alt_bases, and N check not applicable
+                *allowed &= if tgt_is_hap {
+                    let ref_pos0 = ref_pos0_map[*tgt_pos0 as usize];
+                    !self.simple_repeats.binary_search(ref_pos0, n_del_bases)
+                } else {
+                    !self.simple_repeats.binary_search(*tgt_pos0, n_del_bases)
+                };
+                let low_qual = if tgt_is_hap {
+                    let qry_after_del0 = *qry_pos0 as usize;
+                    let qual_left0  = qry_after_del0.saturating_sub(INDEL_FLANK_BASES);
+                    let qual_right1 = (qry_after_del0 + INDEL_FLANK_BASES).min(qual.len());
+                    let q = &qual[qual_left0..qual_right1];
+                    alt_qual.extend_from_slice(q);
+                    *allowed &= mask[qry_after_del0 - 1] != DdMaskType::CorrectedToReference;
+                    let avg_qual = {
+                        q.iter().map(|&q| q as f64).sum::<f64>() / 
+                        q.len() as f64
+                    } as u8;
+                    avg_qual < MIN_SNV_INDEL_QUAL
+                } else {
+                    false
+                };
+                encoding.add_deletion(n_del_bases, *allowed, low_qual);
+                if var_tgt_pos0.is_none() { *var_tgt_pos0 = Some(*tgt_pos0); }
+                *n_tgt_bases += n_del_bases;
+                *tgt_pos0    += n_del_bases;
+                // no action on qry_pos0, alt_bases, and N check not applicable
             },
             _   => panic!("Unexpected operation in cs tag: {}", op),
         }
     }
 
+    /// Convert a Smith-Waterman Alignment into the equivalent minimap2 cs tag.
+    /// TODO: move this to genomex crate.
+    pub fn get_cs_tag(
+        // &self,
+        aln: &Alignment,
+        tgt: &str, // the target sequenced that generated the alignment
+    ) -> String { 
+        //    M operations carry the query base in the array slot (could be a base mismatch)
+        //    I operations carry the inserted base prepended to the NEXT target postion
+        //    D operations carry "-" in place of the query base that was deleted relative to target
+        let mut cs = String::with_capacity(256);
+        let mut del_val: String = String::with_capacity(256);
+        let mut identity_len = 0_usize;
+        for tgt_i0 in aln.tgt_start0..=aln.tgt_end0 {
+            let tgt_base = &tgt[tgt_i0..=tgt_i0];
+            let aln_val = aln.qry_on_tgt[tgt_i0 - aln.tgt_start0].as_str();
+            if tgt_base == aln_val {
+                if del_val.len() > 0 {
+                    cs.push_str(&format!("-{}", del_val.to_ascii_lowercase()));
+                    del_val.clear();
+                }
+                identity_len += 1;
+            } else {
+                if identity_len > 0 { 
+                    cs.push_str(&format!(":{identity_len}"));
+                    identity_len = 0;
+                }
+                if aln_val == "-" {
+                    del_val.push_str(&tgt_base);
+                } else {
+                    if del_val.len() > 0 {
+                        cs.push_str(&format!("-{}", del_val.to_ascii_lowercase()));
+                        del_val.clear();
+                    }
+                    if aln_val.len() > 1 {
+                        let ins_bases = &aln_val[0..aln_val.len() - 1];
+                        cs.push_str(&format!("+{}", ins_bases.to_ascii_lowercase()));
+                        identity_len = 1;
+                    } else {
+                        cs.push_str(&format!("*{}{}", tgt_base.to_ascii_lowercase(), aln_val.to_ascii_lowercase()));
+                    }
+                }
+            }
 
-    // /// Process a cs tag into a vector of base values on each reference position. 
-    // pub fn set_read_on_ref(
-    //     &mut self,
-    //     aln_start0:  u32,
-    //     site_start0: u32,
-    //     cs: &str,
-    // ) {
-    //     self.read_on_ref.clear(); // always starts at leftmost site position, even if aln doesn't
-    //     if aln_start0 > site_start0 {
-    //         self.read_on_ref.extend(repeat_n(None, (aln_start0 - site_start0) as usize))
-    //     }
-    //     let mut ref_pos0 = aln_start0;
-    //     let mut chars = cs.chars();
-    //     let mut op = chars.next().unwrap();
-    //     let mut val: String = String::with_capacity(10);
-    //     while let Some(char) = chars.next() {
-    //         if char.is_alphanumeric() {
-    //             val.push(char);
-    //         } else {
-    //             self.handle_op(site_start0, &mut ref_pos0, op, &val);
-    //             op = char;
-    //             val.clear();
-    //         }
-    //     }
-    //     self.handle_op(site_start0, &mut ref_pos0, op, &val);
-    // }
-
-    // /// Process one cs:Z:tag operation to add to the growing variant lists.  
-    // fn handle_op(
-    //     &mut self,
-    //     site_start0: u32,
-    //     ref_pos0: &mut u32,
-    //     op:  char, 
-    //     val: &str, 
-    // ) {
-    //     match op {
-
-    //         // :[0-9]+	Identical sequence length
-    //         ':' => {
-    //             for _ in 0..val.parse::<usize>().unwrap() {
-    //                 if *ref_pos0 >= site_start0 {
-    //                     self.read_on_ref.push(Some("=".to_string()));
-    //                 }
-    //                 *ref_pos0 += 1;
-    //             }
-    //         },
-
-    //         // *[acgtn][acgtn]	Substitution: ref to query
-    //         '*' => {
-    //             //     S
-    //             // rrrrRrrrr
-    //             // qqqqQqqqq
-    //             //     A
-    //             let alt_base = val.to_ascii_uppercase();
-    //             let read_on_ref = if alt_base == "N" ||
-    //                 self.simple_repeats.binary_search(*ref_pos0, 1) {
-    //                 None
-    //             } else {
-    //                 Some(alt_base)
-    //             };
-    //             if *ref_pos0 >= site_start0 {
-    //                 self.read_on_ref.push(read_on_ref);
-    //             } 
-    //             *ref_pos0 += 1;
-    //         },
-
-    //         // +[acgtn]+	Insertion to the reference
-    //         '+' => {
-    //             //    *INI     insertions may have heteroduplex bases within a homoduplex query run
-    //             // rrrr   Rrrr
-    //             // qqqqQqqqqqq
-    //             //    aA Aa
-    //             let alt_bases = val.to_ascii_uppercase();
-    //             if alt_bases.contains("N") || 
-    //                self.simple_repeats.binary_search(*ref_pos0 - 1, 2) {
-    //                 // do nothing; ignore disallowed insertions as they do not occupy a reference position
-    //             } else if let Some(prev_base) = self.read_on_ref.pop() {
-    //                 if let Some(mut prev_base) = prev_base {
-    //                     prev_base.push_str(&alt_bases); // record insertion on previous base string
-    //                     self.read_on_ref.push(Some(prev_base));
-    //                 } else {
-    //                     self.read_on_ref.push(Some(alt_bases));
-    //                 }
-    //             };
-    //         },
-
-    //         // -[acgtn]+	Deletion from the reference
-    //         '-' => {
-    //             //     DDD
-    //             // rrrrRrrrrrr
-    //             // qqqq   Qqqq
-    //             //   aA   Aa
-    //             let n_del_bases = val.len();
-    //             // heteroduplex indels in read strands are always reported as N bases
-    //             // so do not expect heteroduplex indels to lead to falsely missing bases
-    //             let read_on_ref = if self.simple_repeats.binary_search(*ref_pos0, n_del_bases as u32) {
-    //                 None
-    //             } else {
-    //                 Some("-".to_string())
-    //             };
-    //             for _ in 0..n_del_bases {
-    //                 if *ref_pos0 >= site_start0 {
-    //                     self.read_on_ref.push(read_on_ref.clone());
-    //                 }
-    //                 *ref_pos0 += 1;
-    //             }
-    //         },
-    //         _   => panic!("Unexpected operation in cs tag: {}", op),
-    //     }
-    // }
-
-    // /// Process a cs:Z:tag to add a newly encountered read to the growing
-    // /// fragment and variant lists. 
-    // pub fn process_aln(
-    //     &self, 
-    //     worker:       &mut SnvChromWorker,
-    //     mut ref_pos0: u32,
-    //     re_fragment:  &ReFragment,
-    //     read_instance: &mut ReadInstance,
-    // ) {
-    //     let mut chars = self.0.chars();
-    //     let mut op = chars.next().unwrap();
-    //     let mut val: String = String::with_capacity(10);
-    //     let mut qry_pos0: u32 = 0; // alns enforced upstream to have no clips
-    //     let mut var_ref_pos0: Option<u32> = None;
-    //     let mut n_ref_bases: u32 = 0;
-    //     let mut alt_bases: String = String::with_capacity(10);
-    //     let mut allowed = true;
-    //     while let Some(char) = chars.next() {
-    //         if char.is_alphanumeric() {
-    //             val.push(char);
-    //         } else {
-    //             CsTag::process_op(
-    //                 worker,
-    //                 &mut qry_pos0,  &mut ref_pos0, 
-    //                 op, &val, 
-    //                 &mut var_ref_pos0, &mut n_ref_bases, &mut alt_bases, &mut allowed,
-    //                 re_fragment, read_instance
-    //             );
-    //             op = char;
-    //             val.clear();
-    //         }
-    //     }
-    //     CsTag::process_op(
-    //         worker,
-    //         &mut qry_pos0,  &mut ref_pos0, 
-    //         op, &val, 
-    //         &mut var_ref_pos0, &mut n_ref_bases, &mut alt_bases, &mut allowed,
-    //         re_fragment, read_instance
-    //     );
-    // }
-
-    // /// Process one cs:Z:tag operation to add to the growing variant lists.  
-    // fn process_op(
-    //     worker:       &mut SnvChromWorker,
-    //     qry_pos0:     &mut u32, 
-    //     ref_pos0:     &mut u32,
-    //     op:           char, 
-    //     val:          &str, 
-    //     var_ref_pos0: &mut Option<u32>,
-    //     n_ref_bases:  &mut u32,
-    //     alt_bases:    &mut String,
-    //     allowed:      &mut bool,
-    //     re_fragment:  &ReFragment,
-    //     read_instance: &mut ReadInstance,
-    // ) {
-    //     // :	[0-9]+	Identical sequence length
-    //     // *	[acgtn][acgtn]	Substitution: ref to query
-    //     // +	[acgtn]+	Insertion to the reference
-    //     // -	[acgtn]+	Deletion from the reference
-    //     match op {
-    //         ':' => {
-    //             // commit any prior variant stretch;
-    //             if var_ref_pos0.is_some() {
-    //                 let reference_variant = ReferenceVariant::new(
-    //                     var_ref_pos0.unwrap(), 
-    //                     *n_ref_bases, 
-    //                     &alt_bases,
-    //                 );
-    //                 // worker.fragment_variants.insert(
-    //                 //     *re_fragment, 
-    //                 //     reference_variant.clone()
-    //                 // );
-    //                 // read_instance.push(reference_variant, *allowed);
-    //                 // // worker.variants.increment(
-    //                 // //     var_ref_pos0.unwrap(), 
-    //                 // //     *n_ref_bases, 
-    //                 // //     &alt_bases,
-    //                 // //     sample_bit,
-    //                 // //     n_passes,
-    //                 // //     *allowed,
-    //                 // //     qname,
-    //                 // // );
-    //                 *var_ref_pos0 = None;
-    //                 *n_ref_bases = 0;
-    //                 alt_bases.clear();
-    //                 *allowed = true;
-    //             }
-    //             let len = val.parse::<u32>().unwrap();
-    //             // encoding.add_ref(len);
-    //             *qry_pos0 += len;
-    //             *ref_pos0 += len;
-    //         },
-    //         '*' => {
-    //             //     S
-    //             // rrrrRrrrr
-    //             // qqqqQqqqq
-    //             //     A
-    //             let alt_base = val.chars().nth(1).unwrap().to_ascii_uppercase();
-    //             if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0); }
-    //             *n_ref_bases += 1;
-    //             alt_bases.push(alt_base);
-    //             let i0 = *qry_pos0 as usize;
-    //             // *allowed &= mask[i0];
-    //             *allowed &= !worker.simple_repeats.binary_search(*ref_pos0, 1);
-    //             // encoding.add_subs(alt_base, *allowed);
-    //             *qry_pos0 += 1;
-    //             *ref_pos0 += 1;
-    //         },
-    //         '+' => {
-    //             //    *INI     insertions may have heteroduplex bases within homoduplex query run
-    //             // rrrr   Rrrr
-    //             // qqqqQqqqqqq
-    //             //    aA Aa
-    //             let n_ins_bases = val.len();
-    //             if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0 - 1); }
-    //             alt_bases.push_str(&val.to_ascii_uppercase());
-    //             let ins_start0 = *qry_pos0 as usize;
-    //             // let ins_end1 = ins_start0 + n_ins_bases;
-    //             // *allowed &= mask[ins_start0] && mask[ins_end1 - 1];
-    //             *allowed &= !worker.simple_repeats.binary_search(*ref_pos0 - 1, 2);
-    //             // encoding.add_ins(*allowed);
-    //             *qry_pos0 += n_ins_bases as u32;
-    //         },
-    //         '-' => {
-    //             //     DDD
-    //             // rrrrRrrrrrr
-    //             // qqqq   Qqqq
-    //             //   aA   Aa
-    //             let n_del_bases = val.len();
-    //             if var_ref_pos0.is_none() { *var_ref_pos0 = Some(*ref_pos0); }
-    //             *n_ref_bases += n_del_bases as u32;
-    //             let qry_after_del0 = *qry_pos0 as usize;
-    //             // *allowed &= mask[qry_after_del0 - 1] && mask[qry_after_del0];
-    //             *allowed &= !worker.simple_repeats.binary_search(*ref_pos0, n_del_bases as u32);
-    //             // encoding.add_del(n_del_bases as u32, *allowed);
-    //             *ref_pos0 += n_del_bases as u32;
-    //         },
-    //         _   => panic!("Unexpected operation in cs tag: {}", op),
-    //     }
-    // }
+        }
+        if identity_len > 0 { cs.push_str(&format!(":{identity_len}")) }
+        cs
+    }
 }
-
-// /// DdTag struct helps parse a dd:Z: tag into a mask of read positions that are 
-// /// allowed to call SNV and indel variants downstream.
-// /// 
-// /// For reverse strand alignments, the read mask is reversed to match the read 
-// /// SEQ order in the BamRecord.
-// pub struct DdTag(pub String);
-// impl DdTag {
-//     /// Get a `Vec<bool>` indicating whether each read position is allowed to 
-//     /// call SNV/indel variants. 
-//     /// 
-//     /// All read positions can call variants unless masked to false.
-//     pub fn get_read_mask(
-//         &self, 
-//         read_len:   usize, 
-//         is_reverse: bool
-//     ) -> Vec<bool> {
-//         let mut mask: Vec<bool> = vec![true; read_len]; // mask true == allowed
-//         let mut offset0: usize = 0;
-//         let mut chars = self.0.chars();
-//         let mut op = chars.next().unwrap();
-//         let mut val: String = String::with_capacity(10);
-//         while let Some(char) = chars.next() {
-//             if char.is_alphanumeric() {
-//                 val.push(char);
-//             } else {
-//                 DdTag::add_to_mask(&mut mask, &mut offset0, op, &val);
-//                 op = char;
-//                 val.clear();
-//             }
-//         }
-//         DdTag::add_to_mask(&mut mask, &mut offset0, op, &val);
-//         if is_reverse { mask.reverse(); }
-//         mask
-//     }
-
-//     /// Add one dd tag operation to the read mask.
-//     fn add_to_mask(
-//         mask:    &mut Vec<bool>, 
-//         offset0: &mut usize,
-//         op:      char, 
-//         val:     &str, 
-//     ) {
-//         match op {
-//             // prev_on_this clip operations
-//             //      two-strand validation of a reference variant is impossible
-//             '~' => DdTag::set_mask(mask, offset0, false, val.parse::<usize>().unwrap()),
-//             // homoduplex operations
-//             //      always allowed to call variants, but only * operations are expected to do so
-//             //      as alignment outcomes will presumably continue to be the same
-//             ':' => DdTag::set_mask(mask, offset0, true, val.parse::<usize>().unwrap()),
-//             '=' => DdTag::set_mask(mask, offset0, true, val.parse::<usize>().unwrap()),
-//             '*' => DdTag::set_mask(mask, offset0, true, 1), // always come one read base at a time
-//             '^' => DdTag::set_mask(mask, offset0, true, val.parse::<usize>().unwrap()),
-//             // heteroduplex indel operations
-//             //       ! and # never allowed to call variants since they weren't validated by both read strands
-//             //       + and - are never expected to call variants as they were error-corrected to reference
-//             '!' => DdTag::set_mask(mask, offset0, false, val.len()), // unknown read and op have same length
-//             '+' => DdTag::set_mask(mask, offset0, false, 0),    // heterodup insertions relative to ref not included in read
-//             '-' => DdTag::set_mask(mask, offset0, false, val.len()), // whereas deletions were committed as ref bases
-//             '#' => DdTag::set_mask(mask, offset0, false, val.len()),
-//             // heteroduplex base substitution operations
-//             //       ? and & never allowed to call variants since they weren't validated by both read strands
-//             //       > and < are never expected to call variants as they were error-corrected to reference
-//             '?' => DdTag::set_mask(mask, offset0, false, 1),
-//             '>' => DdTag::set_mask(mask, offset0, false, 1),
-//             '<' => DdTag::set_mask(mask, offset0, false, 1),
-//             '&' => DdTag::set_mask(mask, offset0, false, 1),
-//             _   => panic!("Unexpected operation in dd tag: {}", op),
-//         }
-//     }
-
-//     /// Update a block of contiguous read positions in the mask to false as 
-//     /// needed and increment the position offset.
-//     fn set_mask(
-//         mask:    &mut Vec<bool>,
-//         offset0: &mut usize, 
-//         allowed: bool, 
-//         len:     usize
-//     ) {
-//         if !allowed && len > 0 {
-//             for i in *offset0..(*offset0 + len) {
-//                 mask[i] = false;
-//             }
-//         }
-//         *offset0 += len;
-//     }
-// }

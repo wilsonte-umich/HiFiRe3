@@ -123,7 +123,11 @@ impl SimpleRepeats {
     /// repeat.
     /// 
     /// Use a 1-bp padding to reject immediately adjacent variants also.
-    pub fn binary_search(&self, mut start0: u32, len: u32) -> bool {
+    pub fn binary_search(
+        &self, 
+        mut start0: u32, 
+        len: u32
+    ) -> bool {
         let end1 = start0 + len + SEARCH_PADDING;
         start0 = start0.saturating_sub(SEARCH_PADDING);
         let result = self.0.binary_search_by(|simple_repeat| {

@@ -51,8 +51,12 @@ pub fn process_chrom(
             "{}.chr{}.snv_indel.txt.bgz", 
             chrom_file_prefix, &chrom_index_padded
         );
-        let encodings_file_path = format!(
-            "{}.chr{}.read_encodings.bed.bgz", 
+        let reads_on_reference_path = format!(
+            "{}.chr{}.encodings.reads_on_reference.bed.bgz", 
+            chrom_file_prefix, &chrom_index_padded
+        );
+        let reads_on_haplotype_path = format!(
+            "{}.chr{}.encodings.reads_on_haplotype.bed.bgz", 
             chrom_file_prefix, &chrom_index_padded
         );
         let mut worker = SnvChromWorker {
@@ -62,11 +66,15 @@ pub fn process_chrom(
             simple_repeats: SimpleRepeats::new(
                 tool, &chrom_name, rmsk_simple_repeats_bed, trf_simple_repeats_bed
             ),
-            aligner: Aligner::new_fast(ALN_CAPACITY, ALN_CAPACITY, ALN_MAX_SHIFT),
-            // variants:           ChromVariants::new(),
-            // encodings:          ReadEncodings::new(),
+            aligner: Aligner::new_fast(
+                ALN_CAPACITY, ALN_CAPACITY, ALN_MAX_SHIFT
+            ),
+            variant_tally:      VariantsTally::new(),
+            reads_on_reference: AlignmentEncodings::new(),
+            reads_on_haplotype: AlignmentEncodings::new(),
             variants_file_path,
-            encodings_file_path,
+            reads_on_reference_path,
+            reads_on_haplotype_path,
         };
 
         // process alignment records one at a time, add to growing RE fragment collections
@@ -85,24 +93,35 @@ pub fn process_chrom(
         }
 
         // post-process read groups by re-aligning reads to fragment consensus(es)
-        worker.build_consensuses(fragment_reads);
+        let mut haplotype_consensuses = HaplotypeConsensuses::new();
+        worker.analyze_reads(tool, fragment_reads, &mut haplotype_consensuses);
 
         // finish processing and writing pileup and variants
-        // let variant_metadata = ChromVariants::write_sorted(tool, &mut worker);
-        // let encoding_metadata = ReadEncodings::write_sorted(tool, &mut worker);
+        let variant_metadata = VariantsTally::write_sorted(tool, &mut worker);
+        let clonal_metadata = AlignmentEncodings::write_sorted(
+            tool, &worker, &mut haplotype_consensuses,
+            &worker.reads_on_reference, 
+            &worker.reads_on_reference_path
+        );
+        let subclonal_metadata = AlignmentEncodings::write_sorted(
+            tool, &worker, &mut haplotype_consensuses,
+            &worker.reads_on_haplotype, 
+            &worker.reads_on_haplotype_path
+        );
 
         // send error corrected metadata to main thread
         tx_data.send(SnvChromWorkerData::TotalAlnCount(chrom_aln_count))?;
         tx_data.send(SnvChromWorkerData::UsableAlnCount((chrom_name.clone(), chrom_aln_count_used)))?;
-        // tx_data.send(SnvChromWorkerData::VariantMetadata(variant_metadata))?;
-        // tx_data.send(SnvChromWorkerData::EncodingMetadata(encoding_metadata))?;
+        tx_data.send(SnvChromWorkerData::VariantMetadata(variant_metadata))?;
+        tx_data.send(SnvChromWorkerData::ClonalEncodingMetadata(clonal_metadata))?;
+        tx_data.send(SnvChromWorkerData::SubclonalEncodingMetadata(subclonal_metadata))?;
     }
     Ok(())
 }
 
 // process one alignment
 fn process_aln(
-    aln:    &BamRecord, 
+    aln: &BamRecord, 
     chrom_aln_count_used: &mut usize,
     fragment_reads: &mut FragmentReads,
 ) -> Result<(), Box<dyn Error>>{

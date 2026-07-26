@@ -24,25 +24,35 @@ pub_key_constants!(
     N_ALNS
     N_ALNS_BY_CHROM
     //-----------------------
-    VARIANT_N_VARIANTS
+    VARIANT_N_VARIANTS // variant tally
     VARIANT_N_SUBSTITUTIONS
     VARIANT_N_INSERTIONS
     VARIANT_N_DELETIONS
+    VARIANT_N_HOMOZYGOUS
+    VARIANT_N_HETEROZYGOUS
+    VARIANT_N_SUBCLONAL
     VARIANT_COUNT
     VARIANT_COVERAGE
-    VARIANT_IS_SIMPLE_REPEAT
     //-----------------------
-    ENCODING_N_READS
-    ENCODING_N_REVERSE
-    ENCODING_N_SPANS
-    ENCODING_N_REF_BASES
-    ENCODING_N_READ_BASES
-    ENCODING_N_MATCH
-    ENCODING_N_ALT
-    ENCODING_N_MASKED
-    ENCODING_N_DEL
-    ENCODING_N_INS
-    ENCODING_N_ALT_HIGH_QUAL
+    CLONAL_N_READS // read encodings
+    CLONAL_N_SPANS
+    CLONAL_N_REF_BASES
+    CLONAL_N_READ_BASES
+    CLONAL_N_MATCH
+    CLONAL_N_ALT
+    CLONAL_N_MASKED
+    CLONAL_N_DEL
+    CLONAL_N_INS
+    //-----------------------
+    SUBCLONAL_N_READS
+    SUBCLONAL_N_SPANS
+    SUBCLONAL_N_REF_BASES
+    SUBCLONAL_N_READ_BASES
+    SUBCLONAL_N_MATCH
+    SUBCLONAL_N_ALT
+    SUBCLONAL_N_MASKED
+    SUBCLONAL_N_DEL
+    SUBCLONAL_N_INS
 );
 const CHANNEL_CAPACITY: usize = 100;
 
@@ -62,25 +72,35 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         (N_TOTAL_ALNS, "usable on-target alignments processed, including non-error-corrected"),
         (N_ALNS,       "usable on-target error-corrected alignments processed"),
 
-        (VARIANT_N_VARIANTS,       "number of unique error-corrected SNV/indel variant types reported"),
-        (VARIANT_N_SUBSTITUTIONS,  "number of equal-length substitution variant types"),
-        (VARIANT_N_INSERTIONS,     "number of insertion variant types"),
-        (VARIANT_N_DELETIONS,      "number of deletion variant types"),
-        (VARIANT_COUNT,            "summed variant read count at all SNV/indel variant index positions"),
-        (VARIANT_COVERAGE,         "summed read coverage at all SNV/indel variant index positions"),
-        (VARIANT_IS_SIMPLE_REPEAT, "number of variants rejected as overlapping a simple repeat >= 6 units"),
+        (VARIANT_N_VARIANTS,        "number of unique SNV/indel variants reported"),
+        (VARIANT_N_SUBSTITUTIONS,   "number of equal-length substitution variants"),
+        (VARIANT_N_INSERTIONS,      "number of insertion variants"),
+        (VARIANT_N_DELETIONS,       "number of deletion variants"),
+        (VARIANT_N_HOMOZYGOUS,      "number of homozygous variants"),
+        (VARIANT_N_HETEROZYGOUS,    "number of heterozygous variants"),
+        (VARIANT_N_SUBCLONAL,       "number of subclonal variants"),
+        (VARIANT_COUNT,             "summed variant read count at all index positions"),
+        (VARIANT_COVERAGE,          "summed read coverage at all SNV/indel index positions"),
 
-        (ENCODING_N_READS,         "number of error-corrected reads subjected to encoding"),
-        (ENCODING_N_REVERSE,       "number of those reads that aligned to the bottom reference strand"),
-        (ENCODING_N_SPANS,         "number of unique genome alignment spans found in encoded reads"),
-        (ENCODING_N_REF_BASES,     "number of genome bases covered by encoding alignment spans"),
-        (ENCODING_N_READ_BASES,    "number of reference bases in encoded reads (M and D operations)"),
-        (ENCODING_N_MATCH,         "number of reference-matched bases in encoded reads"),
-        (ENCODING_N_ALT,           "number of unmasked alternative bases in encoded reads"),
-        (ENCODING_N_MASKED,        "number of masked bases in encoded reads"),
-        (ENCODING_N_DEL,           "number of deleted bases in encoded reads"),
-        (ENCODING_N_INS,           "number of insertion operations in encoded reads (not the base count)"),
-        (ENCODING_N_ALT_HIGH_QUAL, "number of high-quality alternative bases in encoded reads"),
+        (CLONAL_N_SPANS,            "number of unique genome alignment spans found in clonal encodings"),
+        (CLONAL_N_READS,            "number of error-corrected reads subjected to clonal encoding"),
+        (CLONAL_N_REF_BASES,        "number of genome bases covered by clonal encodings"),
+        (CLONAL_N_READ_BASES,       "number of reference bases in clonal encoded reads (M and D operations)"),
+        (CLONAL_N_MATCH,            "number of reference-matched bases in clonal encoded reads"),
+        (CLONAL_N_ALT,              "number of unmasked alternative bases in clonal encoded reads"),
+        (CLONAL_N_DEL,              "number of deleted bases in clonal encoded reads"),
+        (CLONAL_N_INS,              "number of insertion operations in clonal encoded reads (not the base count)"),
+        (CLONAL_N_MASKED,           "number of masked bases in clonal encoded reads"),
+
+        (SUBCLONAL_N_SPANS,         "number of unique genome alignment spans found in subclonal encodings"),
+        (SUBCLONAL_N_READS,         "number of error-corrected reads subjected to clonal encoding"),
+        (SUBCLONAL_N_REF_BASES,     "number of genome bases covered by subclonal encodings"),
+        (SUBCLONAL_N_READ_BASES,    "number of reference bases in subclonal encoded reads (M and D operations)"),
+        (SUBCLONAL_N_MATCH,         "number of reference-matched bases in subclonal encoded reads"),
+        (SUBCLONAL_N_ALT,           "number of unmasked alternative bases in subclonal encoded reads"),
+        (SUBCLONAL_N_DEL,           "number of deleted bases in subclonal encoded reads"),
+        (SUBCLONAL_N_INS,           "number of insertion operations in subclonal encoded reads (not the base count)"),
+        (SUBCLONAL_N_MASKED,        "number of masked bases in subclonal encoded reads"),
     ]);
     ctrs.add_keyed_counters(&[
         (N_ALNS_BY_CHROM,    "number of error-corrected alignments by on-target chromosome"),
@@ -147,28 +167,39 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     w.ctrs.add_to(N_ALNS, count);
                     w.ctrs.add_to_keyed(N_ALNS_BY_CHROM, &chrom_name, count);
                 },
-                // SnvChromWorkerData::VariantMetadata(md) => {
-                //     w.ctrs.add_to(VARIANT_N_VARIANTS,      md.n_variants);
-                //     w.ctrs.add_to(VARIANT_N_SUBSTITUTIONS, md.n_substitutions);
-                //     w.ctrs.add_to(VARIANT_N_INSERTIONS,    md.n_insertions);
-                //     w.ctrs.add_to(VARIANT_N_DELETIONS,     md.n_deletions);
-                //     w.ctrs.add_to(VARIANT_COUNT,           md.variant_count);
-                //     w.ctrs.add_to(VARIANT_COVERAGE,        md.variant_coverage);
-                //     w.ctrs.add_to(VARIANT_IS_SIMPLE_REPEAT,md.is_simple_repeat);
-                // },
-                // SnvChromWorkerData::EncodingMetadata(md) => {
-                //     w.ctrs.add_to(ENCODING_N_READS,        md.n_reads);
-                //     w.ctrs.add_to(ENCODING_N_REVERSE,      md.n_reverse);
-                //     w.ctrs.add_to(ENCODING_N_SPANS,        md.n_unique_spans);
-                //     w.ctrs.add_to(ENCODING_N_REF_BASES,    md.n_ref_bases);
-                //     w.ctrs.add_to(ENCODING_N_READ_BASES,   md.n_read_bases);
-                //     w.ctrs.add_to(ENCODING_N_MATCH,        md.n_match);
-                //     w.ctrs.add_to(ENCODING_N_ALT,          md.n_alt);
-                //     w.ctrs.add_to(ENCODING_N_MASKED,       md.n_masked);
-                //     w.ctrs.add_to(ENCODING_N_DEL,          md.n_del);
-                //     w.ctrs.add_to(ENCODING_N_INS,          md.n_ins);
-                //     w.ctrs.add_to(ENCODING_N_ALT_HIGH_QUAL,md.n_alt_high_qual);
-                // },
+                SnvChromWorkerData::VariantMetadata(md) => {
+                    w.ctrs.add_to(VARIANT_N_VARIANTS,      md.n_variants);
+                    w.ctrs.add_to(VARIANT_N_SUBSTITUTIONS, md.n_substitutions);
+                    w.ctrs.add_to(VARIANT_N_INSERTIONS,    md.n_insertions);
+                    w.ctrs.add_to(VARIANT_N_DELETIONS,     md.n_deletions);
+                    w.ctrs.add_to(VARIANT_N_HOMOZYGOUS,    md.n_homozygous);
+                    w.ctrs.add_to(VARIANT_N_HETEROZYGOUS,  md.n_heterozygous);
+                    w.ctrs.add_to(VARIANT_N_SUBCLONAL,     md.n_subclonal);
+                    w.ctrs.add_to(VARIANT_COUNT,           md.variant_count);
+                    w.ctrs.add_to(VARIANT_COVERAGE,        md.variant_coverage);
+                },
+                SnvChromWorkerData::ClonalEncodingMetadata(md) => {
+                    w.ctrs.add_to(CLONAL_N_READS,        md.n_reads);
+                    w.ctrs.add_to(CLONAL_N_SPANS,        md.n_unique_spans);
+                    w.ctrs.add_to(CLONAL_N_REF_BASES,    md.n_ref_bases);
+                    w.ctrs.add_to(CLONAL_N_READ_BASES,   md.n_read_bases);
+                    w.ctrs.add_to(CLONAL_N_MATCH,        md.n_match);
+                    w.ctrs.add_to(CLONAL_N_ALT,          md.n_alt);
+                    w.ctrs.add_to(CLONAL_N_MASKED,       md.n_masked);
+                    w.ctrs.add_to(CLONAL_N_DEL,          md.n_del);
+                    w.ctrs.add_to(CLONAL_N_INS,          md.n_ins);
+                },
+                SnvChromWorkerData::SubclonalEncodingMetadata(md) => {
+                    w.ctrs.add_to(SUBCLONAL_N_READS,     md.n_reads);
+                    w.ctrs.add_to(SUBCLONAL_N_SPANS,     md.n_unique_spans);
+                    w.ctrs.add_to(SUBCLONAL_N_REF_BASES, md.n_ref_bases);
+                    w.ctrs.add_to(SUBCLONAL_N_READ_BASES,md.n_read_bases);
+                    w.ctrs.add_to(SUBCLONAL_N_MATCH,     md.n_match);
+                    w.ctrs.add_to(SUBCLONAL_N_ALT,       md.n_alt);
+                    w.ctrs.add_to(SUBCLONAL_N_MASKED,    md.n_masked);
+                    w.ctrs.add_to(SUBCLONAL_N_DEL,       md.n_del);
+                    w.ctrs.add_to(SUBCLONAL_N_INS,       md.n_ins);
+                },
             }
         }
     }).expect("Crossbeam scope panicked");
@@ -182,22 +213,33 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             VARIANT_N_SUBSTITUTIONS, 
             VARIANT_N_INSERTIONS, 
             VARIANT_N_DELETIONS, 
+            VARIANT_N_HOMOZYGOUS,
+            VARIANT_N_HETEROZYGOUS,
+            VARIANT_N_SUBCLONAL,
             VARIANT_COUNT,
             VARIANT_COVERAGE,
-            VARIANT_IS_SIMPLE_REPEAT,
         ],
         &[
-            ENCODING_N_READS,
-            ENCODING_N_REVERSE,
-            ENCODING_N_SPANS,
-            ENCODING_N_REF_BASES,
-            ENCODING_N_READ_BASES,
-            ENCODING_N_MATCH,
-            ENCODING_N_ALT,
-            ENCODING_N_MASKED,
-            ENCODING_N_DEL,
-            ENCODING_N_INS,
-            ENCODING_N_ALT_HIGH_QUAL,
+            CLONAL_N_READS,
+            CLONAL_N_SPANS,
+            CLONAL_N_REF_BASES,
+            CLONAL_N_READ_BASES,
+            CLONAL_N_MATCH,
+            CLONAL_N_ALT,
+            CLONAL_N_MASKED,
+            CLONAL_N_DEL,
+            CLONAL_N_INS,
+        ],
+        &[
+            SUBCLONAL_N_READS,
+            SUBCLONAL_N_SPANS,
+            SUBCLONAL_N_REF_BASES,
+            SUBCLONAL_N_READ_BASES,
+            SUBCLONAL_N_MATCH,
+            SUBCLONAL_N_ALT,
+            SUBCLONAL_N_MASKED,
+            SUBCLONAL_N_DEL,
+            SUBCLONAL_N_INS,
         ],
     ]);
     Ok(())

@@ -6,31 +6,26 @@ pub mod fragment;
 pub mod tags;
 pub mod simple_repeat;
 pub mod variant;
-pub mod consensus;
+pub mod analyze_reads;
+pub mod haplotype;
 pub mod encoding;
 
 // re-exports
 pub use fragment::*;
 pub use simple_repeat::*;
 pub use variant::*;
-// pub use encoding::*;
+pub use haplotype::*;
+pub use encoding::*;
 
 // dependencies
 use std::error::Error;
 use faimm::IndexedFasta;
+use serde::Serialize;
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
 use genomex::genome::{Chroms, TargetRegions, Exclusions};
 use genomex::sequence::Aligner;
-
-/// type aliases
-type SampleBit = u32;
-type ChromName = String;
-type ChromIndex = u8;
-type ChromPos0 = u32;
-type ChromPos1 = u32; // as used for 0-based _exclusive_ end positions (same as 1-based ends)
-type ReadIndex = usize;
-type VariantBases = String;
+use crate::tools::type_aliases::*;
 
 // constants
 pub_key_constants!(
@@ -38,6 +33,7 @@ pub_key_constants!(
     SEQUENCING_PLATFORM
     LIBRARY_TYPE
 );
+pub const MAX_HETEROZYGOUS_ZYGOSITY: f64 = 0.8;
 
 /// Ensure that PacBio SNV analysis is performed on a library from the 
 /// PacBioStrand sequencing platform.
@@ -60,7 +56,7 @@ pub fn check_pacbio_strand(tool: &str, cfg: &mut Config) -> Result<(), Box<dyn E
 pub struct SnvAnalysisTool {
 
     // global configuration parameters
-    pub n_cpu:     u32,
+    pub n_cpu: u32,
 
     // chromosomes and regions
     pub chroms:     Chroms,
@@ -75,24 +71,30 @@ pub struct SnvChromWorker{
 
     // chromosome parsing
     pub chrom:       ChromName,
-    pub chrom_index: ChromIndex,
+    pub chrom_index: ChromIndex1,
     pub chrom_tid:   usize,
     pub simple_repeats: SimpleRepeats,
 
-    // data structures for chromosome processing
+    // processing tools
     pub aligner: Aligner,
-    // pub encodings: ReadEncodings,
+
+    // metadata aggregation
+    pub variant_tally:      VariantsTally,
+    pub reads_on_reference: AlignmentEncodings,
+    pub reads_on_haplotype: AlignmentEncodings,
 
     // output file paths
-    pub variants_file_path:  String,
-    pub encodings_file_path: String,
+    pub variants_file_path:      String,
+    pub reads_on_reference_path: String,
+    pub reads_on_haplotype_path: String,
 }
 
-// SnvChromWorkerData enum allows difference types of metadata to be trasmitted 
-// to the main thread for aggregation.
+/// SnvChromWorkerData allows difference types of metadata to be trasmitted to 
+/// the main thread for aggregation over the entire input.
 pub enum SnvChromWorkerData {
     TotalAlnCount(usize),
     UsableAlnCount((ChromName, usize)),
-    // VariantMetadata(VariantMetadata),
-    // EncodingMetadata(EncodingMetadata),
+    VariantMetadata(VariantMetadata),
+    ClonalEncodingMetadata(EncodingMetadata),
+    SubclonalEncodingMetadata(EncodingMetadata),
 }

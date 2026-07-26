@@ -3,8 +3,8 @@
 //! single ~end-to-end alignments are printed and used for SNV calling.
 //! 
 //! Output only includes usable on-target duplex PacBioStrand reads, as defined 
-//! by the presence of the minimap2 `cs:Z:` and HiFiRe3 `dt:i:` tags, with the 
-//! requested minimum number of sequencing passes per insert to enforce duplex
+//! by the presence of the minimap2 `cs:Z:` and HiFiRe3 `dd:Z:` tags, with the 
+//! requested minimum number of sequencing passes per insert to ensure duplex
 //! basecalling accuracy.
 //! 
 //! Support multiple input BAM files for multi-sample variant calling.
@@ -13,13 +13,19 @@
 use std::error::Error;
 use std::str::from_utf8_unchecked;
 use rustc_hash::FxHashMap;
-use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, Header, HeaderView, Format, record::Aux};
+use rust_htslib::bam::{
+    Reader, Read, Writer, 
+    Record as BamRecord, Header, HeaderView, 
+    Format, record::Aux
+};
 use rust_htslib::tpool::ThreadPool;
 use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
 use mdi::OutputFile;
 use genomex::genome::{Chroms, TargetRegions};
-use genomex::bam::{tags as bam_tags, qual::median_qual_aln, cigar::{get_clip_left, get_clip_right}};
+use genomex::bam::tags as bam_tags;
+use genomex::bam::qual::median_qual_aln;
+use genomex::bam::cigar::{get_clip_left, get_clip_right};
 use crate::formats::hf3_tags::*;
 use crate::snvs::check_pacbio_strand;
 
@@ -44,8 +50,8 @@ pub_key_constants!(
     N_BASES_BY_SAMPLE
 );
 const CS_TAG: &[u8] = DIFFERENCE_STRING.as_bytes();
-const DT_TAG: &[u8] = STRAND_DIFFERENCE_TYPES.as_bytes();
-const SB_TAG: &[u8] = SAMPLE_BIT.as_bytes();
+const DD_TAG: &[u8] = STRAND_DIFFERENCES.as_bytes();
+const SB_TAG: &[u8] = SAMPLE_BIT.as_bytes(); // set here
 const MIN_MAPQ: u8  = 50; // TODO: expose as options?
 const MAX_CLIP: u32 = 25;
 
@@ -179,7 +185,7 @@ fn print_aln(
     if aln.mapq() < MIN_MAPQ || 
 
     // skip non-duplex reads used for SV calling but not SNV calling  
-        !aln.aux(DT_TAG).is_ok() ||
+        !aln.aux(DD_TAG).is_ok() ||
 
     // require a minimum number of PacBio passes in duplex reads
         bam_tags::get_tag_u8_default(aln, PACBIO_EFF_COVERAGE, 0) < min_n_passes || 
