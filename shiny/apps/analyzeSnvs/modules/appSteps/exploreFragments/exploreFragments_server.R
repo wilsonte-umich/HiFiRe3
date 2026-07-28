@@ -52,23 +52,39 @@ encodingBaseColors <- list( # generally follow IGV base color conventions
 # load data
 #----------------------------------------------------------------------
 sourceId <- dataSourceTableServer("dataSource", selection = "single") 
-encodings <- reactive({
-    sourceId <- req(sourceId())
-    startSpinner(session, message = "loading encodings")
-    hf3_getEncodings_cached(sourceId)
-})
 variants <- reactive({
     sourceId <- req(sourceId())
     startSpinner(session, message = "loading variants")
     hf3_getVariants_cached(sourceId)
 })
+variant_reads <- reactive({
+    sourceId <- req(sourceId())
+    startSpinner(session, message = "loading variants")
+    hf3_getVariantReads_cached(sourceId)
+})
+clonal_encodings <- reactive({
+    sourceId <- req(sourceId())
+    startSpinner(session, message = "loading clonal encodings")
+    hf3_getEncodings_cached(sourceId, "clonal")
+})
+subclonal_encodings <- reactive({
+    sourceId <- req(sourceId())
+    startSpinner(session, message = "loading subclonal encodings")
+    hf3_getEncodings_cached(sourceId, "subclonal")
+})
 fragment <- reactive({
     x <- input$newFragment
-    encodings <- req(encodings())
+
     variants <- req(variants())
+    variant_reads <- req(variant_reads())
+    clonal_encodings <- req(clonal_encodings())
+    subclonal_encodings <- req(subclonal_encodings())
     startSpinner(session, message = "selecting fragment")
 
-    encoding <- encodings[n_reads >= input$minCoverage][sample(.N, 1)]
+    qname <- variant_reads[n_variants > 10][sample(.N, 1), qname]
+    encoding <- clonal_encodings[grepl(qname, qnames)]
+
+    # encoding <- clonal_encodings[n_reads >= input$minCoverage][sample(.N, 1)]
 
     # snps <- variants[
     #     coverage >= input$minCoverage & 
@@ -86,21 +102,33 @@ fragment <- reactive({
 
     variants <- variants[
         chrom_index1 == encoding$chrom_index1 &
-        start0 >= encoding$start0 &
-        start0 <= encoding$end1
+        tgt_pos0 >= encoding$start0 &
+        tgt_pos0 <= encoding$end1
+    ]
+    hap1 <- subclonal_encodings[
+        chrom_index1 == encoding$chrom_index1 &
+        start0 == encoding$start0 &
+        end1   == encoding$end1 & 
+        bitwAnd(haplotype, 1) == 1 # thus, hap1==1 and homozygous==3
+    ]
+    hap2 <- subclonal_encodings[
+        chrom_index1 == encoding$chrom_index1 &
+        start0 == encoding$start0 &
+        end1   == encoding$end1 & 
+        haplotype == 2
     ]
     stopSpinner(session)
     list(
         encoding = encoding,
-        variants = variants
+        variants = variants,
+        hap1 = hap1,
+        hap2 = hap2
     )
 })
 output$fragmentSpan = renderText({
     sourceId <- req(sourceId())
     fragment <- req(fragment())
-    dstr(fragment)
     chrom <- hf3_getChromNames(sourceId, fragment$encoding$chrom_index1)
-    dstr(chrom)
     paste(
         chrom,
         fragment$encoding$start0,
@@ -109,10 +137,126 @@ output$fragmentSpan = renderText({
 })
 
 #----------------------------------------------------------------------
-# fragment encoding plot
+# encoding plot support
 #----------------------------------------------------------------------
-encodingPlot <- mdiInteractivePlotBoxServer(
-    "encodingPlot",
+dpi <- 96
+pointsize <- 7
+px_per_read <- 5
+px_per_base <- 2
+initEncodingPlot <- function(plot, d){
+    nStackRows <- floor(d$n_bases / input$windowWidthBases) + 1
+    nStrackTracks <- d$n_reads + 1
+    ymax <- nStackRows * nStrackTracks
+    width_pixels  <- input$pixelsPerBase * input$windowWidthBases
+    height_pixels <- input$pixelsPerRead * nStrackTracks * nStackRows
+    layout <- list(
+        width     = width_pixels,
+        height    = height_pixels,
+        pointsize = pointsize,
+        dpi       = dpi
+    )
+    png(file = plot$pngFile, width = width_pixels, height = height_pixels, units = "px", 
+        pointsize = pointsize, res = dpi, type = "cairo")
+    par(mar = c(0, 0, 0, 0))
+    plot$initializeFrame(
+        layout,
+        xlim = c(0, input$windowWidthBases),
+        ylim = c(0, ymax),
+        xaxs = "i",
+        yaxs = "i",
+        xaxt = "n",
+        yaxt = "n"
+    )
+    rect(
+        xleft   = 0, 
+        xright  = input$windowWidthBases, 
+        ybottom = 0, 
+        ytop    = ymax, 
+        col     = encodingBaseColors$M, 
+        border  = NA
+    ) 
+    list(
+        nStackRows = nStackRows, 
+        nStrackTracks = nStrackTracks,
+        ymax = ymax,
+        layout = layout
+    )
+}
+addEncodingBases <- function(tracks, b0, y1, op, height = 1){
+    trackRow1 <- floor(b0 / input$windowWidthBases) + 1
+    plotTrackRow0 <- tracks$nStackRows - trackRow1
+    x0 <- b0 %% input$windowWidthBases
+    y0 <- plotTrackRow0 * tracks$nStrackTracks + y1
+    rect(
+        xleft   = x0, 
+        xright  = x0 + 1, 
+        ybottom = y0,
+        ytop    = y0 + height, 
+        col     = encodingBaseColors[[op]], 
+        border  = NA
+    ) 
+}
+addTargetBases <- function(tracks, d){
+    seq <- strsplit(d$seq, "")[[1]]
+    for (b1 in 1:d$n_bases) {
+        addEncodingBases(tracks, b1 - 1, 0, seq[b1])
+    } 
+}
+addEncodings <- function(tracks, d, readStart0s, plotR1, dataR1, encodings){
+    encoding <- strsplit(encodings[dataR1], "")[[1]]
+    b0 <- readStart0s[dataR1] - d$start0 # can be negative on first trackRow
+    i1 <- 1
+    while (i1 <= length(encoding)){
+        op <- encoding[i1]
+        if (op == "="){
+            nMatch <- ""
+            while (i1 <= length(encoding) && grepl("[0-9]", encoding[i1 + 1])){
+                nMatch <- paste0(nMatch, encoding[i1 + 1])
+                i1 <- i1 + 1
+            }
+            b0 <- b0 + as.integer(nMatch)
+        } else {
+            addEncodingBases(tracks, b0, plotR1, op)
+            b0 <- b0 + 1
+        }
+        i1 <- i1 + 1
+    }  
+}
+addReadVariants <- function(tracks, d, readStart0s, plotOrder){
+    encodings  <- strsplit(d$encodings, ",")[[1]]
+    insertions <- strsplit(d$insertions, ",")[[1]]
+    for (plotR1 in 1:d$n_reads){
+        dataR1 <- plotOrder[plotR1]
+        addEncodings(tracks, d, readStart0s, plotR1, dataR1, insertions)
+        addEncodings(tracks, d, readStart0s, plotR1, dataR1, encodings)
+    } 
+}
+addHaplotypeClonal <- function(tracks, d){
+    encoding <- strsplit(d$hap_vs_ref, "")[[1]]
+    b0 <- 0
+    i1 <- 1
+    while (i1 <= length(encoding)){
+        op <- encoding[i1]
+        if (op == "="){
+            nMatch <- ""
+            while (i1 <= length(encoding) && grepl("[0-9]", encoding[i1 + 1])){
+                nMatch <- paste0(nMatch, encoding[i1 + 1])
+                i1 <- i1 + 1
+            }
+            b0 <- b0 + as.integer(nMatch)
+        } else {
+            addEncodingBases(tracks, b0, 1, op, d$n_reads)
+            b0 <- b0 + 1
+        }
+        i1 <- i1 + 1
+    } 
+}
+
+#----------------------------------------------------------------------
+# clonal encoding plot
+#----------------------------------------------------------------------
+clonalEncodingPlot <- mdiInteractivePlotBoxServer(
+    "clonalEncodingPlot",
     # click = TRUE,
     # brush = TRUE,
     points  = TRUE, # set to TRUE to expose relevant plot options
@@ -122,143 +266,70 @@ encodingPlot <- mdiInteractivePlotBoxServer(
     create = function(...) {
         fragment <- req(fragment())
         d <- fragment$encoding
-        plotOrder <- if (sum(fragment$variants$any_allowed == 1) >= 1){
-            heterozygous <- fragment$variants[any_allowed == 1][which.min(abs(vaf - 0.5))]
+        plotOrder <- if (sum(fragment$variants$zygosity == 1) >= 1){
+            heterozygous <- fragment$variants[zygosity == 1][which.min(abs(vaf - 0.5))]
             het_qnames <- strsplit(heterozygous$qnames, ",")[[1]]
             qnames <- strsplit(d$qnames, ",")[[1]]
             is_het <- qnames %in% het_qnames
             c(which(is_het), which(!is_het))
         } else 1:d$n_reads
-
-        dpi <- 96
-        pointsize <- 7
-        px_per_read <- 5
-        px_per_base <- 2
-
-        nStackRows <- floor(d$n_bases / input$windowWidthBases) + 1
-        nStrackTracks <- d$n_reads * 2 + 1
-        ymax <- nStackRows * nStrackTracks
-
-        width_pixels  <- input$pixelsPerBase * input$windowWidthBases
-        height_pixels <- input$pixelsPerRead * nStrackTracks * nStackRows
-        layout <- list(
-            width     = width_pixels,
-            height    = height_pixels,
-            pointsize = pointsize,
-            dpi       = dpi
-        )
-        
-        png(file = encodingPlot$pngFile, width = width_pixels, height = height_pixels, units = "px", 
-            pointsize = pointsize, res = dpi, type = "cairo")
-        par(mar = c(0, 0, 0, 0))
-
-        encodingPlot$initializeFrame(
-            layout,
-            xlim = c(0, input$windowWidthBases),
-            ylim = c(0, ymax),
-            xaxs = "i",
-            yaxs = "i",
-            xaxt = "n",
-            yaxt = "n"
-        )
-
+        tracks <- initEncodingPlot(clonalEncodingPlot, d)
+        addTargetBases(tracks, d)
         readStart0s <- as.integer(strsplit(d$read_start0s, ",")[[1]])
-        encodings   <-            strsplit(d$encodings, ",")[[1]]
-        insertions  <-            strsplit(d$insertions, ",")[[1]]
-        seq         <-            strsplit(d$seq, "")[[1]]
+        addReadVariants(tracks, d, readStart0s, plotOrder)
+        abline(h = 0:tracks$ymax, lwd = 0.5, col = rgb(0.5,0.5,0.5))  
+        clonalEncodingPlot$finishPng(tracks$layout)
+    }
+)
 
-        rect(
-            xleft   = 0, 
-            xright  = input$windowWidthBases, 
-            ybottom = 0, 
-            ytop    = ymax, 
-            col     = encodingBaseColors$M, 
-            border  = NA
-        ) 
-
-        for (b1 in 1:d$n_bases) {
-            b0 <- b1 - 1
-            trackRow1 <- floor(b0 / input$windowWidthBases) + 1
-            plotTrackRow0 <- nStackRows - trackRow1
-            x0 <- b0 %% input$windowWidthBases
-            y0 <- plotTrackRow0 * nStrackTracks + d$n_reads
-            rect(
-                xleft   = x0, 
-                xright  = x0 + 1, 
-                ybottom = y0,
-                ytop    = y0 + 1, 
-                col     = encodingBaseColors[[seq[b1]]], 
-                border  = NA
-            ) 
-        }
-
-        for (plotR1 in 1:d$n_reads){
-            dataR1 <- plotOrder[plotR1]
-            b0 <- readStart0s[dataR1] - d$start0 # can be negative on first trackRow
-            encoding <- strsplit(encodings[dataR1], "")[[1]]
-            e1 <- 1
-            while (e1 <= length(encoding)){
-                op <- encoding[e1]
-                if (op == "="){
-                    nMatch <- ""
-                    while (e1 <= length(encoding) && grepl("[0-9]", encoding[e1 + 1])){
-                        nMatch <- paste0(nMatch, encoding[e1 + 1])
-                        e1 <- e1 + 1
-                    }
-                    b0 <- b0 + as.integer(nMatch)
-                } else {
-                    trackRow1 <- floor(b0 / input$windowWidthBases) + 1
-                    plotTrackRow0 <- nStackRows - trackRow1
-                    x0 <- b0 %% input$windowWidthBases
-                    y0 <- plotTrackRow0 * nStrackTracks + d$n_reads + plotR1
-                    rect(
-                        xleft   = x0, 
-                        xright  = x0 + 1, 
-                        ybottom = y0,
-                        ytop    = y0 + 1, 
-                        col     = encodingBaseColors[[op]], 
-                        border  = NA
-                    ) 
-                    b0 <- b0 + 1                
-                }
-                e1 <- e1 + 1
-            }
-
-            b0 <- readStart0s[dataR1] - d$start0
-            insertion <- strsplit(insertions[dataR1], "")[[1]]
-            i1 <- 1
-            while (i1 <= length(insertion)){
-                op <- insertion[i1]
-                if (op == "="){
-                    nMatch <- ""
-                    while (i1 <= length(insertion) && grepl("[0-9]", insertion[i1 + 1])){
-                        nMatch <- paste0(nMatch, insertion[i1 + 1])
-                        i1 <- i1 + 1
-                    }
-                    b0 <- b0 + as.integer(nMatch)
-                } else {
-                    trackRow1 <- floor(b0 / input$windowWidthBases) + 1
-                    plotTrackRow0 <- nStackRows - trackRow1
-                    x0 <- b0 %% input$windowWidthBases
-                    y0 <- plotTrackRow0 * nStrackTracks + plotR1
-                    rect(
-                        xleft   = b0, 
-                        xright  = b0 + 1, 
-                        ybottom = y0,
-                        ytop    = y0 + 1, 
-                        col     = encodingBaseColors[[op]], 
-                        border  = NA
-                    ) 
-                    b0 <- b0 + 1
-                }
-                i1 <- i1 + 1
-            }
-        } 
-
-        abline(h = 0:ymax, lwd = 0.5, col = rgb(0.5,0.5,0.5))  
-        abline(h = 0:nStackRows * nStrackTracks, lwd = 0.5, col = "black") 
-
-        encodingPlot$finishPng(layout)
+#----------------------------------------------------------------------
+# haplotype encoding plots
+#----------------------------------------------------------------------
+hap1EncodingPlot <- mdiInteractivePlotBoxServer(
+    "hap1EncodingPlot",
+    # click = TRUE,
+    # brush = TRUE,
+    points  = TRUE, # set to TRUE to expose relevant plot options
+    lines   = TRUE,
+    settings = NULL, # an additional settings template as a list()
+    defaults = NULL, # list of default settings values use to inialize settings
+    create = function(...) {
+        fragment <- req(fragment())
+        d <- fragment$hap1
+        re_start0 <- fragment$encoding$start0
+        d$start0 <- d$start0 - re_start0
+        plotOrder <- 1:d$n_reads
+        tracks <- initEncodingPlot(hap1EncodingPlot, d)
+        addTargetBases(tracks, d)
+        addHaplotypeClonal(tracks, d)
+        readStart0s <- as.integer(strsplit(d$read_start0s, ",")[[1]])
+        addReadVariants(tracks, d, readStart0s, plotOrder)
+        abline(h = 0:tracks$ymax, lwd = 0.5, col = rgb(0.5,0.5,0.5)) 
+        hap1EncodingPlot$finishPng(tracks$layout)
+    }
+)
+hap2EncodingPlot <- mdiInteractivePlotBoxServer(
+    "hap2EncodingPlot",
+    # click = TRUE,
+    # brush = TRUE,
+    points  = TRUE, # set to TRUE to expose relevant plot options
+    lines   = TRUE,
+    settings = NULL, # an additional settings template as a list()
+    defaults = NULL, # list of default settings values use to inialize settings
+    create = function(...) {
+        fragment <- req(fragment())
+        d <- fragment$hap2
+        req(nrow(d) > 0)
+        re_start0 <- fragment$encoding$start0
+        d$start0 <- d$start0 - re_start0
+        plotOrder <- 1:d$n_reads
+        tracks <- initEncodingPlot(hap2EncodingPlot, d)
+        addTargetBases(tracks, d)
+        addHaplotypeClonal(tracks, d)
+        readStart0s <- as.integer(strsplit(d$read_start0s, ",")[[1]])
+        addReadVariants(tracks, d, readStart0s, plotOrder)
+        abline(h = 0:tracks$ymax, lwd = 0.5, col = rgb(0.5,0.5,0.5)) 
+        hap2EncodingPlot$finishPng(tracks$layout)
     }
 )
 
@@ -276,9 +347,7 @@ encodingPlot <- mdiInteractivePlotBoxServer(
 variantsTableData <- reactive({
     fragment <- req(fragment())
     d <- fragment$variants[
-        is_snp == TRUE & 
-        any_allowed == TRUE & 
-        simple_repeat == FALSE
+        is_snp == TRUE
     ]
     d$qnames <- NULL
     d$vaf <- round(d$vaf, 3)

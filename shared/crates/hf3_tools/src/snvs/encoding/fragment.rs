@@ -1,6 +1,6 @@
 //! Support for creating encoded fragment-level files for downstream use.
 
-// dependencies
+// imports
 use rustc_hash::FxHashMap;
 use mdi::OutputCsv;
 use crate::snvs::*;
@@ -193,6 +193,7 @@ impl EncodingMetadata {
 struct EncodingRecord {
     chrom_index:  ChromIndex1,
     re_fragment:  ReFragment,
+    #[serde(serialize_with = "serialize_haplotype")]
     haplotype:    Haplotype,
     n_reads:      usize,
     n_match:      u32, // aggregated valued over all reads
@@ -212,6 +213,7 @@ struct EncodingRecord {
     insertions:   CommaDelimited,
     qnames:       CommaDelimited,
     seq:          UppercaseACGTN, // of the top ref strand from start0 to end1
+    hap_vs_ref:   String, // encoding of haplotype consensus differences relative to reference
 }
 
 /// AlignmentEncodings aggregates AlignmentEncodings per ReFragment.
@@ -267,6 +269,9 @@ impl AlignmentEncodings {
         for rs in read_sets {
             let encodings = &encodings.encodings[rs];
             let n_reads = encodings.len();
+            let (hap_seq, hap_vs_ref) = haplotype_consensuses.cache
+                .get_mut(rs)
+                .expect("Failed to get haplotype seq from cache.");
             let record = EncodingRecord {
                 chrom_index: worker.chrom_index,
                 re_fragment: rs.0,
@@ -305,12 +310,9 @@ impl AlignmentEncodings {
                 qnames:       encodings.iter().map(|r| r.qname.clone())
                                 .collect::<Vec<String>>().join(","),
 
-                seq: {
-                    let hap_seq = haplotype_consensuses.cache
-                        .get_mut(rs)
-                        .expect("Failed to get haplotype seq from cache.");
-                    std::mem::take(hap_seq)
-                }
+                seq:        std::mem::take(hap_seq),
+                hap_vs_ref: std::mem::take(hap_vs_ref).unwrap_or_else(|| "NA".to_string()),
+
             };
             csv.serialize(&record);
 

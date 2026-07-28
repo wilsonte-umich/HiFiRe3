@@ -1,6 +1,6 @@
 //! Command-line tools for processing HiFiRe3 data.
 
-// dependencies
+// imports
 use std::env;
 use std::error::Error;
 
@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // prepare reads for SNV analysis by splitting BAM to chrom-level files
         "split_bam_by_chrom_snv" => tools::split_bam_by_chrom_snv::main(),
 
-        // index fragments to collect read paths and junctions
+        // analyze RE fragment haplotypes for clonal and subclonal variants
         "analyze_snvs" => tools::analyze_snvs::main(),
 
         /*--------------------------------------------------------------

@@ -1,13 +1,13 @@
 //! Process reads with first alignments on a specific chromosome, provided as a 
 //! message on a channel.
 
-// dependencies
+// imports
 use std::error::Error;
 use crossbeam::channel::{Receiver, Sender};
+use minimap2::{Aligner as Minimap2};
 use rust_htslib::bam::{Reader, Read, Record as BamRecord};
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
-use genomex::sequence::Aligner;
 use crate::sites::SiteMatches;
 use crate::snvs::*;
 
@@ -19,8 +19,6 @@ pub_key_constants!(
     GENOME_SIMPLE_REPEAT_BED
 );
 const MAX_CLIP: u32 = 25;
-const ALN_CAPACITY: usize = 10000; // max expected read length
-const ALN_MAX_SHIFT: usize = 50; // TODO: expose as option?
 
 // process chromosomes received on the channel
 pub fn process_chrom(
@@ -51,6 +49,10 @@ pub fn process_chrom(
             "{}.chr{}.snv_indel.txt.bgz", 
             chrom_file_prefix, &chrom_index_padded
         );
+        let variant_reads_file_path = format!(
+            "{}.chr{}.variant_reads.txt.bgz", 
+            chrom_file_prefix, &chrom_index_padded
+        );
         let reads_on_reference_path = format!(
             "{}.chr{}.encodings.reads_on_reference.bed.bgz", 
             chrom_file_prefix, &chrom_index_padded
@@ -66,13 +68,13 @@ pub fn process_chrom(
             simple_repeats: SimpleRepeats::new(
                 tool, &chrom_name, rmsk_simple_repeats_bed, trf_simple_repeats_bed
             ),
-            aligner: Aligner::new_fast(
-                ALN_CAPACITY, ALN_CAPACITY, ALN_MAX_SHIFT
-            ),
-            variant_tally:      VariantsTally::new(),
-            reads_on_reference: AlignmentEncodings::new(),
-            reads_on_haplotype: AlignmentEncodings::new(),
+            minimap2: Minimap2::builder().map_hifi().with_cigar(),
+            variant_tally:       VariantsTally::new(),
+            variant_reads_tally: VariantReadsTally::new(),
+            reads_on_reference:  AlignmentEncodings::new(),
+            reads_on_haplotype:  AlignmentEncodings::new(),
             variants_file_path,
+            variant_reads_file_path,
             reads_on_reference_path,
             reads_on_haplotype_path,
         };
@@ -98,6 +100,7 @@ pub fn process_chrom(
 
         // finish processing and writing pileup and variants
         let variant_metadata = VariantsTally::write_sorted(tool, &mut worker);
+        let variant_reads_metadata = VariantReadsTally::write_sorted(tool, &mut worker);
         let clonal_metadata = AlignmentEncodings::write_sorted(
             tool, &worker, &mut haplotype_consensuses,
             &worker.reads_on_reference, 
@@ -113,6 +116,7 @@ pub fn process_chrom(
         tx_data.send(SnvChromWorkerData::TotalAlnCount(chrom_aln_count))?;
         tx_data.send(SnvChromWorkerData::UsableAlnCount((chrom_name.clone(), chrom_aln_count_used)))?;
         tx_data.send(SnvChromWorkerData::VariantMetadata(variant_metadata))?;
+        tx_data.send(SnvChromWorkerData::VariantReadsMetadata(variant_reads_metadata))?;
         tx_data.send(SnvChromWorkerData::ClonalEncodingMetadata(clonal_metadata))?;
         tx_data.send(SnvChromWorkerData::SubclonalEncodingMetadata(subclonal_metadata))?;
     }

@@ -17,14 +17,14 @@ pub use variant::*;
 pub use haplotype::*;
 pub use encoding::*;
 
-// dependencies
+// imports
 use std::error::Error;
+use minimap2::{Aligner as Minimap2, PresetSet};
 use faimm::IndexedFasta;
 use serde::Serialize;
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
-use genomex::genome::{Chroms, TargetRegions, Exclusions};
-use genomex::sequence::Aligner;
+use genomex::genome::{TargetRegions, Exclusions};
 use crate::tools::type_aliases::*;
 
 // constants
@@ -34,6 +34,7 @@ pub_key_constants!(
     LIBRARY_TYPE
 );
 pub const MAX_HETEROZYGOUS_ZYGOSITY: f64 = 0.8;
+pub const MIN_SNV_INDEL_QUAL: u8 = 27;
 
 /// Ensure that PacBio SNV analysis is performed on a library from the 
 /// PacBioStrand sequencing platform.
@@ -59,7 +60,6 @@ pub struct SnvAnalysisTool {
     pub n_cpu: u32,
 
     // chromosomes and regions
-    pub chroms:     Chroms,
     pub targets:    TargetRegions,
     pub exclusions: Exclusions,
     pub fa:         IndexedFasta,
@@ -76,17 +76,19 @@ pub struct SnvChromWorker{
     pub simple_repeats: SimpleRepeats,
 
     // processing tools
-    pub aligner: Aligner,
+    pub minimap2: Minimap2<PresetSet>,
 
     // metadata aggregation
-    pub variant_tally:      VariantsTally,
-    pub reads_on_reference: AlignmentEncodings,
-    pub reads_on_haplotype: AlignmentEncodings,
+    pub variant_tally:       VariantsTally,
+    pub variant_reads_tally: VariantReadsTally,
+    pub reads_on_reference:  AlignmentEncodings,
+    pub reads_on_haplotype:  AlignmentEncodings,
 
     // output file paths
-    pub variants_file_path:      String,
-    pub reads_on_reference_path: String,
-    pub reads_on_haplotype_path: String,
+    pub variants_file_path:       String,
+    pub variant_reads_file_path: String,
+    pub reads_on_reference_path:  String,
+    pub reads_on_haplotype_path:  String,
 }
 
 /// SnvChromWorkerData allows difference types of metadata to be trasmitted to 
@@ -95,6 +97,7 @@ pub enum SnvChromWorkerData {
     TotalAlnCount(usize),
     UsableAlnCount((ChromName, usize)),
     VariantMetadata(VariantMetadata),
+    VariantReadsMetadata(VariantReadsMetadata),
     ClonalEncodingMetadata(EncodingMetadata),
     SubclonalEncodingMetadata(EncodingMetadata),
 }

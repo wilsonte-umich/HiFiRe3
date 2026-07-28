@@ -51,5 +51,5 @@ pub type PhredQual = u8;
 /// data type.
 pub type CommaDelimited = String;
 
-/// A boolean cast as a u8 integer for printing to file.
-pub type IntegerBool = u8;
+// /// A boolean cast as a u8 integer for printing to file.
+// pub type IntegerBool = u8;

@@ -9,7 +9,7 @@
 //! 
 //! Support multiple input BAM files for multi-sample variant calling.
 
-// dependencies
+// imports
 use std::error::Error;
 use std::str::from_utf8_unchecked;
 use rustc_hash::FxHashMap;
@@ -62,10 +62,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut cfg = Config::new();
     cfg.set_u32_env(&[N_CPU]);
     cfg.set_bool_env(&[IS_COMPOSITE_GENOME]);
-    cfg.set_u8_env(&[MIN_AVG_BASE_QUAL, MIN_N_PASSES]);
+    cfg.set_u8_env(&[MIN_AVG_BASE_QUAL]);
+    cfg.set_f64_env(&[MIN_N_PASSES]);
     cfg.set_string_env(&[NAME_BAM_FILES, INDEX_FILE_PREFIX_WRK, SNV_SAMPLES_FILE]);
     let min_avg_base_qual = *cfg.get_u8(MIN_AVG_BASE_QUAL);
-    let min_n_passes      = *cfg.get_u8(MIN_N_PASSES);
+    let min_n_passes      = *cfg.get_f64(MIN_N_PASSES) as f32;
 
     // validate we are working with the expected read data type
     check_pacbio_strand(TOOL, &mut cfg)?;
@@ -171,7 +172,7 @@ fn print_aln(
     header_view:  &HeaderView,
     is_composite: bool,
     min_avg_base_qual: u8,
-    min_n_passes:      u8,
+    min_n_passes:      f32,
     writers:      &mut FxHashMap<u32, Writer>,
     ctrs:         &mut Counters,
     sample_bit:   u32,
@@ -188,7 +189,7 @@ fn print_aln(
         !aln.aux(DD_TAG).is_ok() ||
 
     // require a minimum number of PacBio passes in duplex reads
-        bam_tags::get_tag_u8_default(aln, PACBIO_EFF_COVERAGE, 0) < min_n_passes || 
+        bam_tags::get_tag_f32_default(aln, PACBIO_EFF_COVERAGE, 0.0) < min_n_passes || 
     
     // rare mapped reads lack a minimap2 cs tag for unknown reasons
         !aln.aux(CS_TAG).is_ok() ||

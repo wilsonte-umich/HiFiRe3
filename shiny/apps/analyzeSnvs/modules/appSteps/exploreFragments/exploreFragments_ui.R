@@ -97,19 +97,40 @@ exploreFragmentsUI <- function(id, options) {
         ),
         fluidRow(
             mdiInteractivePlotBoxUI(
-                ns("encodingPlot"), 
-                "Fragment Encoding Plot",
-                width = 12, 
-                collapsible = FALSE,
-                solidHeader = FALSE
+                ns("clonalEncodingPlot"), 
+                "Clonal Encoding Plot",
+                width = 12,
+                solidHeader = FALSE, 
+                collapsible = TRUE, 
+                collapsed = FALSE
+            )
+        ),
+        fluidRow(
+            mdiInteractivePlotBoxUI(
+                ns("hap1EncodingPlot"), 
+                "Haplotype 1 Encoding Plot",
+                width = 12,
+                solidHeader = FALSE, 
+                collapsible = TRUE, 
+                collapsed = FALSE
+            )
+        ),
+        fluidRow(
+            mdiInteractivePlotBoxUI(
+                ns("hap2EncodingPlot"), 
+                "Haplotype 2 Encoding Plot",
+                width = 12,
+                solidHeader = FALSE, 
+                collapsible = TRUE, 
+                collapsed = FALSE
             )
         ),
         fluidRow(
             bufferedTableUI(
                 ns("variantsTable"),
                 title = "Fragment Variants Table",
-                width = 12,
-                collapsible = TRUE,
+                width = 12, 
+                collapsible = TRUE, 
                 collapsed = TRUE
             )
         ),

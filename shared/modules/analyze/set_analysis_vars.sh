@@ -28,9 +28,7 @@ export GENOME_TALLY_FILE=${DATA_GENOME_PREFIX}.genome_tally.txt
 
 # SNV analysis output
 export SNV_SAMPLES_FILE=${ANALYSIS_PREFIX}.snv_samples.txt
-export SNV_ALL_READS_PILEUP_BGZ=${DATA_GENOME_PREFIX}.all_reads.pileup.bed.bgz 
-export SNV_ALL_READS_VARIANTS_BGZ=${DATA_GENOME_PREFIX}.all_reads.snv_indel.txt.bgz
-export SNV_ALL_READS_ENCODINGS_BGZ=${DATA_GENOME_PREFIX}.all_reads.read_encodings.bed.bgz
-export SNV_ERROR_CORRECTED_PILEUP_BGZ=${DATA_GENOME_PREFIX}.error_corrected_${MIN_N_PASSES}.pileup.bed.bgz 
-export SNV_ERROR_CORRECTED_VARIANTS_BGZ=${DATA_GENOME_PREFIX}.error_corrected_${MIN_N_PASSES}.snv_indel.txt.bgz
-export SNV_ERROR_CORRECTED_ENCODINGS_BGZ=${DATA_GENOME_PREFIX}.error_corrected_${MIN_N_PASSES}.read_encodings.bed.bgz
+export SNV_VARIANTS_BGZ=${DATA_GENOME_PREFIX}.snv_indel.min_passes_${MIN_N_PASSES}.txt.bgz
+export SNV_VARIANT_READS_BGZ=${DATA_GENOME_PREFIX}.variant_reads.min_passes_${MIN_N_PASSES}.txt.bgz
+export SNV_CLONAL_ENCODINGS_BGZ=${DATA_GENOME_PREFIX}.read_encodings.min_passes_${MIN_N_PASSES}.clonal.bed.bgz
+export SNV_SUBCLONAL_ENCODINGS_BGZ=${DATA_GENOME_PREFIX}.read_encodings.min_passes_${MIN_N_PASSES}.subclonal.bed.bgz

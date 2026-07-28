@@ -40,15 +40,15 @@ encodingBaseColors <- list( # generally follow IGV base color conventions
 # load data
 #----------------------------------------------------------------------
 sourceId <- dataSourceTableServer("dataSource", selection = "single") 
-encodings <- reactive({
-    sourceId <- req(sourceId())
-    startSpinner(session, message = "loading encodings")
-    hf3_getEncodings_cached(sourceId)
-})
 variants <- reactive({
     sourceId <- req(sourceId())
     startSpinner(session, message = "loading variants")
     hf3_getVariants_cached(sourceId)
+})
+clonal_encodings <- reactive({
+    sourceId <- req(sourceId())
+    startSpinner(session, message = "loading clonal encodings")
+    hf3_getEncodings_cached(sourceId, "clonal")
 })
 
 #----------------------------------------------------------------------
@@ -65,7 +65,7 @@ fragLengthPlot <- mdiInteractivePlotBoxServer(
     create = function(...) {
         sourceId <- req(sourceId())
         sample_bits <- hf3_sample_bits(sourceId)
-        d <- req(encodings())
+        d <- req(clonal_encodings())
         startSpinner(session, message = "rendering length distribution")
         ymax <- 0
         d <- lapply(sample_bits, function(sample_bit){
@@ -116,7 +116,7 @@ fragCoveragePlot <- mdiInteractivePlotBoxServer(
     settings = NULL, # an additional settings template as a list()
     defaults = NULL, # list of default settings values use to inialize settings
     create = function(...) {
-        d <- req(encodings())
+        d <- req(clonal_encodings())
         startSpinner(session, message = "rendering coverage distribution")
         d <- d[, .(count = .N), keyby = .(n_reads)]
         d[, freq := count / sum(count)]
@@ -152,7 +152,7 @@ lengthVsCoveragePlot <- mdiInteractivePlotBoxServer(
     settings = NULL, # an additional settings template as a list()
     defaults = NULL, # list of default settings values use to inialize settings
     create = function(...) {
-        d <- req(encodings())
+        d <- req(clonal_encodings())
         startSpinner(session, message = "rendering correlation")
         layout <- lengthVsCoveragePlot$initializePng(mar = c(4.1, 4.1, 0.9, 0.9)) %>% 
                   lengthVsCoveragePlot$initializeFrame(
@@ -191,8 +191,7 @@ zygosityPlot <- mdiInteractivePlotBoxServer(
         startSpinner(session, message = "rendering zygosity")
         d <- d[
             is_snp == TRUE &
-            coverage >= input$minCoverage & 
-            any_allowed == 1
+            coverage >= input$minCoverage
         ]
         d <- d[, .(count = .N), keyby = .(vaf_bin)]
         d[, freq := count / sum(count)]
@@ -227,22 +226,20 @@ variantSummaryTableData <- reactive({
     sourceId <- req(sourceId())
     smp_bits <- hf3_sample_bits(sourceId)
 
-    encodings <- req(encodings())
+    clonal_encodings <- req(clonal_encodings())
     variants <- req(variants())
 
     startSpinner(session, message = "assembling summary table")
 
-    encodings <- encodings[n_reads >= input$minCoverage]
+    clonal_encodings <- clonal_encodings[n_reads >= input$minCoverage]
     snps <- variants[
         coverage >= input$minCoverage & 
-        is_snp == TRUE & 
-        any_allowed == TRUE & 
-        simple_repeat == 0
+        is_snp == TRUE
     ]
     snps_clonal <- snps[vaf >= 0.2]
-    snps_singleton <- snps[count == 1]
+    snps_singleton <- snps[n_matching_reads == 1]
 
-    enc_exp <- encodings[, 
+    enc_exp <- clonal_encodings[, 
         .(
             n_bases = n_bases,
             sample_bit = as.integer(strsplit(sample_bitss, ",")[[1]])
@@ -254,7 +251,7 @@ variantSummaryTableData <- reactive({
     d <- data.table(
         metric = c("n_reads", "n_bases"),
         sample = c(smp_all, smp_all),
-        value = encodings[, c(sum(n_reads), sum(n_reads * n_bases))]
+        value = clonal_encodings[, c(sum(n_reads), sum(n_reads * n_bases))]
     )
     for (i in 1:length(smp_bits)){
         smp <- paste0("smp", i)

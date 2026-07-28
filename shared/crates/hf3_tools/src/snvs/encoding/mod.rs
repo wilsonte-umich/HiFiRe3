@@ -4,7 +4,9 @@
 // modules
 mod fragment;
 mod variant;
+mod read;
 
 // re-exports
 pub use fragment::*;
 pub use variant::*;
+pub use read::*;

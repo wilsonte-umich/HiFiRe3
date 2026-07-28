@@ -3,18 +3,22 @@
 //! 
 //! Clonal variants are called from recurring variants seen in prior minimap2
 //! alignments against reference. Subclonal variants are called from new
-//! Smith-Waterman alignments against haplotype consensus(es) generated here.
+//! alignments against haplotype consensus(es) generated here.
+//! 
+//! `analyze_reads` in this script consumes the most time in `analyze SNVs` 
+//! action execution.
 
-// dependencies
+// imports
 use std::iter::repeat_n;
 use rustc_hash::FxHashMap;
-use genomex::sequence::AlignmentStatus;
 use super::*;
 
 // constants
+const MAX_EXPECTED_READ_LEN:  usize = 10000;
 const MIN_HAPLOTYPE_READS:    usize = 3;  // a haplotype must have >=3 matching reads
 const MIN_HETEROZYGOUS_READS: usize = 8;  // allow fewer total reads when heterozygous
 const MIN_HOMOZYGOUS_READS:   usize = 15; // require more homozygous reads to minimize false homozygosity
+const MM_F_NO_PRINT_2ND: [u64; 1] = [16384]; // minimap2 flag to suppress return of secondary alignments
 
 impl SnvChromWorker {
 
@@ -26,9 +30,14 @@ impl SnvChromWorker {
         fragment_reads: FragmentReads,
         haplotype_consensuses: &mut HaplotypeConsensuses,
     ){
-        // allocate required objects
+        // allocate recycled objects used in fragment read parsing
         let mut frag_vars = FragmentVariants::new();
         let mut encoding = AlignmentEncoding::new();
+        let mut seq0_bases: Vec<String> = Vec::with_capacity(MAX_EXPECTED_READ_LEN);
+        let mut cs_map: Vec<FxHashMap<String, u8>> = Vec::with_capacity(MAX_EXPECTED_READ_LEN);
+        let mut op_val: String = String::with_capacity(128);
+        let mut ref_pos0_map: Vec<ChromPos0> = Vec::with_capacity(MAX_EXPECTED_READ_LEN);
+        let mut hap_vs_ref = String::with_capacity(128);
 
         // process all observed ReFragents one at a time
         for re_fragment in fragment_reads.instances.keys() {
@@ -63,9 +72,10 @@ impl SnvChromWorker {
             for ref_var in ref_vars{
                 let vmap =  &frag_vars.variant_map[&ref_var];
                 if vmap.n_matching_reads >= MIN_HAPLOTYPE_READS { // variant is at least heterozygous
-                    let read_is: Vec<ReadIndex> = vmap.read_map.iter().enumerate()
-                        .filter_map(|(read_i, b)|{
-                            if *b { Some(read_i) } else { None }
+                    let read_is: Vec<ReadIndex> = vmap.read_map.iter()
+                        .enumerate()
+                        .filter_map(|(read_i, r)|{
+                            if r.has_var() { Some(read_i) } else { None }
                         }).collect();
                     self.variant_tally.add_clonal(
                         &ref_var, reads, &read_is
@@ -79,15 +89,19 @@ impl SnvChromWorker {
                 }
             }
 
-            // require more reads to continue with a homozygous RE fragment
+            // short-circuit to final processing homozygous RE fragments
             let n_heterozygous_variants = frag_vars.variant_map.len();
             if n_heterozygous_variants == 0 {
+                // require more reads to continue with a homozygous RE fragment
                 if n_reads < MIN_HOMOZYGOUS_READS { continue; }
                 let hap3_read_is: Vec<ReadIndex> = (0..n_reads).map(|i| i). collect();
                 let hap3_seq = self.build_haplotype_consensus(
+                    &mut seq0_bases, &mut cs_map, &mut op_val,
                     &reads, &hap3_read_is
                 );
+                let Some(hap3_seq) = hap3_seq else { continue; };
                 self.align_to_haplotype_consensus(
+                    &mut op_val, &mut ref_pos0_map, &mut hap_vs_ref, 
                     haplotype_consensuses, &mut frag_vars, &mut encoding, 
                     re_fragment, reads, 
                     hap3_read_is, hap3_seq, Haplotype::Homozygous
@@ -96,36 +110,46 @@ impl SnvChromWorker {
             }
 
             // normalize non-reference variants to consistent haplotype numbers
-            // given that variant SNPs may be on opposing haplotypes
+            // given that different variants may be on opposing haplotypes
             // reads that cannot be unambiguously assigned are haplotype 0 at this point
+            // this process might change mutable `hap0` but does not change immutable `has_var`
             let het_vars: Vec<_> = frag_vars.variant_map.keys().cloned().collect();
             let index_matches = frag_vars.variant_map[&het_vars[0]].read_map.clone();
             let mut read_haplotypes: Vec<u8> = if n_heterozygous_variants > 1 { 
-                // re-orient variant read maps to index_matches, i.e., to the first variant
+                // re-orient variant read map hap0s to index_matches, i.e., to the first variant
                 for het_var in het_vars[1..n_heterozygous_variants].iter(){
                     let vmap =  frag_vars.variant_map.get_mut(&het_var).unwrap();
-                    let match_score = vmap.read_map.iter().zip(&index_matches).map(|b|{
-                        if *b.0 == *b.1 { 1 } else { -1 }
-                    }).sum::<i32>();
+                    let match_score = vmap.read_map.iter()
+                        .zip(&index_matches)
+                        .map(|(r1, r2)|{
+                            if r1.has_var() == r2.has_var() { 1 } else { -1 }
+                        }).sum::<i32>();
                     if match_score < 0 {
-                        for b in vmap.read_map.iter_mut() { *b = !*b; }
+                        for r in vmap.read_map.iter_mut() { 
+                            r.hap0 = !r.hap0; 
+                        }
                     }
                 }
                 // assign each unambiguous read to haplotype 1 or 2; 0 if ambiguous
                 (0..n_reads).map(|read_i|{
-                    let rmap: Vec<bool> = het_vars.iter().map(|het_var|{
-                        let vmap =  frag_vars.variant_map.get(&het_var).unwrap();
-                        vmap.read_map[read_i]
-                    }).collect();
-                    if rmap.windows(2).all(|w| w[0] == w[1]) {
-                        rmap[0] as u8 + 1
+                    let rmap: Vec<ReadMapEntry> = het_vars.iter()
+                        .map(|v|{
+                            let vmap =  frag_vars.variant_map.get(&v).unwrap();
+                            vmap.read_map[read_i]
+                        }).collect();
+                    let all_haps_match = rmap
+                        .windows(2)
+                        .all(|rs| rs[0].hap0 == rs[1].hap0);
+                    if all_haps_match {
+                        rmap[0].hap0 as u8 + 1
                     } else {
-                        0 // a read wasn't always assigned to the same haplotype
+                        0 // a read wasn't always assigned to the same haplotype (for now)
                     }
                 }).collect()
             } else {
-                // encoding assigns the variant allele as haplotype2 for single SNPs
-                index_matches.into_iter().map(|b| b as u8 + 1).collect()
+                // assign single heterozygous variants as haplotype2 
+                index_matches.into_iter()
+                    .map(|r| r.hap0 as u8 + 1).collect()
             };
 
             // abort if we failed to resolve a fragment into haplotype reads for consensus
@@ -143,8 +167,16 @@ impl SnvChromWorker {
             }
 
             // build consensus sequences of each haplotype using unambiguous reads
-            let hap1_seq = self.build_haplotype_consensus(&reads, &hap1_read_is);
-            let hap2_seq = self.build_haplotype_consensus(&reads, &hap2_read_is);
+            let hap1_seq = self.build_haplotype_consensus(
+                &mut seq0_bases, &mut cs_map, &mut op_val,
+                &reads, &hap1_read_is
+            );
+            let hap2_seq = self.build_haplotype_consensus(
+                &mut seq0_bases, &mut cs_map, &mut op_val,
+                &reads, &hap2_read_is
+            );
+            let Some(hap1_seq) = hap1_seq else { continue; };
+            let Some(hap2_seq) = hap2_seq else { continue; };
 
             // assign ambiguous reads to a haplotype
             let ambiguous_read_is: Vec<ReadIndex> = read_haplotypes.iter().enumerate()
@@ -170,11 +202,13 @@ impl SnvChromWorker {
 
             // align each read to its haplotype consensus to call subclonal variants
             self.align_to_haplotype_consensus(
+                &mut op_val, &mut ref_pos0_map, &mut hap_vs_ref, 
                 haplotype_consensuses, &mut frag_vars, &mut encoding,
                 re_fragment, reads, 
                 hap1_read_is, hap1_seq, Haplotype::Haplotype1
             );
             self.align_to_haplotype_consensus(
+                &mut op_val, &mut ref_pos0_map, &mut hap_vs_ref, 
                 haplotype_consensuses, &mut frag_vars, &mut encoding, 
                 re_fragment, reads, 
                 hap2_read_is, hap2_seq, Haplotype::Haplotype2
@@ -185,99 +219,167 @@ impl SnvChromWorker {
     /// Use unambiguous haplotype reads to build a haplotype consensus sequence.
     fn build_haplotype_consensus(
         &mut self,
-        reads:   &[ReadInstance],
-        read_is: &[ReadIndex],
-    ) -> UppercaseACGTN {
+        seq0_bases: &mut Vec<String>,
+        cs_map:     &mut Vec<FxHashMap<String, u8>>,
+        op_val:     &mut String,
+        reads:      &[ReadInstance],
+        read_is:    &[ReadIndex],
+    ) -> Option<UppercaseACGTN> {
 
-        // initialize the first sequence as the abitrary target
-        let seq0 = reads[read_is[0]].get_top_strand_seq();
-        let n_bases = seq0.len();
-        let n_reads = read_is.len();
-        let mut map: Vec<Vec<UppercaseACGTN>> = Vec::with_capacity(n_reads);
-        map.push(seq0.split("").map(|c| c.to_string()).collect());
+        // initialize the first forward strand sequence as the abitrary target
+        // remembering that nearly all reads are forward strand after basecalling
+        let read0_i = read_is.iter().position(|i| !reads[*i].is_reverse);
+        let Some(read0_i) = read0_i else { return None; }; // never expected to fail
+        let seq0_bytes = &reads[read0_i].seq_bytes;
+        let mm2 = self.minimap2.clone()
+            .with_seq(seq0_bytes)
+            .expect("Failed to initialize minimap2 in build_haplotype_consensus()");
+        seq0_bases.clear();
+        seq0_bases.extend(seq0_bytes.iter()
+            .map(|&b| match b {
+                b'A' => "A".to_string(),
+                b'C' => "C".to_string(),
+                b'G' => "G".to_string(),
+                b'T' => "T".to_string(),
+                _    => "N".to_string(),
+            })
+        );
+        cs_map.clear();
+        cs_map.extend(seq0_bases.iter()
+            .map(|b| {
+                let mut m = FxHashMap::default();
+                m.insert(b.clone(), 1);
+                m
+            })
+        );
 
-        // align each remaining read to target to fill the matrix
-        for read_j in 1..n_reads{
-            let aln = self.aligner.align(
-                &reads[read_is[read_j]].get_top_strand_seq(), 
-                &seq0, 
+        // align each remaining read to target to count alternative bases
+        read_is.iter().for_each(|read_i| {
+            if *read_i == read0_i { return; } // skip the read in use as target
+            let mappings = mm2.map(
+                &reads[*read_i].seq_bytes, 
+                true, 
+                false, 
                 None, 
-                false,
-            );
-            if aln.status == AlignmentStatus::AlignmentFound {
-                if aln.tgt_start0 > 0 || aln.tgt_end0 < n_bases - 1 {
-                    let mut qry_on_tgt = Vec::with_capacity(n_bases);
-                    if aln.tgt_start0 > 0 {
-                        qry_on_tgt.extend(repeat_n("N".to_string(), aln.tgt_start0));
+                Some(&MM_F_NO_PRINT_2ND), 
+                None
+            ).expect("Minimap2 failed in build_haplotype_consensus()");
+            for mapping in mappings {
+                let Some(aln) = mapping.alignment else { continue; };
+                let Some(cs) = aln.cs else { continue; };
+                let mut tgt_pos0 = mapping.target_start as usize;
+                let mut chars = cs.chars();
+                let mut op = chars.next().unwrap();
+                op_val.clear();
+                while let Some(char) = chars.next() {
+                    if char.is_alphanumeric() {
+                        op_val.push(char);
+                    } else {
+                        match op {
+                            ':' => { // :[0-9]+   Identical sequence length
+                                (0..op_val.parse::<usize>().unwrap()).for_each(|_| {
+                                    *cs_map[tgt_pos0].get_mut(&seq0_bases[tgt_pos0]).unwrap() += 1;
+                                    tgt_pos0 += 1;
+                                });
+                            },
+                            '*' => { // *[acgtn][acgtn]   Substitution: target to query
+                                cs_map[tgt_pos0]
+                                    .entry(op_val[1..=1].to_ascii_uppercase())
+                                    .and_modify(|n| *n += 1)
+                                    .or_insert(1);
+                                tgt_pos0 += 1;
+                            },
+                            '+' => { // +[acgtn]+   Insertion to the target
+                                let alt = op_val.to_ascii_uppercase();
+                                cs_map[tgt_pos0 - 1]
+                                    .entry(format!("{}{}", seq0_bases[tgt_pos0 - 1], alt))
+                                    .and_modify(|n| *n += 1)
+                                    .or_insert(1);
+                            },
+                            '-' => { // -[acgtn]+   Deletion from the target
+                                (0..op_val.len()).for_each(|_| {
+                                    cs_map[tgt_pos0]
+                                        .entry("-".to_string())
+                                        .and_modify(|n| *n += 1)
+                                        .or_insert(1);
+                                    tgt_pos0 += 1;
+                                });
+                            },
+                            _ => panic!("Unexpected CS tag operation: {}", op),
+                        }
+                        op = char;
+                        op_val.clear();
                     }
-                    qry_on_tgt.extend(aln.qry_on_tgt.into_iter());
-                    if aln.tgt_end0 < n_bases - 1 {
-                        qry_on_tgt.extend(repeat_n("N".to_string(), n_bases - 1 - aln.tgt_end0));
-                    }
-                    map.push(qry_on_tgt);   
-                } else {
-                    map.push(aln.qry_on_tgt);   
+                }
+                if let Ok(len) = op_val.parse::<usize>() {
+                    (0..len).for_each(|_| {
+                        *cs_map[tgt_pos0].get_mut(&seq0_bases[tgt_pos0]).unwrap() += 1;
+                        tgt_pos0 += 1;
+                    });
                 }
             }
-        }
+        });
 
         // scan the matrix by base to establish the haplotype consensus
-        let n_reads = map.len(); // just in case one failed to align, not expected
-        (0..n_bases)
-            .map(|base_i|{
-
-                // determine the most frequently observed value at each index base position
-                // could be a single base, multiple bases, or "-" for deletion
-                (0..n_reads)
-                    .map(|read_j| &map[read_j][base_i])
-                    .fold(FxHashMap::default(), |mut counts, base| {
-                        *counts.entry(base).or_insert(0) += 1;
-                        counts
-                    })
-                    .into_iter()
-                    .max_by(|a, b| a.1.cmp(&b.1))
-                    .map(|(base, _)| base)
-                    .unwrap()
-            })
-
-            // remove consensus deletion ops when index target had an insertion
-            .filter_map(|base|{ 
-                if base == "-" { None } else { Some(base.to_owned()) }
-            })
-            .collect::<Vec<String>>()
-
-            // concatenate to the final consensus sequence
-            .join("")
+        let n_seq0_bases = cs_map.len();
+        let mut consensus = String::with_capacity(n_seq0_bases + 100);
+        for tgt_pos0 in 0..n_seq0_bases {
+            let bases = cs_map[tgt_pos0].iter()
+                .max_by(|a, b| a.1.cmp(&b.1))
+                .map(|(bases, _)| bases)
+                .unwrap();
+            if bases != "-" {
+                consensus.push_str(bases); // usually one but could be multiple bases at an insertion
+            }
+        }
+        Some(consensus)
     }
 
     /// Align one ambiguous read to each haplotype consensus to resolve its 
     /// haplotype.
     fn assign_ambiguous_to_haplotype(
         &mut self,
-        read: &ReadInstance,
+        read:     &ReadInstance,
         hap1_seq: &UppercaseACGTN,
         hap2_seq: &UppercaseACGTN,
     ) -> u8 {
-        let seq = read.get_top_strand_seq();
-        let aln1 = self.aligner.align(
-            &seq, 
-            hap1_seq, 
+        let mm2 = self.minimap2.clone()
+            .with_seq(&read.seq_bytes)
+            .expect("Failed to initialize minimap2 in assign_ambiguous_to_haplotype()");
+        let m1 = mm2.map(
+            hap1_seq.as_bytes(), 
+            true, // cs not used, but need full score calculation
+            false, 
             None, 
-            false,
-        );
-        let aln2 = self.aligner.align(
-            &seq, 
-            hap2_seq, 
+            Some(&MM_F_NO_PRINT_2ND), 
+            None
+        ).expect("Minimap2 failed in assign_ambiguous_to_haplotype()");
+        let m2 = mm2.map(
+            hap2_seq.as_bytes(), 
+            true, 
+            false, 
             None, 
-            false,
-        );
-        if aln1.score > aln2.score { 1 } else { 2 }
+            Some(&MM_F_NO_PRINT_2ND), 
+            None
+        ).expect("Minimap2 failed in assign_ambiguous_to_haplotype()");
+        let score1 = m1[0].alignment.as_ref()
+            .map_or(0, |a| {
+                a.alignment_score.unwrap_or(0)
+            });
+        let score2 = m2[0].alignment.as_ref()
+            .map_or(0, |a| {
+                a.alignment_score.unwrap_or(0)
+            });
+        if score1 > score2 { 1 } else { 2 }
     }
 
     /// Align all haplotype read sequences to their consensus to call subclonal
     /// variant relative to that consensus.
     fn align_to_haplotype_consensus(
         &mut self,
+        op_val:       &mut String,
+        ref_pos0_map: &mut Vec<ChromPos0>,
+        hap_vs_ref:   &mut String,
         haplotype_consensuses: &mut HaplotypeConsensuses,
         frag_vars:   &mut FragmentVariants,
         encoding:    &mut AlignmentEncoding,
@@ -287,35 +389,83 @@ impl SnvChromWorker {
         hap_seq:     UppercaseACGTN,
         haplotype:   Haplotype,
     ) {
-        // align the fragment reference span to the haplotype consensus 
-        // to enable mapping the simple repeat map onto the haplotype consensus
-        let aln = self.aligner.align(
-            haplotype_consensuses.get(re_fragment, Haplotype::Unspecified), 
-            &hap_seq, 
+        let n_hap_bases = hap_seq.len();
+        let mm2 = self.minimap2.clone()
+            .with_seq(hap_seq.as_bytes())
+            .expect("Failed to initialize minimap2 in align_to_haplotype_consensus()");
+
+        // align the fragment reference span to the haplotype consensus, i.e., ref_on_hap
+        let (ref_seq, _) = haplotype_consensuses.get(re_fragment, Haplotype::Unspecified);
+        let ref_on_hap = &mm2.map(
+            ref_seq.as_bytes(), 
+            true, 
+            false, 
             None, 
-            false,
-        );
-        if aln.status != AlignmentStatus::AlignmentFound { return; }
-        let n_bases = hap_seq.len();
-        let mut ref_pos0_map: Vec<ChromPos0> = Vec::with_capacity(n_bases);
-        if aln.tgt_start0 > 0 {
-            ref_pos0_map.extend(repeat_n(re_fragment.start0, aln.tgt_start0));
+            Some(&MM_F_NO_PRINT_2ND), 
+            None
+        ).expect("Minimap2 failed to align ref_on_hap in align_to_haplotype_consensus()")[0];
+        let Some(aln) = &ref_on_hap.alignment else { return; };
+        let Some(cs) = &aln.cs else { return; };
+
+        // create a map of reference positions per each haplotype consensus position
+        // and a hap_vs_ref encoding to retain a memory of clonal variants relative to reference
+        ref_pos0_map.clear();
+        hap_vs_ref.clear();
+        if ref_on_hap.target_start > 0 {
+            let count = ref_on_hap.target_start as usize;
+            ref_pos0_map.extend(repeat_n(re_fragment.start0, count));
+            hap_vs_ref.extend(repeat_n("+", count));
         }
-        let mut ref_pos0 = re_fragment.start0 + aln.qry_start0 as u32;
-        for val in aln.qry_on_tgt {
-            if val == "-" {
-                ref_pos0_map.push(ref_pos0 - 1);
-            } else if val.len() > 1 {
-                ref_pos0 += val.len() as u32 - 1;
-                ref_pos0_map.push(ref_pos0);
-                ref_pos0 += 1;
+        let mut ref_pos0 = re_fragment.start0 + ref_on_hap.query_start as u32;
+        let mut chars = cs.chars();
+        let mut op = chars.next().unwrap();
+        op_val.clear();
+        while let Some(char) = chars.next() {
+            if char.is_alphanumeric() {
+                op_val.push(char);
             } else {
-                ref_pos0_map.push(ref_pos0);
-                ref_pos0 += 1;
+                match op {
+                    ':' => { // :[0-9]+   Identical sequence length
+                        let len = op_val.parse::<usize>().unwrap();
+                        (0..len).for_each(|_| {
+                            ref_pos0_map.push(ref_pos0);
+                            ref_pos0 += 1;
+                        });
+                        hap_vs_ref.push_str(&format!("={}", len));
+                    },
+                    '*' => { // *[acgtn][acgtn]   Substitution: target to query
+                        ref_pos0_map.push(ref_pos0);
+                        ref_pos0 += 1;
+                        hap_vs_ref.push_str(&op_val[0..=0].to_ascii_uppercase());
+                    },
+                    '+' => { // +[acgtn]+   Insertion to the target
+                        hap_vs_ref.pop();
+                        hap_vs_ref.push('-');
+                        ref_pos0 += op_val.len() as u32;
+                    },
+                    '-' => { // -[acgtn]+   Deletion from the target
+                        (0..op_val.len()).for_each(|_| {
+                            ref_pos0_map.push(ref_pos0 - 1);
+                            hap_vs_ref.push('+');
+                        });
+                    },
+                    _ => panic!("Unexpected CS tag operation: {}", op),
+                }
+                op = char;
+                op_val.clear();
             }
         }
-        if aln.tgt_end0 < n_bases - 1 {
-            ref_pos0_map.extend(repeat_n(re_fragment.end1 - 1, n_bases - 1 - aln.tgt_end0));
+        if let Ok(len) = op_val.parse::<usize>(){
+            (0..len).for_each(|_| {
+                ref_pos0_map.push(ref_pos0);
+                ref_pos0 += 1;
+            }); 
+            hap_vs_ref.push_str(&format!("={}", len));
+        }
+        if ref_on_hap.target_end < n_hap_bases as i32 - 1 {
+            let count = n_hap_bases - 1 - ref_on_hap.target_end as usize;
+            ref_pos0_map.extend(repeat_n(re_fragment.end1 - 1, count));
+            hap_vs_ref.extend(repeat_n("+", count));
         }
 
         // align each haplotype read to its consensus
@@ -323,41 +473,59 @@ impl SnvChromWorker {
         frag_vars.reset(n_reads);
         for read_j in 0..n_reads {
             let read = &reads[read_is[read_j]];
-            let aln = self.aligner.align(
-                &read.get_top_strand_seq(), 
-                &hap_seq, 
+            let read_on_hap = &mm2.map(
+                &read.seq_bytes, 
+                true, 
+                false, 
                 None, 
-                false,
-            );
-            if aln.status == AlignmentStatus::AlignmentFound {
+                Some(&MM_F_NO_PRINT_2ND), 
+                None
+            ).expect("Minimap2 failed to align read_on_hap in align_to_haplotype_consensus()")[0];
 
-                // extract read subclonal variants and commit its haplotype encoding
-                encoding.prepare_read_on_hap(re_fragment, read, aln.tgt_start0);
-                let cs = SnvChromWorker::get_cs_tag(&aln, &hap_seq);
-                self.process_cs_tag(
-                    haplotype, 
-                    Some(aln), Some(cs), Some(&ref_pos0_map),
-                    frag_vars, encoding, 
-                    read_j, read
-                );
-                self.reads_on_haplotype.insert(
-                    re_fragment, 
-                    haplotype,
-                    encoding.clone()
-                );
+            // extract each read's subclonal variants and commit its haplotype encoding
+            if let Some(aln) = &read_on_hap.alignment  {
+                if let Some(cs) = &aln.cs  {
+                    encoding.prepare_read_on_hap(re_fragment, read, read_on_hap.target_start as usize);
+                    self.process_cs_tag(
+                        haplotype, 
+                        Some(read_on_hap), Some(cs), Some(&ref_pos0_map),
+                        frag_vars, encoding, 
+                        read_j, read
+                    );
+                } else {
+                    // unexpected alignment failure, mask the entire encoding
+                    encoding.prepare_read_on_hap(re_fragment, read, n_hap_bases);
+                }
+            } else {
+                encoding.prepare_read_on_hap(re_fragment, read, n_hap_bases);
             }
+            self.reads_on_haplotype.insert(
+                re_fragment, 
+                haplotype,
+                encoding.clone()
+            ); 
         }
 
-        // call subclonal variants aggregated over all haplotype reads
+        // call subclonal variants aggregated over all haplotype reads (might be none)
         for hap_var in frag_vars.variant_map.keys(){
             let vmap =  &frag_vars.variant_map[&hap_var];
-            let qmap = &frag_vars.qual_map;
-            let read_js: Vec<ReadIndex> = vmap.read_map.iter().enumerate()
-                .filter_map(|(read_j, b)|{
-                    if *b { Some(read_j) } else { None }
+            let read_js: Vec<ReadIndex> = vmap.read_map.iter()
+                .enumerate()
+                .filter_map(|(read_j, r)|{
+                    if r.has_var() { 
+
+                        Some(read_j) 
+                    } else { None }
                 }).collect();
             let max_avg_qual = read_js.iter()
-                .map(|read_j| qmap[&(hap_var.clone(), *read_j)])
+                .map(|read_j| {
+                    let avg_qual= vmap.read_map[*read_j].avg_qual;
+                    self.variant_reads_tally.add_subclonal_variant(
+                        &reads[read_is[*read_j]], re_fragment, &haplotype, 
+                        hap_var, avg_qual
+                    );
+                    avg_qual
+                })
                 .max()
                 .unwrap_or_default();
             self.variant_tally.add_subclonal(
@@ -367,6 +535,9 @@ impl SnvChromWorker {
         }
 
         // cache the haplotype consensus for printing
-        haplotype_consensuses.insert(re_fragment, haplotype, hap_seq);
+        haplotype_consensuses.insert(
+            re_fragment, haplotype, 
+            hap_seq, Some(hap_vs_ref.clone())
+        );
     }
 }

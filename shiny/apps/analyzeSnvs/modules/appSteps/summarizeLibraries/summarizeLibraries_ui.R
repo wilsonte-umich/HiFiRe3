@@ -90,7 +90,9 @@ summarizeLibrariesUI <- function(id, options) {
             bufferedTableUI(
                 ns("variantSummaryTable"),
                 title = "VariantSummary Table",
-                width = 12
+                width = 12, 
+                collapsible = TRUE, 
+                collapsed = TRUE
             )
         ),
         NULL

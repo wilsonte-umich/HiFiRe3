@@ -1,9 +1,9 @@
-//! Count unique SNVs/indels in alignments and create a pileup.
+//! Analyze PacBio RE fragment haplotypes for clonal and subclonal variants.
 
 // modules
 mod chrom_worker;
 
-// dependencies
+// imports
 use std::error::Error;
 use crossbeam::channel::{bounded, unbounded};
 use faimm::IndexedFasta;
@@ -34,25 +34,33 @@ pub_key_constants!(
     VARIANT_COUNT
     VARIANT_COVERAGE
     //-----------------------
-    CLONAL_N_READS // read encodings
-    CLONAL_N_SPANS
+    VARIANT_READS_N_READS // tally of reads with subclonal variants
+    VARIANT_READS_N_INDEL_ONLY
+    VARIANT_READS_N_ONE_SNV
+    VARIANT_READS_N_TWO_SNV
+    VARIANT_READS_N_THREE_SNV
+    VARIANT_READS_N_FOUR_SNV
+    VARIANT_READS_N_FIVE_SNV
+    //-----------------------
+    CLONAL_N_SPANS // read encodings
+    CLONAL_N_READS
     CLONAL_N_REF_BASES
     CLONAL_N_READ_BASES
     CLONAL_N_MATCH
     CLONAL_N_ALT
-    CLONAL_N_MASKED
     CLONAL_N_DEL
     CLONAL_N_INS
+    CLONAL_N_MASKED
     //-----------------------
-    SUBCLONAL_N_READS
     SUBCLONAL_N_SPANS
+    SUBCLONAL_N_READS
     SUBCLONAL_N_REF_BASES
     SUBCLONAL_N_READ_BASES
     SUBCLONAL_N_MATCH
     SUBCLONAL_N_ALT
-    SUBCLONAL_N_MASKED
     SUBCLONAL_N_DEL
     SUBCLONAL_N_INS
+    SUBCLONAL_N_MASKED
 );
 const CHANNEL_CAPACITY: usize = 100;
 
@@ -82,7 +90,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         (VARIANT_COUNT,             "summed variant read count at all index positions"),
         (VARIANT_COVERAGE,          "summed read coverage at all SNV/indel index positions"),
 
-        (CLONAL_N_SPANS,            "number of unique genome alignment spans found in clonal encodings"),
+        (VARIANT_READS_N_READS,     "number of reads with at least one subclonal variant reported"),
+        (VARIANT_READS_N_INDEL_ONLY,"number of reads with only subclonal indels reported"),
+        (VARIANT_READS_N_ONE_SNV,   "number of reads with one subclonal SNV reported"),
+        (VARIANT_READS_N_TWO_SNV,   "number of reads with two subclonal SNVs reported"),
+        (VARIANT_READS_N_THREE_SNV, "number of reads with three subclonal SNVs reported"),
+        (VARIANT_READS_N_FOUR_SNV,  "number of reads with four subclonal SNVs reported"),
+        (VARIANT_READS_N_FIVE_SNV,  "number of reads with five or more subclonal SNVs reported"),
+
+        (CLONAL_N_SPANS,            "number of unique genome alignment spans found in clonal read_on_ref encodings"),
         (CLONAL_N_READS,            "number of error-corrected reads subjected to clonal encoding"),
         (CLONAL_N_REF_BASES,        "number of genome bases covered by clonal encodings"),
         (CLONAL_N_READ_BASES,       "number of reference bases in clonal encoded reads (M and D operations)"),
@@ -92,8 +108,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         (CLONAL_N_INS,              "number of insertion operations in clonal encoded reads (not the base count)"),
         (CLONAL_N_MASKED,           "number of masked bases in clonal encoded reads"),
 
-        (SUBCLONAL_N_SPANS,         "number of unique genome alignment spans found in subclonal encodings"),
-        (SUBCLONAL_N_READS,         "number of error-corrected reads subjected to clonal encoding"),
+        (SUBCLONAL_N_SPANS,         "number of unique genome alignment spans found in subclonal read_on_hap encodings"),
+        (SUBCLONAL_N_READS,         "number of error-corrected reads subjected to subclonal encoding"),
         (SUBCLONAL_N_REF_BASES,     "number of genome bases covered by subclonal encodings"),
         (SUBCLONAL_N_READ_BASES,    "number of reference bases in subclonal encoded reads (M and D operations)"),
         (SUBCLONAL_N_MATCH,         "number of reference-matched bases in subclonal encoded reads"),
@@ -120,7 +136,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let genome_fasta = w.cfg.get_string(GENOME_FASTA).to_string();
     let tool = SnvAnalysisTool {
         n_cpu:      *w.cfg.get_usize(N_CPU) as u32,
-        chroms:     chroms,
         targets:    targets,
         exclusions: Exclusions::from_env(&mut w, false),
         fa: IndexedFasta::from_file(&genome_fasta).expect("Error opening genome FASTA file")
@@ -137,7 +152,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     crossbeam::scope(|scope| {
 
         // workers: process one chromosome at a time
-        let n_worker_threads = *w.cfg.get_usize(N_CPU) - 1; // leave one thread for collectors
+        let n_worker_threads = *w.cfg.get_usize(N_CPU);
         for _ in 0..n_worker_threads.max(1) {
             let rx_chrom = rx_chrom.clone();
             let tx_data = tx_data.clone();
@@ -178,27 +193,36 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     w.ctrs.add_to(VARIANT_COUNT,           md.variant_count);
                     w.ctrs.add_to(VARIANT_COVERAGE,        md.variant_coverage);
                 },
+                SnvChromWorkerData::VariantReadsMetadata(md) => {
+                    w.ctrs.add_to(VARIANT_READS_N_READS,   md.n_variant_reads);
+                    w.ctrs.add_to(VARIANT_READS_N_INDEL_ONLY, md.n_indel_only);
+                    w.ctrs.add_to(VARIANT_READS_N_ONE_SNV, md.n_one_snv);
+                    w.ctrs.add_to(VARIANT_READS_N_TWO_SNV, md.n_two_snv);
+                    w.ctrs.add_to(VARIANT_READS_N_THREE_SNV, md.n_three_snv);
+                    w.ctrs.add_to(VARIANT_READS_N_FOUR_SNV,md.n_four_snv);
+                    w.ctrs.add_to(VARIANT_READS_N_FIVE_SNV,md.n_five_snv);
+                },
                 SnvChromWorkerData::ClonalEncodingMetadata(md) => {
-                    w.ctrs.add_to(CLONAL_N_READS,        md.n_reads);
                     w.ctrs.add_to(CLONAL_N_SPANS,        md.n_unique_spans);
+                    w.ctrs.add_to(CLONAL_N_READS,        md.n_reads);
                     w.ctrs.add_to(CLONAL_N_REF_BASES,    md.n_ref_bases);
                     w.ctrs.add_to(CLONAL_N_READ_BASES,   md.n_read_bases);
                     w.ctrs.add_to(CLONAL_N_MATCH,        md.n_match);
                     w.ctrs.add_to(CLONAL_N_ALT,          md.n_alt);
-                    w.ctrs.add_to(CLONAL_N_MASKED,       md.n_masked);
                     w.ctrs.add_to(CLONAL_N_DEL,          md.n_del);
                     w.ctrs.add_to(CLONAL_N_INS,          md.n_ins);
+                    w.ctrs.add_to(CLONAL_N_MASKED,       md.n_masked);
                 },
                 SnvChromWorkerData::SubclonalEncodingMetadata(md) => {
-                    w.ctrs.add_to(SUBCLONAL_N_READS,     md.n_reads);
                     w.ctrs.add_to(SUBCLONAL_N_SPANS,     md.n_unique_spans);
+                    w.ctrs.add_to(SUBCLONAL_N_READS,     md.n_reads);
                     w.ctrs.add_to(SUBCLONAL_N_REF_BASES, md.n_ref_bases);
                     w.ctrs.add_to(SUBCLONAL_N_READ_BASES,md.n_read_bases);
                     w.ctrs.add_to(SUBCLONAL_N_MATCH,     md.n_match);
                     w.ctrs.add_to(SUBCLONAL_N_ALT,       md.n_alt);
-                    w.ctrs.add_to(SUBCLONAL_N_MASKED,    md.n_masked);
                     w.ctrs.add_to(SUBCLONAL_N_DEL,       md.n_del);
                     w.ctrs.add_to(SUBCLONAL_N_INS,       md.n_ins);
+                    w.ctrs.add_to(SUBCLONAL_N_MASKED,    md.n_masked);
                 },
             }
         }
@@ -220,26 +244,35 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             VARIANT_COVERAGE,
         ],
         &[
-            CLONAL_N_READS,
+            VARIANT_READS_N_READS,
+            VARIANT_READS_N_INDEL_ONLY,
+            VARIANT_READS_N_ONE_SNV,
+            VARIANT_READS_N_TWO_SNV,
+            VARIANT_READS_N_THREE_SNV,
+            VARIANT_READS_N_FOUR_SNV,
+            VARIANT_READS_N_FIVE_SNV,
+        ],
+        &[
             CLONAL_N_SPANS,
+            CLONAL_N_READS,
             CLONAL_N_REF_BASES,
             CLONAL_N_READ_BASES,
             CLONAL_N_MATCH,
             CLONAL_N_ALT,
-            CLONAL_N_MASKED,
             CLONAL_N_DEL,
             CLONAL_N_INS,
+            CLONAL_N_MASKED,
         ],
         &[
-            SUBCLONAL_N_READS,
             SUBCLONAL_N_SPANS,
+            SUBCLONAL_N_READS,
             SUBCLONAL_N_REF_BASES,
             SUBCLONAL_N_READ_BASES,
             SUBCLONAL_N_MATCH,
             SUBCLONAL_N_ALT,
-            SUBCLONAL_N_MASKED,
             SUBCLONAL_N_DEL,
             SUBCLONAL_N_INS,
+            SUBCLONAL_N_MASKED,
         ],
     ]);
     Ok(())

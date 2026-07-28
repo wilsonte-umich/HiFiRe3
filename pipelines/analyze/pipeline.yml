@@ -53,9 +53,9 @@ actions:
             - SNV
         resources:
             required:
-                total-ram: 24G
+                total-ram: 12G
             recommended: 
-                n-cpu: 8
+                n-cpu: 12
                 ram-per-cpu: 4G
         job-manager:
             recommended:
@@ -149,42 +149,30 @@ package:
             exclusionsBed:
                 type: bed
                 file: $GENOME_EXCLUSIONS_BED
-            # allReadsPileupBgz:
-            #     type: bed.bgz
-            #     file: $SNV_ALL_READS_PILEUP_BGZ
-            # allReadsPileupTbi:
-            #     type: bed.bgz.tbi
-            #     file: $SNV_ALL_READS_PILEUP_BGZ.tbi
-            # allReadsVariantsBgz:
-            #     type: txt.bgz
-            #     file: $SNV_ALL_READS_VARIANTS_BGZ
-            # allReadsVariantsTbi:
-            #     type: txt.bgz.tbi
-            #     file: $SNV_ALL_READS_VARIANTS_BGZ.tbi
-            # allReadsEncodingsBgz:
-            #     type: txt.bgz
-            #     file: $SNV_ALL_READS_ENCODINGS_BGZ
-            # allReadsEncodingsTbi:
-            #     type: txt.bgz.tbi
-            #     file: $SNV_ALL_READS_ENCODINGS_BGZ.tbi
-            errorCorrectedPileupBgz:
+            variantsBgz:
+                type: txt.bgz
+                file: $SNV_VARIANTS_BGZ
+            variantsTbi:
+                type: txt.bgz.tbi
+                file: $SNV_VARIANTS_BGZ.tbi
+            variantReadsBgz:
+                type: txt.bgz
+                file: $SNV_VARIANT_READS_BGZ
+            variantReadsTbi:
+                type: txt.bgz.tbi
+                file: $SNV_VARIANT_READS_BGZ.tbi
+            clonalEncodingsBgz:
                 type: bed.bgz
-                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ
-            errorCorrectedPileupTbi:
+                file: $SNV_CLONAL_ENCODINGS_BGZ
+            clonalEncodingsTbi:
                 type: bed.bgz.tbi
-                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ.tbi
-            errorCorrectedVariantsBgz:
-                type: txt.bgz
-                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ
-            errorCorrectedVariantsTbi:
-                type: txt.bgz.tbi
-                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ.tbi
-            errorCorrectedEncodingsBgz:
-                type: txt.bgz
-                file: $SNV_ERROR_CORRECTED_ENCODINGS_BGZ
-            errorCorrectedEncodingsTbi:
-                type: txt.bgz.tbi
-                file: $SNV_ERROR_CORRECTED_ENCODINGS_BGZ.tbi
+                file: $SNV_CLONAL_ENCODINGS_BGZ.tbi
+            subclonalEncodingsBgz:
+                type: bed.bgz
+                file: $SNV_SUBCLONAL_ENCODINGS_BGZ
+            subclonalEncodingsTbi:
+                type: bed.bgz.tbi
+                file: $SNV_SUBCLONAL_ENCODINGS_BGZ.tbi
 # container:
 #     supported: false    # set to true if you maintain a container registry for this pipeline [false]
 #     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]

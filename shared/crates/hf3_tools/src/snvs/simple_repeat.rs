@@ -1,7 +1,7 @@
 /// Support for masking SNV/indels in simple repeats, which are error prone
 /// in PacBio sequencing. 
 
-// dependencies
+// imports
 use std::cmp::Ordering;
 use serde::Deserialize;
 use mdi::InputCsv;

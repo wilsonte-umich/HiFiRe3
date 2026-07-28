@@ -28,7 +28,7 @@ hf3_getEncodings <- function(sourceId, coord, readType){
 # get cached data, full tables
 hf3_cached_create <- "asNeeded"
 hf3_getVariants_cached <- function(sourceId){
-    fileType <-"errorCorrectedVariantsBgz"
+    fileType <-"variantsBgz"
     sessionCache$get(
         fileType, 
         key = sourceId, 
@@ -44,22 +44,21 @@ hf3_getVariants_cached <- function(sourceId){
                 colClasses = unname(hf3_bgzColumns[[fileType]])
             )
             d[, ":="(
-                n_alt_bases = nchar(alt_bases),
-                vaf = count / coverage
+                n_alt_bases = nchar(alt_bases)
             )]
             d[, ":="(
-                is_snp = n_ref_bases == 1 & n_ref_bases == n_alt_bases,
-                is_mnp = n_ref_bases > 1  & n_ref_bases == n_alt_bases,
-                is_ins = n_ref_bases == 0,
-                is_del = n_alt_bases == 0,
+                is_snp = n_tgt_bases == 1 & n_tgt_bases == n_alt_bases,
+                # is_mnp = n_tgt_bases > 1  & n_tgt_bases == n_alt_bases,
+                # is_ins = n_tgt_bases == 0,
+                # is_del = n_alt_bases == 0,
                 vaf_bin = floor(vaf * 51) / 51
             )]
             d
         }  
     )$value
 }
-hf3_getEncodings_cached <- function(sourceId, coord){
-    fileType <-"errorCorrectedEncodingsBgz"
+hf3_getVariantReads_cached <- function(sourceId){
+    fileType <-"variantReadsBgz"
     sessionCache$get(
         fileType, 
         key = sourceId, 
@@ -67,7 +66,31 @@ hf3_getEncodings_cached <- function(sourceId, coord){
         from = "ram",
         create = hf3_cached_create,
         createFn = function(...) {
-            startSpinner(session, message = "loading encodings")
+            startSpinner(session, message = "loading variant reads")
+            dataFilePath <- getSourceFilePath(sourceId, fileType)
+            d <- fread(
+                cmd = paste("zcat", dataFilePath),
+                col.names  =  names(hf3_bgzColumns[[fileType]]), 
+                colClasses = unname(hf3_bgzColumns[[fileType]])
+            )
+            d
+        }  
+    )$value
+}
+hf3_getEncodings_cached <- function(sourceId, clonality){
+    fileType <- if (clonality == "clonal") {
+        "clonalEncodingsBgz"
+    } else {
+        "subclonalEncodingsBgz"
+    }
+    sessionCache$get(
+        fileType, 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create,
+        createFn = function(...) {
+            startSpinner(session, message = paste("loading", clonality, "encodings"))
             dataFilePath <- getSourceFilePath(sourceId, fileType)
             d <- fread(
                 cmd = paste("zcat", dataFilePath),

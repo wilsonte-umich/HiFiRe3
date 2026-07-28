@@ -1,8 +1,8 @@
 //! Support for creating encoded variant-level files for downstream use.
 
-// dependencies
+// imports
 use rustc_hash::FxHashMap;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use mdi::OutputCsv;
 use crate::snvs::*;
 
@@ -14,6 +14,10 @@ pub enum VariantZygosity {
     Subclonal    = 0,
     Heterozygous = 1,
     Homozygous   = 2,
+}
+/// Helper function to serialize Haplotype as u8.
+pub fn serialize_zygosity<S: Serializer>(z: &VariantZygosity, serializer: S) -> Result<S::Ok, S::Error>{
+    serializer.serialize_u8(*z as u8)
 }
 
 /// VariantInstances holds the read count of a specific Variant and the 
@@ -85,6 +89,7 @@ struct VariantRecord<'a> {
     coverage:         usize,
     sample_bits:      SampleBits,
     n_samples:        u32,
+    #[serde(serialize_with = "serialize_zygosity")]
     zygosity:         VariantZygosity,
     vaf:              f64, // vaf only set on clonal
     max_avg_qual:     PhredQual, // max_avg_qual set on subclonal
@@ -97,8 +102,8 @@ pub struct VariantsTally {
 }
 impl VariantsTally {
 
-    /// Create a new empty VariantsTally object. On variant tally is 
-    /// instantiated per SnvChromWorker.
+    /// Create a new empty VariantsTally object. On tally is instantiated per 
+    /// SnvChromWorker.
     pub fn new() -> Self {
         let mut tally = FxHashMap::default();
         tally.reserve(1_048_576);

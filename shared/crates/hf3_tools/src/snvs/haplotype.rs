@@ -1,7 +1,7 @@
 //! Support for tracking haplotypes and consensuses during SNV calling.
 
-// dependencies
-use serde::Serialize;
+// imports
+use serde::{Serialize, Serializer};
 use rustc_hash::FxHashMap;
 use super::*;
 
@@ -12,13 +12,17 @@ pub enum Haplotype {
     Unspecified = 0, // used before haplotypes are resolved
     Haplotype1  = 1,
     Haplotype2  = 2,
-    Homozygous  = 3,
+    Homozygous  = 3, // thus, bit encoded as 1 + 2
+}
+/// Helper function to serialize Haplotype as u8.
+pub fn serialize_haplotype<S: Serializer>(h: &Haplotype, serializer: S) -> Result<S::Ok, S::Error>{
+    serializer.serialize_u8(*h as u8)
 }
 
 /// Cache haplotype consensus sequences prior to final printing of read
 /// encodings. Also used to store reference sequences prior to consensus build.
 pub struct HaplotypeConsensuses {
-    pub cache: FxHashMap<(ReFragment, Haplotype), UppercaseACGTN>
+    pub cache: FxHashMap<(ReFragment, Haplotype), (UppercaseACGTN, Option<String>)>
 }
 impl HaplotypeConsensuses {
 
@@ -36,8 +40,12 @@ impl HaplotypeConsensuses {
         re_fragment: &ReFragment,
         haplotype:   Haplotype,
         seq:         UppercaseACGTN, 
+        hap_vs_ref:  Option<String>, // None when recording a reference sequence
     ){
-        self.cache.insert( (re_fragment.clone(), haplotype), seq );
+        self.cache.insert( 
+            (re_fragment.clone(), haplotype), 
+            (seq, hap_vs_ref) 
+        );
     }
 
     /// Add a reference sequence to the print cache.
@@ -54,15 +62,20 @@ impl HaplotypeConsensuses {
         ).ok()
             .map(|v| v.to_string().to_ascii_uppercase())
             .unwrap_or_else(|| "NA".to_string());
-        self.insert(re_fragment, Haplotype::Unspecified, seq);
+        self.insert(
+            re_fragment, 
+            Haplotype::Unspecified, 
+            seq, 
+            None
+        );
     }
 
-    /// Get a sequence from the cache.
+    /// Get a (sequence, hap_vs_ref) tuple from the cache.
     pub fn get(
         &self, 
         re_fragment: &ReFragment,
         haplotype:   Haplotype,
-    ) -> &UppercaseACGTN {
+    ) -> &(UppercaseACGTN, Option<String>) {
         self.cache
             .get(&(*re_fragment, haplotype))
             .expect("Failed to get sequence from HaplotypeConsensuses cache.")

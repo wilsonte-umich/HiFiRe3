@@ -1,11 +1,10 @@
 //! Support for collecting read data organized by their source RE fragments.
 
-// dependencies
+// imports
 use std::str::from_utf8_unchecked;
 use rustc_hash::FxHashMap;
 use rust_htslib::bam::Record as BamRecord;
 use serde::Serialize;
-use genomex::sequence::rc_acgtn_str;
 use genomex::bam::tags as bam_tags;
 use crate::formats::hf3_tags::*;
 use super::*;
@@ -72,13 +71,6 @@ impl ReadInstance {
         }
     }
 
-    /// Return the ACGTN base SEQ of a read on the top reference strand. 
-    pub fn get_top_strand_seq(&self) -> UppercaseACGTN {
-        let mut seq = unsafe { from_utf8_unchecked(&self.seq_bytes).to_string() };
-        if self.is_reverse { seq = rc_acgtn_str(&seq); }
-        seq
-    }
-
     /// Return the QUAL of a read on the top reference strand. 
     pub fn get_top_strand_qual(&self) -> Vec<PhredQual> {
         let mut qual = self.qual_bytes.to_vec();
@@ -110,18 +102,41 @@ impl FragmentReads {
     }
 }
 
+/// A ReadMapEntry carries bits of information a specific Variant in a specific
+/// ReadInstance, including whether it was observed there and at what quality.
+#[derive(Clone, Copy)]
+pub struct ReadMapEntry {
+    has_var:  bool, // immutable record of whether a read reported a specific variant
+    pub hap0: bool, // mutable haplotype initally == `has_var`, but may be flipped
+    pub avg_qual: PhredQual,
+}
+impl ReadMapEntry{
+    /// Create a new empty ReadMapEntry.
+    pub fn new() -> Self{
+        Self { 
+            has_var:  false, 
+            hap0:     false,
+            avg_qual: 0 
+        }
+    }
+    /// Get the immutable `has_var` value of a ReadMapEntry.
+    pub fn has_var(&self) -> bool {
+        self.has_var
+    }
+}
+
 /// ReadMap collects information of the specific ReadInstances that reported a 
 /// given Variant. Allocation is one-time fixed.
 pub struct ReadMap {
     pub n_matching_reads:  usize,
-    pub read_map: Vec<bool>,
+    pub read_map: Vec<ReadMapEntry>,
 }
 impl ReadMap {
     /// Create a new ReadMap.
     pub fn new(n_reads: usize) -> Self{
         Self{
             n_matching_reads: 0,
-            read_map: vec![false; n_reads],
+            read_map: vec![ReadMapEntry::new(); n_reads],
         }
     } 
 }
@@ -132,20 +147,16 @@ impl ReadMap {
 pub struct FragmentVariants {
     pub n_reads: usize,
     pub variant_map: FxHashMap<Variant, ReadMap>,
-    pub qual_map:    FxHashMap<(Variant, ReadIndex), PhredQual>,
 }
 impl FragmentVariants {
 
     /// Create a new FragmentVariants map.
     pub fn new() -> Self{
         let mut variant_map = FxHashMap::default();
-        let mut qual_map = FxHashMap::default();
         variant_map.reserve(128);
-        qual_map.reserve(128);
         Self{
             n_reads: 0,
             variant_map,
-            qual_map
         }
     }
 
@@ -154,7 +165,6 @@ impl FragmentVariants {
     pub fn reset(&mut self, n_reads: usize){
         self.n_reads = n_reads;
         self.variant_map.clear();
-        self.qual_map.clear();
     }
 
     /// Add one Variant from a read to the FragmentVariants map.
@@ -162,15 +172,16 @@ impl FragmentVariants {
         &mut self, 
         variant:  Variant,
         read_i:   ReadIndex,
-        qual:     Option<PhredQual>,
+        avg_qual: PhredQual,
     ) {
         let map = self.variant_map
             .entry(variant.clone())
             .or_insert_with(|| ReadMap::new(self.n_reads));
         map.n_matching_reads += 1;
-        map.read_map[read_i] = true;   
-        if let Some(q) = qual {
-            self.qual_map.insert((variant, read_i), q);   
-        }
+        map.read_map[read_i] = ReadMapEntry{
+            has_var: true,
+            hap0:    true,
+            avg_qual,
+        };
     }
 }

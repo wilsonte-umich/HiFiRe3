@@ -314,68 +314,67 @@ hf3_bgzColumns <- list(
         seq               = "character",
         qual              = "character"
     ),
-    allReadsPileupBgz = c(
-        chrom_index1 = "integer", # 1
-        start        = "integer", # 2
-        end          = "integer", # 3
-        M            = "integer", # 4
-        A            = "integer", # 5
-        C            = "integer", # 6
-        G            = "integer", # 7
-        T            = "integer", # 8
-        N            = "integer", # 9
-        D            = "integer", # 10
-        I            = "integer", # 11
-        D_allowed    = "integer", # 12
-        I_allowed    = "integer"  # 13
+    variantsBgz = c(
+        chrom_index1     = "integer", # 1
+        tgt_pos0         = "integer", # 2
+        n_tgt_bases      = "integer", # 3
+        alt_bases        = "character", # 4
+        haplotype        = "integer", # 5
+        n_fragments      = "integer", # 6
+        n_matching_reads = "integer", # 7
+        coverage         = "integer", # 8
+        sample_bits      = "integer", # 9
+        n_samples        = "integer", # 10
+        zygosity         = "integer", # 11
+        vaf              = "double",  # 12
+        max_avg_qual     = "integer", # 13
+        qnames           = "character"# 14
     ),
-    allReadsVariantsBgz = c(
-        chrom_index1 = "integer", # 1
-        start0       = "integer", # 2
-        n_ref_bases  = "integer", # 3
-        alt_bases    = "character", # 4
-        count        = "integer", # 5
-        coverage     = "integer", # 6
-        sample_bits  = "integer", # 7
-        n_samples    = "integer", # 8
-        max_n_passes = "integer", # 9
-        any_allowed  = "integer", # 10
-        all_allowed  = "integer", # 11
-        simple_repeat= "integer", # 12
-        qnames       = "character"# 13
+    variantReadsBgz = c(
+        qname           = "character", # first since indexed by qname
+        start0          = "integer", # for the RE fragment
+        end1            = "integer",
+        haplotype       = "integer",
+        chrom_index1    = "integer",
+        sample_bit      = "integer",
+        n_bases         = "integer",
+        n_variants      = "integer",
+        n_low_qual      = "integer",
+        n_snv           = "integer",
+        n_mnv           = "integer",
+        n_del           = "integer",
+        n_ins           = "integer",
+        n_complex       = "integer",
+        variants        = "character"
     ),
-    allReadsEncodingsBgz = c(
-        chrom_index1  = "integer", # 1
-        start0        = "integer", # 2
-        end1          = "integer",
-        n_reads       = "integer",
-        n_match       = "integer",
-        n_alt         = "integer",
-        n_masked      = "integer",
-        n_del         = "integer",
-        n_ins         = "integer",
-        n_alt_high_qual = "integer",
-        n_reverse     = "integer",
+    clonalEncodingsBgz = c(
+        chrom_index1   = "integer", # 1
+        start0         = "integer", # 2
+        end1           = "integer",
+        haplotype      = "integer",
+        n_reads        = "integer",
+        n_match        = "integer",
+        n_alt          = "integer",
+        n_del          = "integer",
+        n_ins          = "integer",
+        n_masked       = "integer",
+        sample_bits    = "integer",
         n_matches      = "character",
         n_alts         = "character",
-        n_maskeds      = "character",
         n_dels         = "character",
         n_inss         = "character",
-        n_alt_high_quals = "character",
+        n_maskeds      = "character",
+        sample_bitss   = "character",
         read_start0s   = "character",
-        strands        = "character",
         encodings      = "character",
         insertions     = "character",
-        sample_bits    = "integer",
-        sample_bitss   = "character",
         qnames         = "character",
-        seq            = "character"
+        seq            = "character",
+        hap_vs_ref     = "character"
     )
 )
-hf3_bgzColumns$svJunctions2Bgz            <- hf3_bgzColumns$svJunctions1Bgz
-hf3_bgzColumns$errorCorrectedPileupBgz    <- hf3_bgzColumns$allReadsPileupBgz
-hf3_bgzColumns$errorCorrectedVariantsBgz  <- hf3_bgzColumns$allReadsVariantsBgz
-hf3_bgzColumns$errorCorrectedEncodingsBgz <- hf3_bgzColumns$allReadsEncodingsBgz
+hf3_bgzColumns$svJunctions2Bgz <- hf3_bgzColumns$svJunctions1Bgz
+hf3_bgzColumns$subclonalEncodingsBgz <- hf3_bgzColumns$clonalEncodingsBgz
 
 # column display definitions
 hf3_bgzColumns_display <- list(

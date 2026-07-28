@@ -34,8 +34,8 @@
 // qual  X  X  X  X     !  1  2  !    !  1  2  !  X=strand max, 1|2=reported strand, !=0
 // dd:Z  :  =  *  ^     !  +  -  #    ?  >  <  &
 
-// dependencies
-use genomex::sequence::Alignment;
+// imports
+use minimap2::Mapping;
 use super::*;
 
 // strand_merger outcome flag bits
@@ -78,7 +78,6 @@ pub const HETERODUP_SUBS_NEITHER_REF:  &str = "&"; // heteroduplex substitutions
 
 // variant calling parameters
 const INDEL_FLANK_BASES: usize = 2; // calculate indel base quality including this many bases on either side of the event
-const MIN_SNV_INDEL_QUAL: u8 = 27;
 
 /// The types of values found in a `dd:Z:` tag mask.
 #[repr(u8)]
@@ -191,8 +190,8 @@ impl SnvChromWorker {
     pub fn process_cs_tag(
         &self,
         haplotype:    Haplotype,
-        aln:          Option<Alignment>,
-        cs_tag:       Option<String>,
+        mapping:      Option<&Mapping>,
+        cs_tag:       Option<&String>,
         ref_pos0_map: Option<&Vec<ChromPos0>>,
         frag_vars:    &mut FragmentVariants,
         encoding:     &mut AlignmentEncoding,
@@ -209,8 +208,8 @@ impl SnvChromWorker {
         ) = if tgt_is_hap {(
             Self::get_dd_mask(read),
             read.get_top_strand_qual(),
-            aln.as_ref().unwrap().tgt_start0 as u32,
-            aln.as_ref().unwrap().qry_start0 as u32,
+            mapping.as_ref().unwrap().target_start as u32,
+            mapping.as_ref().unwrap().query_start as u32,
             ref_pos0_map.unwrap(),
         )} else {(
             Vec::new(),
@@ -226,10 +225,11 @@ impl SnvChromWorker {
         let mut alt_qual: Vec<PhredQual> = Vec::with_capacity(128);
         let mut allowed = true;
 
-        let cs: String;
+        // let cs: String;
         let mut chars = if tgt_is_hap {
-            cs = cs_tag.unwrap();
-            cs.chars()
+            // cs = cs_tag.unwrap();
+            // cs.chars()
+            cs_tag.unwrap().chars()
         } else {
             read.cs.chars()
         };
@@ -296,13 +296,11 @@ impl SnvChromWorker {
                             alt_bases,
                             haplotype
                         );
-                        let qual = if tgt_is_hap { 
-                            Some({
-                                alt_qual.iter().map(|&q| q as f64).sum::<f64>() / 
-                                alt_qual.len() as f64
-                            } as u8)
-                        } else { None };
-                        frag_vars.insert(variant, read_i, qual);
+                        let avg_qual = if tgt_is_hap {
+                            alt_qual.iter().map(|&q| q as f64).sum::<f64>() / 
+                            alt_qual.len() as f64
+                        } else { 0.0 };
+                        frag_vars.insert(variant, read_i, avg_qual as u8);
                     }
                     *var_tgt_pos0 = None;
                     *n_tgt_bases = 0;
@@ -424,52 +422,52 @@ impl SnvChromWorker {
         }
     }
 
-    /// Convert a Smith-Waterman Alignment into the equivalent minimap2 cs tag.
-    /// TODO: move this to genomex crate.
-    pub fn get_cs_tag(
-        // &self,
-        aln: &Alignment,
-        tgt: &str, // the target sequenced that generated the alignment
-    ) -> String { 
-        //    M operations carry the query base in the array slot (could be a base mismatch)
-        //    I operations carry the inserted base prepended to the NEXT target postion
-        //    D operations carry "-" in place of the query base that was deleted relative to target
-        let mut cs = String::with_capacity(256);
-        let mut del_val: String = String::with_capacity(256);
-        let mut identity_len = 0_usize;
-        for tgt_i0 in aln.tgt_start0..=aln.tgt_end0 {
-            let tgt_base = &tgt[tgt_i0..=tgt_i0];
-            let aln_val = aln.qry_on_tgt[tgt_i0 - aln.tgt_start0].as_str();
-            if tgt_base == aln_val {
-                if del_val.len() > 0 {
-                    cs.push_str(&format!("-{}", del_val.to_ascii_lowercase()));
-                    del_val.clear();
-                }
-                identity_len += 1;
-            } else {
-                if identity_len > 0 { 
-                    cs.push_str(&format!(":{identity_len}"));
-                    identity_len = 0;
-                }
-                if aln_val == "-" {
-                    del_val.push_str(&tgt_base);
-                } else {
-                    if del_val.len() > 0 {
-                        cs.push_str(&format!("-{}", del_val.to_ascii_lowercase()));
-                        del_val.clear();
-                    }
-                    if aln_val.len() > 1 {
-                        let ins_bases = &aln_val[0..aln_val.len() - 1];
-                        cs.push_str(&format!("+{}", ins_bases.to_ascii_lowercase()));
-                        identity_len = 1;
-                    } else {
-                        cs.push_str(&format!("*{}{}", tgt_base.to_ascii_lowercase(), aln_val.to_ascii_lowercase()));
-                    }
-                }
-            }
+    // /// Convert a Smith-Waterman Alignment into the equivalent minimap2 cs tag.
+    // /// TODO: move this to genomex crate.
+    // pub fn get_cs_tag(
+    //     // &self,
+    //     aln: &Alignment,
+    //     tgt: &str, // the target sequenced that generated the alignment
+    // ) -> String { 
+    //     //    M operations carry the query base in the array slot (could be a base mismatch)
+    //     //    I operations carry the inserted base prepended to the NEXT target postion
+    //     //    D operations carry "-" in place of the query base that was deleted relative to target
+    //     let mut cs = String::with_capacity(256);
+    //     let mut del_val: String = String::with_capacity(256);
+    //     let mut identity_len = 0_usize;
+    //     for tgt_i0 in aln.tgt_start0..=aln.tgt_end0 {
+    //         let tgt_base = &tgt[tgt_i0..=tgt_i0];
+    //         let aln_val = aln.qry_on_tgt[tgt_i0 - aln.tgt_start0].as_str();
+    //         if tgt_base == aln_val {
+    //             if del_val.len() > 0 {
+    //                 cs.push_str(&format!("-{}", del_val.to_ascii_lowercase()));
+    //                 del_val.clear();
+    //             }
+    //             identity_len += 1;
+    //         } else {
+    //             if identity_len > 0 { 
+    //                 cs.push_str(&format!(":{identity_len}"));
+    //                 identity_len = 0;
+    //             }
+    //             if aln_val == "-" {
+    //                 del_val.push_str(&tgt_base);
+    //             } else {
+    //                 if del_val.len() > 0 {
+    //                     cs.push_str(&format!("-{}", del_val.to_ascii_lowercase()));
+    //                     del_val.clear();
+    //                 }
+    //                 if aln_val.len() > 1 {
+    //                     let ins_bases = &aln_val[0..aln_val.len() - 1];
+    //                     cs.push_str(&format!("+{}", ins_bases.to_ascii_lowercase()));
+    //                     identity_len = 1;
+    //                 } else {
+    //                     cs.push_str(&format!("*{}{}", tgt_base.to_ascii_lowercase(), aln_val.to_ascii_lowercase()));
+    //                 }
+    //             }
+    //         }
 
-        }
-        if identity_len > 0 { cs.push_str(&format!(":{identity_len}")) }
-        cs
-    }
+    //     }
+    //     if identity_len > 0 { cs.push_str(&format!(":{identity_len}")) }
+    //     cs
+    // }
 }

@@ -27,29 +27,21 @@ uploadTypes:
                 required: false
             exclusionsBed:
                 required: true
-            # allReadsPileupBgz:
-            #     required: true
-            # allReadsPileupTbi:
-            #     required: true
-            # allReadsVariantsBgz:
-            #     required: true
-            # allReadsVariantsTbi:
-            #     required: true
-            # allReadsEncodingsBgz:
-            #     required: true
-            # allReadsEncodingsTbi:
-            #     required: true
-            errorCorrectedPileupBgz:
+            variantsBgz:
                 required: true
-            errorCorrectedPileupTbi:
+            variantsTbi:
                 required: true
-            errorCorrectedVariantsBgz:
+            variantReadsBgz:
                 required: true
-            errorCorrectedVariantsTbi:
+            variantReadsTbi:
                 required: true
-            errorCorrectedEncodingsBgz:
+            clonalEncodingsBgz:
                 required: true
-            errorCorrectedEncodingsTbi:
+            clonalEncodingsTbi:
+                required: true
+            subclonalEncodingsBgz:
+                required: true
+            subclonalEncodingsTbi:
                 required: true
 #----------------------------------------------------------------------
 # labels and definitions for all sequential analysis steps shown in sidebar
