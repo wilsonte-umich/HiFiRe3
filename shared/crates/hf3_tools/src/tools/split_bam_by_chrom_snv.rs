@@ -200,7 +200,8 @@ fn print_aln(
         get_clip_left( aln) > MAX_CLIP ||
         get_clip_right(aln) > MAX_CLIP ||
 
-    // skip reads with low average base quality  
+    // skip reads with low average base quality 
+    // TODO: skip reads with too many no-call N bases? 
         median_qual_aln(aln) < min_avg_base_qual
     {
         return Ok(()); 

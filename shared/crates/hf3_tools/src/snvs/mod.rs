@@ -12,6 +12,7 @@ pub mod encoding;
 
 // re-exports
 pub use fragment::*;
+pub use tags::*;
 pub use simple_repeat::*;
 pub use variant::*;
 pub use haplotype::*;
@@ -19,6 +20,7 @@ pub use encoding::*;
 
 // imports
 use std::error::Error;
+use rustc_hash::{FxHashMap, FxHashSet};
 use minimap2::{Aligner as Minimap2, PresetSet};
 use faimm::IndexedFasta;
 use serde::Serialize;
@@ -33,8 +35,8 @@ pub_key_constants!(
     SEQUENCING_PLATFORM
     LIBRARY_TYPE
 );
-pub const MAX_HETEROZYGOUS_ZYGOSITY: f64 = 0.8;
 pub const MIN_SNV_INDEL_QUAL: u8 = 27;
+pub const MAX_EXPECTED_READ_LEN:  usize = 10000; // use for allocating recycled objects
 
 /// Ensure that PacBio SNV analysis is performed on a library from the 
 /// PacBioStrand sequencing platform.
@@ -75,20 +77,33 @@ pub struct SnvChromWorker{
     pub chrom_tid:   usize,
     pub simple_repeats: SimpleRepeats,
 
+    // option parameters
+    pub min_fragment_reads:   usize,
+    pub min_homozygous_reads: usize,
+
     // processing tools
     pub minimap2: Minimap2<PresetSet>,
+    pub frag_vars:      FragmentVariants,
+    pub encoding:       AlignmentEncoding,  // read encoding for visualization
+    pub tracking_variants: Vec<Variant>, // potentially heterozygous variants
+    pub seq0_bases:     Vec<String>, // used with cs_map for consensus calling
+    pub cs_map:         Vec<FxHashMap<String, u8>>,
+    pub hap_vs_ref:     Vec<String>, // consensus encoding for visualization
+    pub hap_vars:       FxHashMap<Haplotype, FxHashSet<Variant>>,
+    pub hap_votes:      FxHashMap<Haplotype, usize>,
+    pub var_tgt_pos0:   Option<SeqPos0>, 
+    pub tgt_bases:      UppercaseACGTN,
+    pub alt_bases:      UppercaseACGTN,
+    pub alt_qual:       Vec<PhredQual>,
+    pub allowed:        bool,
+    pub cs_op:          char,
+    pub op_val:         String,
+    // pub debug:      ReFragment,
+    // pub show_debug: bool,
 
     // metadata aggregation
     pub variant_tally:       VariantsTally,
     pub variant_reads_tally: VariantReadsTally,
-    pub reads_on_reference:  AlignmentEncodings,
-    pub reads_on_haplotype:  AlignmentEncodings,
-
-    // output file paths
-    pub variants_file_path:       String,
-    pub variant_reads_file_path: String,
-    pub reads_on_reference_path:  String,
-    pub reads_on_haplotype_path:  String,
 }
 
 /// SnvChromWorkerData allows difference types of metadata to be trasmitted to 
@@ -98,6 +113,6 @@ pub enum SnvChromWorkerData {
     UsableAlnCount((ChromName, usize)),
     VariantMetadata(VariantMetadata),
     VariantReadsMetadata(VariantReadsMetadata),
-    ClonalEncodingMetadata(EncodingMetadata),
-    SubclonalEncodingMetadata(EncodingMetadata),
+    ReadsOnReferenceMetadata(FragmentHaplotypeMetadata),
+    ReadsOnHaplotypeMetadata(FragmentHaplotypeMetadata),
 }

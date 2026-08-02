@@ -28,8 +28,7 @@ pub_key_constants!(
     VARIANT_N_SUBSTITUTIONS
     VARIANT_N_INSERTIONS
     VARIANT_N_DELETIONS
-    VARIANT_N_HOMOZYGOUS
-    VARIANT_N_HETEROZYGOUS
+    VARIANT_N_CLONAL
     VARIANT_N_SUBCLONAL
     VARIANT_COUNT
     VARIANT_COVERAGE
@@ -42,25 +41,25 @@ pub_key_constants!(
     VARIANT_READS_N_FOUR_SNV
     VARIANT_READS_N_FIVE_SNV
     //-----------------------
-    CLONAL_N_SPANS // read encodings
-    CLONAL_N_READS
-    CLONAL_N_REF_BASES
-    CLONAL_N_READ_BASES
-    CLONAL_N_MATCH
-    CLONAL_N_ALT
-    CLONAL_N_DEL
-    CLONAL_N_INS
-    CLONAL_N_MASKED
+    ON_REFERENCE_SPANS // read encodings
+    ON_REFERENCE_READS
+    ON_REFERENCE_REF_BASES
+    ON_REFERENCE_READ_BASES
+    ON_REFERENCE_MATCH
+    ON_REFERENCE_ALT
+    ON_REFERENCE_DEL
+    ON_REFERENCE_INS
+    ON_REFERENCE_MASKED
     //-----------------------
-    SUBCLONAL_N_SPANS
-    SUBCLONAL_N_READS
-    SUBCLONAL_N_REF_BASES
-    SUBCLONAL_N_READ_BASES
-    SUBCLONAL_N_MATCH
-    SUBCLONAL_N_ALT
-    SUBCLONAL_N_DEL
-    SUBCLONAL_N_INS
-    SUBCLONAL_N_MASKED
+    ON_HAPLOTYPE_SPANS
+    ON_HAPLOTYPE_READS
+    ON_HAPLOTYPE_REF_BASES
+    ON_HAPLOTYPE_READ_BASES
+    ON_HAPLOTYPE_MATCH
+    ON_HAPLOTYPE_ALT
+    ON_HAPLOTYPE_DEL
+    ON_HAPLOTYPE_INS
+    ON_HAPLOTYPE_MASKED
 );
 const CHANNEL_CAPACITY: usize = 100;
 
@@ -84,8 +83,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         (VARIANT_N_SUBSTITUTIONS,   "number of equal-length substitution variants"),
         (VARIANT_N_INSERTIONS,      "number of insertion variants"),
         (VARIANT_N_DELETIONS,       "number of deletion variants"),
-        (VARIANT_N_HOMOZYGOUS,      "number of homozygous variants"),
-        (VARIANT_N_HETEROZYGOUS,    "number of heterozygous variants"),
+        (VARIANT_N_CLONAL,          "number of clonal variants"),
         (VARIANT_N_SUBCLONAL,       "number of subclonal variants"),
         (VARIANT_COUNT,             "summed variant read count at all index positions"),
         (VARIANT_COVERAGE,          "summed read coverage at all SNV/indel index positions"),
@@ -98,25 +96,25 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         (VARIANT_READS_N_FOUR_SNV,  "number of reads with four subclonal SNVs reported"),
         (VARIANT_READS_N_FIVE_SNV,  "number of reads with five or more subclonal SNVs reported"),
 
-        (CLONAL_N_SPANS,            "number of unique genome alignment spans found in clonal read_on_ref encodings"),
-        (CLONAL_N_READS,            "number of error-corrected reads subjected to clonal encoding"),
-        (CLONAL_N_REF_BASES,        "number of genome bases covered by clonal encodings"),
-        (CLONAL_N_READ_BASES,       "number of reference bases in clonal encoded reads (M and D operations)"),
-        (CLONAL_N_MATCH,            "number of reference-matched bases in clonal encoded reads"),
-        (CLONAL_N_ALT,              "number of unmasked alternative bases in clonal encoded reads"),
-        (CLONAL_N_DEL,              "number of deleted bases in clonal encoded reads"),
-        (CLONAL_N_INS,              "number of insertion operations in clonal encoded reads (not the base count)"),
-        (CLONAL_N_MASKED,           "number of masked bases in clonal encoded reads"),
+        (ON_REFERENCE_SPANS,        "number of unique genome alignment spans found in clonal read_on_ref analysis"),
+        (ON_REFERENCE_READS,        "number of error-corrected reads subjected to read_on_ref analysis"),
+        (ON_REFERENCE_REF_BASES,    "number of genome bases covered by ON_REFERENCE_SPANS"),
+        (ON_REFERENCE_READ_BASES,   "number of reference bases in ON_REFERENCE_READS (M and D operations)"),
+        (ON_REFERENCE_MATCH,        "number of reference-matched bases in ON_REFERENCE_READS"),
+        (ON_REFERENCE_ALT,          "number of unmasked alternative bases in ON_REFERENCE_READS"),
+        (ON_REFERENCE_DEL,          "number of deleted bases in ON_REFERENCE_READS"),
+        (ON_REFERENCE_INS,          "number of insertion operations in ON_REFERENCE_READS (not the base count)"),
+        (ON_REFERENCE_MASKED,       "number of masked bases in ON_REFERENCE_READS"),
 
-        (SUBCLONAL_N_SPANS,         "number of unique genome alignment spans found in subclonal read_on_hap encodings"),
-        (SUBCLONAL_N_READS,         "number of error-corrected reads subjected to subclonal encoding"),
-        (SUBCLONAL_N_REF_BASES,     "number of genome bases covered by subclonal encodings"),
-        (SUBCLONAL_N_READ_BASES,    "number of reference bases in subclonal encoded reads (M and D operations)"),
-        (SUBCLONAL_N_MATCH,         "number of reference-matched bases in subclonal encoded reads"),
-        (SUBCLONAL_N_ALT,           "number of unmasked alternative bases in subclonal encoded reads"),
-        (SUBCLONAL_N_DEL,           "number of deleted bases in subclonal encoded reads"),
-        (SUBCLONAL_N_INS,           "number of insertion operations in subclonal encoded reads (not the base count)"),
-        (SUBCLONAL_N_MASKED,        "number of masked bases in subclonal encoded reads"),
+        (ON_HAPLOTYPE_SPANS,        "number of unique genome alignment spans found in subclonal read_on_hap analysis"),
+        (ON_HAPLOTYPE_READS,        "number of error-corrected reads subjected to read_on_hap analysis"),
+        (ON_HAPLOTYPE_REF_BASES,    "number of genome bases covered by ON_HAPLOTYPE_SPANS"),
+        (ON_HAPLOTYPE_READ_BASES,   "number of reference bases in ON_HAPLOTYPE_READS (M and D operations)"),
+        (ON_HAPLOTYPE_MATCH,        "number of reference-matched bases in ON_HAPLOTYPE_READS"),
+        (ON_HAPLOTYPE_ALT,          "number of unmasked alternative bases in ON_HAPLOTYPE_READS"),
+        (ON_HAPLOTYPE_DEL,          "number of deleted bases in ON_HAPLOTYPE_READS"),
+        (ON_HAPLOTYPE_INS,          "number of insertion operations in ON_HAPLOTYPE_READS (not the base count)"),
+        (ON_HAPLOTYPE_MASKED,       "number of masked bases in ON_HAPLOTYPE_READS"),
     ]);
     ctrs.add_keyed_counters(&[
         (N_ALNS_BY_CHROM,    "number of error-corrected alignments by on-target chromosome"),
@@ -187,8 +185,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     w.ctrs.add_to(VARIANT_N_SUBSTITUTIONS, md.n_substitutions);
                     w.ctrs.add_to(VARIANT_N_INSERTIONS,    md.n_insertions);
                     w.ctrs.add_to(VARIANT_N_DELETIONS,     md.n_deletions);
-                    w.ctrs.add_to(VARIANT_N_HOMOZYGOUS,    md.n_homozygous);
-                    w.ctrs.add_to(VARIANT_N_HETEROZYGOUS,  md.n_heterozygous);
+                    w.ctrs.add_to(VARIANT_N_CLONAL,        md.n_clonal);
                     w.ctrs.add_to(VARIANT_N_SUBCLONAL,     md.n_subclonal);
                     w.ctrs.add_to(VARIANT_COUNT,           md.variant_count);
                     w.ctrs.add_to(VARIANT_COVERAGE,        md.variant_coverage);
@@ -202,27 +199,27 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     w.ctrs.add_to(VARIANT_READS_N_FOUR_SNV,md.n_four_snv);
                     w.ctrs.add_to(VARIANT_READS_N_FIVE_SNV,md.n_five_snv);
                 },
-                SnvChromWorkerData::ClonalEncodingMetadata(md) => {
-                    w.ctrs.add_to(CLONAL_N_SPANS,        md.n_unique_spans);
-                    w.ctrs.add_to(CLONAL_N_READS,        md.n_reads);
-                    w.ctrs.add_to(CLONAL_N_REF_BASES,    md.n_ref_bases);
-                    w.ctrs.add_to(CLONAL_N_READ_BASES,   md.n_read_bases);
-                    w.ctrs.add_to(CLONAL_N_MATCH,        md.n_match);
-                    w.ctrs.add_to(CLONAL_N_ALT,          md.n_alt);
-                    w.ctrs.add_to(CLONAL_N_DEL,          md.n_del);
-                    w.ctrs.add_to(CLONAL_N_INS,          md.n_ins);
-                    w.ctrs.add_to(CLONAL_N_MASKED,       md.n_masked);
+                SnvChromWorkerData::ReadsOnReferenceMetadata(md) => {
+                    w.ctrs.add_to(ON_REFERENCE_SPANS,     md.n_unique_spans);
+                    w.ctrs.add_to(ON_REFERENCE_READS,     md.n_reads);
+                    w.ctrs.add_to(ON_REFERENCE_REF_BASES, md.n_ref_bases);
+                    w.ctrs.add_to(ON_REFERENCE_READ_BASES,md.n_read_bases);
+                    w.ctrs.add_to(ON_REFERENCE_MATCH,     md.n_match);
+                    w.ctrs.add_to(ON_REFERENCE_ALT,       md.n_alt);
+                    w.ctrs.add_to(ON_REFERENCE_DEL,       md.n_del);
+                    w.ctrs.add_to(ON_REFERENCE_INS,       md.n_ins);
+                    w.ctrs.add_to(ON_REFERENCE_MASKED,    md.n_masked);
                 },
-                SnvChromWorkerData::SubclonalEncodingMetadata(md) => {
-                    w.ctrs.add_to(SUBCLONAL_N_SPANS,     md.n_unique_spans);
-                    w.ctrs.add_to(SUBCLONAL_N_READS,     md.n_reads);
-                    w.ctrs.add_to(SUBCLONAL_N_REF_BASES, md.n_ref_bases);
-                    w.ctrs.add_to(SUBCLONAL_N_READ_BASES,md.n_read_bases);
-                    w.ctrs.add_to(SUBCLONAL_N_MATCH,     md.n_match);
-                    w.ctrs.add_to(SUBCLONAL_N_ALT,       md.n_alt);
-                    w.ctrs.add_to(SUBCLONAL_N_DEL,       md.n_del);
-                    w.ctrs.add_to(SUBCLONAL_N_INS,       md.n_ins);
-                    w.ctrs.add_to(SUBCLONAL_N_MASKED,    md.n_masked);
+                SnvChromWorkerData::ReadsOnHaplotypeMetadata(md) => {
+                    w.ctrs.add_to(ON_HAPLOTYPE_SPANS,     md.n_unique_spans);
+                    w.ctrs.add_to(ON_HAPLOTYPE_READS,     md.n_reads);
+                    w.ctrs.add_to(ON_HAPLOTYPE_REF_BASES, md.n_ref_bases);
+                    w.ctrs.add_to(ON_HAPLOTYPE_READ_BASES,md.n_read_bases);
+                    w.ctrs.add_to(ON_HAPLOTYPE_MATCH,     md.n_match);
+                    w.ctrs.add_to(ON_HAPLOTYPE_ALT,       md.n_alt);
+                    w.ctrs.add_to(ON_HAPLOTYPE_DEL,       md.n_del);
+                    w.ctrs.add_to(ON_HAPLOTYPE_INS,       md.n_ins);
+                    w.ctrs.add_to(ON_HAPLOTYPE_MASKED,    md.n_masked);
                 },
             }
         }
@@ -237,8 +234,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             VARIANT_N_SUBSTITUTIONS, 
             VARIANT_N_INSERTIONS, 
             VARIANT_N_DELETIONS, 
-            VARIANT_N_HOMOZYGOUS,
-            VARIANT_N_HETEROZYGOUS,
+            VARIANT_N_CLONAL,
             VARIANT_N_SUBCLONAL,
             VARIANT_COUNT,
             VARIANT_COVERAGE,
@@ -253,26 +249,26 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             VARIANT_READS_N_FIVE_SNV,
         ],
         &[
-            CLONAL_N_SPANS,
-            CLONAL_N_READS,
-            CLONAL_N_REF_BASES,
-            CLONAL_N_READ_BASES,
-            CLONAL_N_MATCH,
-            CLONAL_N_ALT,
-            CLONAL_N_DEL,
-            CLONAL_N_INS,
-            CLONAL_N_MASKED,
+            ON_REFERENCE_SPANS,
+            ON_REFERENCE_READS,
+            ON_REFERENCE_REF_BASES,
+            ON_REFERENCE_READ_BASES,
+            ON_REFERENCE_MATCH,
+            ON_REFERENCE_ALT,
+            ON_REFERENCE_DEL,
+            ON_REFERENCE_INS,
+            ON_REFERENCE_MASKED,
         ],
         &[
-            SUBCLONAL_N_SPANS,
-            SUBCLONAL_N_READS,
-            SUBCLONAL_N_REF_BASES,
-            SUBCLONAL_N_READ_BASES,
-            SUBCLONAL_N_MATCH,
-            SUBCLONAL_N_ALT,
-            SUBCLONAL_N_DEL,
-            SUBCLONAL_N_INS,
-            SUBCLONAL_N_MASKED,
+            ON_HAPLOTYPE_SPANS,
+            ON_HAPLOTYPE_READS,
+            ON_HAPLOTYPE_REF_BASES,
+            ON_HAPLOTYPE_READ_BASES,
+            ON_HAPLOTYPE_MATCH,
+            ON_HAPLOTYPE_ALT,
+            ON_HAPLOTYPE_DEL,
+            ON_HAPLOTYPE_INS,
+            ON_HAPLOTYPE_MASKED,
         ],
     ]);
     Ok(())

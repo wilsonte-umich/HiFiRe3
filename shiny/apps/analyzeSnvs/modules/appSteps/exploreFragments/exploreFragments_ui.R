@@ -39,7 +39,8 @@ exploreFragmentsUI <- function(id, options) {
                 width = 12,
                 solidHeader = FALSE,
                 # status = "primary",
-                collapsible = FALSE,
+                collapsible = TRUE,
+                collapsed = FALSE,
                 column(
                     width = 2,
                     numericInput(
@@ -86,19 +87,68 @@ exploreFragmentsUI <- function(id, options) {
                 ),
                 column(
                     width = 2,
-                    actionButton(ns("newFragment"), "New Fragment", inline = TRUE)
+                    selectInput(
+                        ns("colorPalette"), 
+                        "Show Variants", 
+                        choices = c(
+                            "show_all",
+                            "hide_masked",
+                            "hide_indels",
+                            "hide_masked_and_indels"
+                        ),
+                        selected  = "show_all"
+                    )
                 ),
                 column(
                     width = 2,
-                    textOutput(ns("fragmentSpan"))
+                    checkboxInput(
+                        ns("showClonal"), 
+                        "Show Clonal", 
+                        value = TRUE
+                    )
                 ),
                 NULL
             )
         ),
         fluidRow(
+            box(
+                title = NULL,
+                width = 12,
+                solidHeader = FALSE,
+                # status = "primary",
+                collapsible = TRUE,
+                collapsed = FALSE,
+                column(
+                    width = 2,
+                    actionButton(ns("anyFragment"), "Any Fragment", inline = TRUE, width = "100%")
+                ),
+                column(
+                    width = 2,
+                    actionButton(ns("singletonSnv"), "Singleton SNV", inline = TRUE, width = "100%")
+                ),
+                column(
+                    width = 2,
+                    actionButton(ns("trueSubclonal"), "True Subclonal", inline = TRUE, width = "100%")
+                ),
+                column(
+                    width = 2,
+                    actionButton(ns("snv5Read"), "SNV5+ Read", inline = TRUE, width = "100%")
+                ),
+                column(
+                    width = 2,
+                    textInput(ns("jumpToFragment"), "Jump to Fragment", width = "100%")
+                ),
+                column(
+                    width = 4,
+                    textOutput(ns("fragmentSpan"))
+                ),
+                NULL        
+            )
+        ),
+        fluidRow(
             mdiInteractivePlotBoxUI(
-                ns("clonalEncodingPlot"), 
-                "Clonal Encoding Plot",
+                ns("readsOnRefPlot"), 
+                "Reads On Reference",
                 width = 12,
                 solidHeader = FALSE, 
                 collapsible = TRUE, 
@@ -107,8 +157,8 @@ exploreFragmentsUI <- function(id, options) {
         ),
         fluidRow(
             mdiInteractivePlotBoxUI(
-                ns("hap1EncodingPlot"), 
-                "Haplotype 1 Encoding Plot",
+                ns("readsOnHap1Plot"), 
+                "Reads On Haplotype 1",
                 width = 12,
                 solidHeader = FALSE, 
                 collapsible = TRUE, 
@@ -117,12 +167,47 @@ exploreFragmentsUI <- function(id, options) {
         ),
         fluidRow(
             mdiInteractivePlotBoxUI(
-                ns("hap2EncodingPlot"), 
-                "Haplotype 2 Encoding Plot",
+                ns("readsOnHap2Plot"), 
+                "Reads On Haplotype 2",
                 width = 12,
                 solidHeader = FALSE, 
                 collapsible = TRUE, 
                 collapsed = FALSE
+            )
+        ),
+        fluidRow(
+            box(
+                title = NULL,
+                width = 12,
+                solidHeader = FALSE,
+                # status = "primary",
+                collapsible = TRUE,
+                collapsed = FALSE,
+                column(
+                    width = 2,
+                    checkboxInput(
+                        ns("tableShowIndels"), 
+                        "Show Indels", 
+                        value = TRUE
+                    )
+                ),
+                column(
+                    width = 2,
+                    checkboxInput(
+                        ns("tableShowClonal"), 
+                        "Show Clonal", 
+                        value = TRUE
+                    )
+                ),
+                column(
+                    width = 2,
+                    checkboxInput(
+                        ns("tableShowQnames"), 
+                        "Show QNames", 
+                        value = TRUE
+                    )
+                ),
+                NULL
             )
         ),
         fluidRow(

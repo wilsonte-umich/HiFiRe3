@@ -35,7 +35,6 @@
 // dd:Z  :  =  *  ^     !  +  -  #    ?  >  <  &
 
 // imports
-use minimap2::Mapping;
 use super::*;
 
 // strand_merger outcome flag bits
@@ -96,6 +95,7 @@ impl SnvChromWorker {
     /// read position was either:
     ///     - error corrected to reference 
     ///     - reported as an N base at an unresolved heteroduplex
+    /// 
     /// during basecalling. Homoduplex bases can always call variants. 
     /// EndClipped and UnresolvedHeteroduplex bases will never call variants  
     /// since they were reported as N. CorrectedToReference bases will be 
@@ -188,130 +188,114 @@ impl SnvChromWorker {
 
     /// Process a cs:Z:tag to add a read to a growing fragment variant list. 
     pub fn process_cs_tag(
-        &self,
+        &mut self,
+        frag_haps:    &mut FragmentHaplotypes,
+        re_fragment:  &ReFragment,
         haplotype:    Haplotype,
-        mapping:      Option<&Mapping>,
+        mapping:      Option<(i32, i32)>, // minimap2 query_start, target_start
         cs_tag:       Option<&String>,
-        ref_pos0_map: Option<&Vec<ChromPos0>>,
-        frag_vars:    &mut FragmentVariants,
-        encoding:     &mut AlignmentEncoding,
+        offset:       ChromPos0, // to ensure that variant positions become ref positions
+        ref_pos0_map: &mut Vec<ChromPos0>, // used different depending on tgt_is_hap bool
         read_i:       ReadIndex,
         read:         &ReadInstance,
+        mask:         &[DdMaskType],
     ) { 
         let tgt_is_hap = haplotype != Haplotype::Unspecified;
         let (
-            mask, 
             qual,
+            mut qry_pos0, // position on the query read on same strand as tgt_pos0
             mut tgt_pos0, // position on either chromosome or haplotype consensus
-            mut qry_pos0, // position on the query read
-            ref_pos0_map, // mapping of haplotype consensus to chromosome reference
         ) = if tgt_is_hap {(
-            Self::get_dd_mask(read),
-            read.get_top_strand_qual(),
-            mapping.as_ref().unwrap().target_start as u32,
-            mapping.as_ref().unwrap().query_start as u32,
-            ref_pos0_map.unwrap(),
+            &read.qual_bytes,
+            mapping.unwrap().0 as u32, // properly oriented since all qry are ref top strand
+            mapping.unwrap().1 as u32,
         )} else {(
-            Vec::new(),
-            Vec::new(),
-            read.ref_pos0,
+            &Vec::new(),
             read.qry_pos0,
-            &Vec::new()
+            read.aln_start0,
         )};
 
-        let mut var_tgt_pos0: Option<SeqPos0> = None;
-        let mut n_tgt_bases: u32 = 0;
-        let mut alt_bases: UppercaseACGTN = String::with_capacity(128);
-        let mut alt_qual: Vec<PhredQual> = Vec::with_capacity(128);
-        let mut allowed = true;
+        self.reset_cs_variant();
 
-        // let cs: String;
         let mut chars = if tgt_is_hap {
-            // cs = cs_tag.unwrap();
-            // cs.chars()
             cs_tag.unwrap().chars()
         } else {
             read.cs.chars()
         };
-        let mut op = chars.next().unwrap();
-        let mut val: String = String::with_capacity(128);
+        self.cs_op = chars.next().unwrap();
+        self.op_val.clear();
         
         while let Some(char) = chars.next() {
             if char.is_alphanumeric() {
-                val.push(char);
+                self.op_val.push(char);
             } else {
                 self.handle_cs_op(
-                    haplotype, tgt_is_hap, frag_vars, encoding, read_i,
-                    &mask, &qual, ref_pos0_map,
-                    &mut tgt_pos0, &mut qry_pos0, 
-                    &mut var_tgt_pos0, &mut n_tgt_bases, &mut alt_bases, 
-                    &mut alt_qual, &mut allowed, 
-                    op, &val,
+                    frag_haps, offset, ref_pos0_map,
+                    re_fragment, haplotype, tgt_is_hap, 
+                    qual, &mut qry_pos0, &mut tgt_pos0, 
+                    read_i, mask,
                 );
-                op = char;
-                val.clear();
+                self.cs_op = char;
+                self.op_val.clear();
             }
         }
         self.handle_cs_op(
-            haplotype, tgt_is_hap, frag_vars, encoding, read_i,
-            &mask, &qual, ref_pos0_map,
-            &mut tgt_pos0, &mut qry_pos0, 
-            &mut var_tgt_pos0, &mut n_tgt_bases, &mut alt_bases, 
-            &mut alt_qual, &mut allowed, 
-            op, &val,
+            frag_haps, offset, ref_pos0_map,
+            re_fragment, haplotype, tgt_is_hap, 
+            qual, &mut qry_pos0, &mut tgt_pos0, 
+            read_i, mask,
         );
     }
 
     /// Process one cs:Z:tag operation to add to the growing fragment variant 
     /// list. 
     fn handle_cs_op(
-        &self,
+        &mut self,
+        frag_haps:    &mut FragmentHaplotypes,
+        offset:       ChromPos0,
+        ref_pos0_map: &mut Vec<ChromPos0>,
+        re_fragment:  &ReFragment,
         haplotype:    Haplotype,
         tgt_is_hap:   bool,
-        frag_vars:    &mut FragmentVariants,
-        encoding:     &mut AlignmentEncoding,
+        qual:         &[PhredQual],
+        qry_pos0:     &mut SeqPos0, 
+        tgt_pos0:     &mut SeqPos0,
         read_i:       ReadIndex,
         mask:         &[DdMaskType],
-        qual:         &[PhredQual],
-        ref_pos0_map: &[ChromPos0],
-        tgt_pos0:     &mut SeqPos0,
-        qry_pos0:     &mut SeqPos0, 
-        var_tgt_pos0: &mut Option<SeqPos0>,
-        n_tgt_bases:  &mut u32,
-        alt_bases:    &mut UppercaseACGTN,
-        alt_qual:     &mut Vec<PhredQual>,
-        allowed:      &mut bool,
-        op:           char, 
-        val:          &str, 
     ) {
-        match op {
+        match self.cs_op {
 
             // :[0-9]+   Identical sequence length
             ':' => {
-                if var_tgt_pos0.is_some() { // commit any preceding variant stretch
-                    if *allowed {
+                if self.var_tgt_pos0.is_some() { // commit any preceding variant stretch
+                    if self.allowed {
                         let variant = Variant::new(
-                            var_tgt_pos0.unwrap(),
-                            *n_tgt_bases,
-                            alt_bases,
-                            haplotype
+                            self.var_tgt_pos0.unwrap() + offset,
+                            &self.tgt_bases,
+                            &self.alt_bases,
+                            re_fragment, haplotype
                         );
                         let avg_qual = if tgt_is_hap {
-                            alt_qual.iter().map(|&q| q as f64).sum::<f64>() / 
-                            alt_qual.len() as f64
+                            self.alt_qual.iter().map(|&q| q as f64).sum::<f64>() / 
+                            self.alt_qual.len() as f64
                         } else { 0.0 };
-                        frag_vars.insert(variant, read_i, avg_qual as u8);
+                        self.frag_vars.insert(variant.clone(), read_i, avg_qual as u8);
+                        frag_haps.insert_variant(re_fragment, haplotype, variant);
                     }
-                    *var_tgt_pos0 = None;
-                    *n_tgt_bases = 0;
-                    alt_bases.clear();
-                    alt_qual.clear();
-                    *allowed = true;
+                    self.reset_cs_variant();
                 }
-                let len = val.parse::<u32>().unwrap();
-                encoding.add_identity(len);
-                *qry_pos0 += len;
-                *tgt_pos0 += len;
+                let len = self.op_val.parse::<u32>().unwrap();
+                self.encoding.add_identity(len);
+                if tgt_is_hap {
+                    *qry_pos0 += len;
+                    *tgt_pos0 += len;
+                } else {
+                    for _ in 0..len {
+                        ref_pos0_map.push(*qry_pos0);
+                        *qry_pos0 += 1;
+                        *tgt_pos0 += 1;
+                    }
+                }
             },
 
             // *[acgtn][acgtn]   Substitution: target to query
@@ -320,26 +304,29 @@ impl SnvChromWorker {
                 // rrrrRrrrr
                 // qqqqQqqqq
                 //     A
-                let alt = val[1..=1].to_ascii_uppercase();
-                *allowed &= alt != "N";
-                *allowed &= if tgt_is_hap {
+                let tgt = self.op_val[0..=0].to_ascii_uppercase();
+                let alt = self.op_val[1..=1].to_ascii_uppercase();
+                self.tgt_bases.push_str(&tgt);
+                self.alt_bases.push_str(&alt);
+                self.allowed &= tgt != "N";
+                self.allowed &= alt != "N";
+                self.allowed &= if tgt_is_hap {
                     let ref_pos0 = ref_pos0_map[*tgt_pos0 as usize];
                     !self.simple_repeats.binary_search(ref_pos0, 1)
                 } else {
+                    ref_pos0_map.push(*qry_pos0);
                     !self.simple_repeats.binary_search(*tgt_pos0, 1)
                 };
-                alt_bases.push_str(&alt);
                 let low_qual = if tgt_is_hap {
                     let i0 = *qry_pos0 as usize;
-                    alt_qual.push(qual[i0]);
-                    *allowed &= mask[i0] != DdMaskType::CorrectedToReference;   
+                    self.alt_qual.push(qual[i0]);
+                    self.allowed &= mask[i0] != DdMaskType::CorrectedToReference;   
                     qual[i0] <= MIN_SNV_INDEL_QUAL
                 } else {
                     false
                 };
-                encoding.add_substitution(&alt, *allowed, low_qual);
-                if var_tgt_pos0.is_none() { *var_tgt_pos0 = Some(*tgt_pos0); }
-                *n_tgt_bases += 1;
+                self.encoding.add_substitution(&alt, self.allowed, low_qual);
+                if self.var_tgt_pos0.is_none() { self.var_tgt_pos0 = Some(*tgt_pos0); }
                 *qry_pos0 += 1;
                 *tgt_pos0 += 1;
             },
@@ -350,24 +337,24 @@ impl SnvChromWorker {
                 // rrrr   Rrrr
                 // qqqqQqqqqqq
                 //    aA Aa
-                let n_ins_bases = val.len();
-                let alt = val.to_ascii_uppercase();
-                *allowed &= !alt.contains("N");
-                *allowed &= if tgt_is_hap {
+                let n_ins_bases = self.op_val.len();
+                let alt = self.op_val.to_ascii_uppercase();
+                self.alt_bases.push_str(&alt);
+                self.allowed &= !alt.contains("N");
+                self.allowed &= if tgt_is_hap {
                     let ref_pos0 = ref_pos0_map[*tgt_pos0 as usize - 1];
                     !self.simple_repeats.binary_search(ref_pos0, 2)
                 } else {
                     !self.simple_repeats.binary_search(*tgt_pos0 - 1, 2)
                 };
-                alt_bases.push_str(&alt);
                 let low_qual = if tgt_is_hap {
                     let ins_start0 = *qry_pos0 as usize;
                     let ins_end1 = ins_start0 + n_ins_bases;
                     let qual_left0  = ins_start0.saturating_sub(INDEL_FLANK_BASES);
                     let qual_right1 = (ins_end1 + INDEL_FLANK_BASES).min(qual.len());
                     let q = &qual[qual_left0..qual_right1];
-                    alt_qual.extend_from_slice(q);
-                    *allowed &= mask[ins_start0] != DdMaskType::CorrectedToReference;
+                    self.alt_qual.extend_from_slice(q);
+                    self.allowed &= mask[ins_start0] != DdMaskType::CorrectedToReference;
                     let avg_qual = {
                         q.iter().map(|&q| q as f64).sum::<f64>() / 
                         q.len() as f64
@@ -376,10 +363,10 @@ impl SnvChromWorker {
                 } else {
                     false
                 };
-                encoding.add_insertion(*allowed, low_qual);
-                if var_tgt_pos0.is_none() { *var_tgt_pos0 = Some(*tgt_pos0 - 1); }
+                self.encoding.add_insertion(self.allowed, low_qual);
+                if self.var_tgt_pos0.is_none() { self.var_tgt_pos0 = Some(*tgt_pos0 - 1); }
                 *qry_pos0 += n_ins_bases as u32;
-                // no action on n_tgt_bases or tgt_pos0
+                // no action on tgt_bases or tgt_pos0
             },
 
             // -[acgtn]+   Deletion from the target
@@ -390,11 +377,17 @@ impl SnvChromWorker {
                 //   aA   Aa
                 // heteroduplex indels in read strands are always reported as N bases
                 // so do not expect heteroduplex indels to lead to falsely missing bases
-                let n_del_bases = val.len() as u32;
-                *allowed &= if tgt_is_hap {
+                let n_del_bases = self.op_val.len() as u32;
+                let tgt = self.op_val.to_ascii_uppercase();
+                self.tgt_bases.push_str(&tgt);
+                self.allowed &= !tgt.contains("N");
+                self.allowed &= if tgt_is_hap {
                     let ref_pos0 = ref_pos0_map[*tgt_pos0 as usize];
                     !self.simple_repeats.binary_search(ref_pos0, n_del_bases)
                 } else {
+                    for _ in 0..n_del_bases {
+                        ref_pos0_map.push(*qry_pos0 - 1); // never used downstream
+                    }
                     !self.simple_repeats.binary_search(*tgt_pos0, n_del_bases)
                 };
                 let low_qual = if tgt_is_hap {
@@ -402,8 +395,8 @@ impl SnvChromWorker {
                     let qual_left0  = qry_after_del0.saturating_sub(INDEL_FLANK_BASES);
                     let qual_right1 = (qry_after_del0 + INDEL_FLANK_BASES).min(qual.len());
                     let q = &qual[qual_left0..qual_right1];
-                    alt_qual.extend_from_slice(q);
-                    *allowed &= mask[qry_after_del0 - 1] != DdMaskType::CorrectedToReference;
+                    self.alt_qual.extend_from_slice(q);
+                    self.allowed &= mask[qry_after_del0 - 1] != DdMaskType::CorrectedToReference;
                     let avg_qual = {
                         q.iter().map(|&q| q as f64).sum::<f64>() / 
                         q.len() as f64
@@ -412,13 +405,12 @@ impl SnvChromWorker {
                 } else {
                     false
                 };
-                encoding.add_deletion(n_del_bases, *allowed, low_qual);
-                if var_tgt_pos0.is_none() { *var_tgt_pos0 = Some(*tgt_pos0); }
-                *n_tgt_bases += n_del_bases;
+                self.encoding.add_deletion(n_del_bases, self.allowed, low_qual);
+                if self.var_tgt_pos0.is_none() { self.var_tgt_pos0 = Some(*tgt_pos0); }
                 *tgt_pos0    += n_del_bases;
                 // no action on qry_pos0, alt_bases, and N check not applicable
             },
-            _   => panic!("Unexpected operation in cs tag: {}", op),
+            _   => panic!("Unexpected operation in cs tag: {}", self.cs_op),
         }
     }
 

@@ -79,8 +79,8 @@ summarizeLibrariesUI <- function(id, options) {
                 collapsed = TRUE
             ),
             mdiInteractivePlotBoxUI(
-                ns("zygosity"), 
-                "Variant Zygosity Distribution",
+                ns("vafPlot"), 
+                "Variant VAF Distribution",
                 width = 6, 
                 collapsible = TRUE, 
                 collapsed = TRUE

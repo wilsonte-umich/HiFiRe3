@@ -2,28 +2,28 @@
 # caller must call stopSpinner()
 snvData_create <- "asNeeded"
 
-# get track data
-hf3_getPileup <- function(sourceId, coord, readType){
-    if(readType == "error_corrected"){
-        hf3_getTrackData_bgz(sourceId, "errorCorrectedPileupBgz", coord, use_chrom = FALSE, debug = FALSE)
-    } else {
-        hf3_getTrackData_bgz(sourceId, "allReadsPileupBgz", coord, use_chrom = FALSE, debug = FALSE)
-    }
-}
-hf3_getVariants <- function(sourceId, coord, readType){
-    if(readType == "error_corrected"){
-        hf3_getTrackData_bgz(sourceId, "errorCorrectedVariantsBgz", coord, use_chrom = FALSE, debug = FALSE)
-    } else {
-        hf3_getTrackData_bgz(sourceId, "allReadsVariantsBgz", coord, use_chrom = FALSE, debug = FALSE)
-    }
-}
-hf3_getEncodings <- function(sourceId, coord, readType){
-    if(readType == "error_corrected"){
-        hf3_getTrackData_bgz(sourceId, "errorCorrectedEncodingsBgz", coord, use_chrom = FALSE, debug = FALSE)
-    } else {
-        hf3_getTrackData_bgz(sourceId, "allReadsEncodingsBgz", coord, use_chrom = FALSE, debug = FALSE)
-    }
-}
+# # get track data
+# hf3_getPileup <- function(sourceId, coord, readType){
+#     if(readType == "error_corrected"){
+#         hf3_getTrackData_bgz(sourceId, "errorCorrectedPileupBgz", coord, use_chrom = FALSE, debug = FALSE)
+#     } else {
+#         hf3_getTrackData_bgz(sourceId, "allReadsPileupBgz", coord, use_chrom = FALSE, debug = FALSE)
+#     }
+# }
+# hf3_getVariants <- function(sourceId, coord, readType){
+#     if(readType == "error_corrected"){
+#         hf3_getTrackData_bgz(sourceId, "errorCorrectedVariantsBgz", coord, use_chrom = FALSE, debug = FALSE)
+#     } else {
+#         hf3_getTrackData_bgz(sourceId, "allReadsVariantsBgz", coord, use_chrom = FALSE, debug = FALSE)
+#     }
+# }
+# hf3_getEncodings <- function(sourceId, coord, readType){
+#     if(readType == "error_corrected"){
+#         hf3_getTrackData_bgz(sourceId, "errorCorrectedEncodingsBgz", coord, use_chrom = FALSE, debug = FALSE)
+#     } else {
+#         hf3_getTrackData_bgz(sourceId, "allReadsEncodingsBgz", coord, use_chrom = FALSE, debug = FALSE)
+#     }
+# }
 
 # get cached data, full tables
 hf3_cached_create <- "asNeeded"
@@ -44,13 +44,12 @@ hf3_getVariants_cached <- function(sourceId){
                 colClasses = unname(hf3_bgzColumns[[fileType]])
             )
             d[, ":="(
+                n_tgt_bases = nchar(tgt_bases),
                 n_alt_bases = nchar(alt_bases)
             )]
+            d[clonal == 1, vaf := n_haplotype_reads / n_reads]
             d[, ":="(
-                is_snp = n_tgt_bases == 1 & n_tgt_bases == n_alt_bases,
-                # is_mnp = n_tgt_bases > 1  & n_tgt_bases == n_alt_bases,
-                # is_ins = n_tgt_bases == 0,
-                # is_del = n_alt_bases == 0,
+                is_snv = n_tgt_bases == 1 & n_tgt_bases == n_alt_bases,
                 vaf_bin = floor(vaf * 51) / 51
             )]
             d
@@ -73,15 +72,16 @@ hf3_getVariantReads_cached <- function(sourceId){
                 col.names  =  names(hf3_bgzColumns[[fileType]]), 
                 colClasses = unname(hf3_bgzColumns[[fileType]])
             )
+            setkey(d, qname)
             d
         }  
     )$value
 }
-hf3_getEncodings_cached <- function(sourceId, clonality){
-    fileType <- if (clonality == "clonal") {
-        "clonalEncodingsBgz"
+hf3_getFragments_cached <- function(sourceId, reads_on){
+    fileType <- if (reads_on == "reference") {
+        "fragmentsOnReferenceBgz"
     } else {
-        "subclonalEncodingsBgz"
+        "fragmentsOnHaplotypeBgz"
     }
     sessionCache$get(
         fileType, 
@@ -90,7 +90,7 @@ hf3_getEncodings_cached <- function(sourceId, clonality){
         from = "ram",
         create = hf3_cached_create,
         createFn = function(...) {
-            startSpinner(session, message = paste("loading", clonality, "encodings"))
+            startSpinner(session, message = paste("loading reads on", reads_on))
             dataFilePath <- getSourceFilePath(sourceId, fileType)
             d <- fread(
                 cmd = paste("zcat", dataFilePath),
@@ -100,6 +100,9 @@ hf3_getEncodings_cached <- function(sourceId, clonality){
             d[, ":="(
                 n_bases = end1 - start0,
                 n_bases_bin = floor((end1 - start0) / 250) * 250
+            )]
+            d[, ":="(
+                n_unmasked_bases = n_bases - n_repeat_bases
             )]
             d
         }  

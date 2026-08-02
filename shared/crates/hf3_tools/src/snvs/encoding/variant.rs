@@ -6,45 +6,45 @@ use serde::{Serialize, Serializer};
 use mdi::OutputCsv;
 use crate::snvs::*;
 
-/// VariantZygosity lists the types of variant calls. Unlike encodings, a single
+/// Clonality lists the types of variant calls. Unlike encodings, a single
 /// output file includes all variants calls.
 #[derive(Clone, Copy, Serialize)]
 #[repr(u8)]
-pub enum VariantZygosity {
-    Subclonal    = 0,
-    Heterozygous = 1,
-    Homozygous   = 2,
+pub enum Clonality {
+    Clonal    = 1,
+    Subclonal = 0,
 }
-/// Helper function to serialize Haplotype as u8.
-pub fn serialize_zygosity<S: Serializer>(z: &VariantZygosity, serializer: S) -> Result<S::Ok, S::Error>{
-    serializer.serialize_u8(*z as u8)
+/// Helper function to serialize VariantZygosity as u8.
+pub fn serialize_clonality<S: Serializer>(
+    c: &Clonality, 
+    serializer: S
+) -> Result<S::Ok, S::Error>{
+    serializer.serialize_u8(*c as u8)
 }
 
 /// VariantInstances holds the read count of a specific Variant and the 
 /// fragments, samples, and reads that contributed to the count.
 pub struct VariantInstances {
-    n_fragments:      usize, // the number of RE fragments that reported the variant (usually 1)
-    n_matching_reads: usize,
-    coverage:         usize,
-    sample_bits:      SampleBits,
-    max_avg_qual:     PhredQual,
-    zygosity: VariantZygosity,
-    vaf:      f64,
-    qnames:   Vec<QName>,
+    n_matching_reads:  u16, // set for subclonal only; always 0 for clonal variants
+    n_haplotype_reads: u16,
+    n_reads:           u16,
+    sample_bits:       SampleBits,
+    max_avg_qual:      PhredQual,
+    clonal:    Clonality,
+    qnames:    Vec<QName>,
 }
 impl VariantInstances {
 
     /// Create a new empty VariantInstances object.
     fn new() -> Self {
         VariantInstances {
-            n_fragments:      0,
-            n_matching_reads: 0,
-            coverage:         0,
-            sample_bits:      0,
-            max_avg_qual:     0,
-            zygosity: VariantZygosity::Subclonal,
-            vaf:      0.0,
-            qnames:   Vec::new(), // auto-allocate since many variants will have few reads
+            n_matching_reads:  0,
+            n_haplotype_reads: 0,
+            n_reads:           0,
+            sample_bits:       0,
+            max_avg_qual:      0,
+            clonal:    Clonality::Subclonal,
+            qnames:    Vec::new(), // auto-allocate since many variants will have few reads
         }
     }
 }
@@ -56,8 +56,7 @@ pub struct VariantMetadata {
     pub n_substitutions:  usize,
     pub n_insertions:     usize,
     pub n_deletions:      usize,
-    pub n_homozygous:     usize,
-    pub n_heterozygous:   usize,
+    pub n_clonal:         usize,
     pub n_subclonal:      usize,
     pub variant_count:    usize,
     pub variant_coverage: usize,
@@ -69,8 +68,7 @@ impl VariantMetadata {
             n_substitutions:  0,
             n_insertions:     0,
             n_deletions:      0,
-            n_homozygous:     0,
-            n_heterozygous:   0,
+            n_clonal:         0,
             n_subclonal:      0,
             variant_count:    0,
             variant_coverage: 0,
@@ -82,16 +80,17 @@ impl VariantMetadata {
 /// downstream use. 
 #[derive(Serialize)]
 struct VariantRecord<'a> {
-    chrom_index:      ChromIndex1,
-    variant:          &'a Variant, // specific variant observed at this position
-    n_fragments:      usize, // the number of RE fragments that reported the variant (usually 1)
-    n_matching_reads: usize,
-    coverage:         usize,
+    chrom_index:       ChromIndex1,
+    variant:           &'a Variant, // specific variant observed at this position
+    n_repeat_bases:    u32,
+    n_matching_reads:  u16,
+    n_haplotype_reads: u16,
+    n_reads:           u16,
+    n_multivariant_reads: u16, // number of reads that had at least one other subclonal variant
     sample_bits:      SampleBits,
     n_samples:        u32,
-    #[serde(serialize_with = "serialize_zygosity")]
-    zygosity:         VariantZygosity,
-    vaf:              f64, // vaf only set on clonal
+    #[serde(serialize_with = "serialize_clonality")]
+    clonal:           Clonality,
     max_avg_qual:     PhredQual, // max_avg_qual set on subclonal
     qnames: CommaDelimited, // comma-delimited list of QNAMEs with this variant
 }
@@ -114,22 +113,16 @@ impl VariantsTally {
     /// alignment to reference.
     pub fn add_clonal(
         &mut self, 
-        variant: &Variant, 
-        reads:   &[ReadInstance], // all ReFragment reads
-        read_is: &[ReadIndex],    // indices into reads for reads with the variant
+        variant:   &Variant, 
+        reads:     &[ReadInstance], // all ReFragment reads
+        read_is:   &[ReadIndex],    // indices into reads for reads with the variant
     ) {
         let instances = self.tally
             .entry(variant.clone())
             .or_insert_with(VariantInstances::new);
-        instances.n_fragments      += 1;
-        instances.n_matching_reads += read_is.len();
-        instances.coverage         += reads.len();
-        instances.vaf = instances.n_matching_reads as f64 / instances.coverage as f64;
-        instances.zygosity = if instances.vaf > MAX_HETEROZYGOUS_ZYGOSITY {
-            VariantZygosity::Homozygous
-        } else {
-            VariantZygosity::Heterozygous
-        };
+        instances.n_haplotype_reads += read_is.len() as u16;
+        instances.n_reads           += reads.len() as u16;
+        instances.clonal    = Clonality::Clonal;
         for read_i in read_is {
             let read = &reads[*read_i];
             instances.sample_bits |= read.sample_bit;
@@ -150,10 +143,11 @@ impl VariantsTally {
         let instances = self.tally
             .entry(variant.clone())
             .or_insert_with(VariantInstances::new);
-        instances.n_fragments      += 1;
-        instances.n_matching_reads += read_js.len();
-        instances.coverage         += read_is.len();
+        instances.n_matching_reads  += read_js.len() as u16;
+        instances.n_haplotype_reads += read_is.len() as u16;
+        instances.n_reads           += reads.len() as u16;
         instances.max_avg_qual = instances.max_avg_qual.max(max_avg_qual);
+        instances.clonal       = Clonality::Subclonal;
         for read_j in read_js {
             let read = &reads[read_is[*read_j]];
             instances.sample_bits |= read.sample_bit;
@@ -166,9 +160,10 @@ impl VariantsTally {
     pub fn write_sorted(
         tool:   &SnvAnalysisTool,
         worker: &mut SnvChromWorker,
+        file_path: String,
     ) -> VariantMetadata {
         let mut csv = OutputCsv::open_csv(
-            &worker.variants_file_path, 
+            &file_path, 
             b'\t', 
             false, 
             Some(tool.n_cpu),
@@ -187,16 +182,20 @@ impl VariantsTally {
             let record = VariantRecord {
                 chrom_index:   worker.chrom_index,
                 variant:       &variant,
-                n_fragments:      instances.n_fragments,
-                n_matching_reads: instances.n_matching_reads,
-                coverage:      instances.coverage,
+                n_repeat_bases: worker.simple_repeats.get_n_repeat_bases(&variant.re_fragment),
+                n_matching_reads:     instances.n_matching_reads,
+                n_haplotype_reads:    instances.n_haplotype_reads,
+                n_reads:              instances.n_reads,
+                n_multivariant_reads: instances.qnames.iter().filter(|&qname|{
+                    worker.variant_reads_tally.tally.get(qname)
+                        .map_or(false, |read|{
+                            read.n_variants > 1
+                        })
+                }).count() as u16,
                 sample_bits:   instances.sample_bits,
                 n_samples:     instances.sample_bits.count_ones(),
-                zygosity:      instances.zygosity,
-                vaf:           instances.vaf,
+                clonal:        instances.clonal,
                 max_avg_qual:  instances.max_avg_qual,
-                // any_allowed:   instances.any_allowed as u8,
-                // all_allowed:   instances.all_allowed as u8,
                 qnames:   instances.qnames.join(",")
             };
             csv.serialize(&record);
@@ -209,19 +208,16 @@ impl VariantsTally {
             } else {
                 md.n_deletions += 1;
             }
-            match record.zygosity {
-                VariantZygosity::Subclonal => {
+            match record.clonal {
+                Clonality::Subclonal => {
                     md.n_subclonal += 1
                 },
-                VariantZygosity::Heterozygous => {
-                    md.n_heterozygous += 1
-                },
-                VariantZygosity::Homozygous => {
-                    md.n_homozygous += 1
+                Clonality::Clonal => {
+                    md.n_clonal += 1
                 }
             }
-            md.variant_count    += record.n_matching_reads;
-            md.variant_coverage += record.coverage; 
+            md.variant_count    += record.n_matching_reads as usize;
+            md.variant_coverage += record.n_reads as usize; 
         }
         md
     }

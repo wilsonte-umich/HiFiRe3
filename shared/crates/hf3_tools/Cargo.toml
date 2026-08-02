@@ -1,6 +1,6 @@
 [package]
 name = "hf3_tools"
-rust-version    = "1.92"
+rust-version = "1.96"
 edition = "2024"
 authors = ["Thomas E. Wilson"]
 

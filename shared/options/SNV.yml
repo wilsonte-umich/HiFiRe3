@@ -1,10 +1,24 @@
 ---
 # options that determine the behavior of SNV finding algorithms
 options:
-    min_n_passes:
+    min-n-passes:
         order: 1
         short: null
         type: integer
         required: false
         default: 10
-        description: "minimum number of PacBio passes on both strands together to be a valid duplex read"
+        description: "number of PacBio passes on both strands together to be a valid duplex read"
+    min-fragment-reads:
+        order: 2
+        short: null
+        type: integer
+        required: false
+        default: 8
+        description: "number of reads required to submit an RE fragment to SNV analysis"
+    min-homozygous-reads:
+        order: 3
+        short: null
+        type: integer
+        required: false
+        default: 15
+        description: "number of reads required to keep an RE fragment with no heterozygous variants"

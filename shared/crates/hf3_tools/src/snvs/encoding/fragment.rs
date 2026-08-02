@@ -7,15 +7,18 @@ use crate::snvs::*;
 
 // constants
 const MATCH:   char = '='; // homoduplex reference base matchs
-const MASKED:  char = 'N'; // heteroduplex bases considered untrustworthy for variant calling
+const MASKED:  char = 'n'; // heteroduplex bases considered untrustworthy for variant calling
 const ALT_DEL: char = '-'; // fully recorded in the reference-justified encoded "read"
-const ALT_DEL_MASKED: char = '?';
 const ALT_INS: char = '+'; // recorded in a separate encoding from match/subs/del
-const ALT_INS_MASKED: char = '?'; 
+const ALT_DEL_MASKED: char = 'd';
+const ALT_INS_MASKED: char = 'i'; 
 
 /// AlignmentEncoding progressively builds the encoded bases of a single 
 /// sequence (either a read or a reference sequence) aligned to its reference
 /// (either the reference sequence or a haplotype consensus).
+/// 
+/// All encodings are flush to the exact ReFragment.start0, but not necessarily 
+/// to ReFragment.end1.
 #[derive(Clone)]
 pub struct AlignmentEncoding {
     re_fragment: ReFragment,
@@ -25,7 +28,6 @@ pub struct AlignmentEncoding {
     n_ins:       u32,
     n_masked:    u32,
     sample_bit:  SampleBit, // sample bit for this variant
-    read_start0: SeqPos0, // target base where encoding starts, may be less than re_fragment.start0
     encoding:    String,
     insertion:   Vec<String>, // so insertions can be tracked on top of any previous base
     qname:       QName,
@@ -43,7 +45,6 @@ impl AlignmentEncoding {
             n_ins:       0, // not included as part of n_bases
             n_masked:    0,
             sample_bit:  0,
-            read_start0: 0,
             encoding:    String::with_capacity(256),
             insertion:   Vec::with_capacity(256), // each encodes the same number of ref bases
             qname:       String::with_capacity(64),
@@ -55,24 +56,23 @@ impl AlignmentEncoding {
     pub fn prepare_read_on_ref(
         &mut self,
         re_fragment: &ReFragment,
-        read: &ReadInstance,
+        read:        &ReadInstance,
     ) {
         self.re_fragment = *re_fragment;
-        self.n_match  = 0;
-        self.n_alt    = 0;
-        self.n_del    = 0;
-        self.n_ins    = 0;
-        self.n_masked = 0;
+        self.n_match     = 0;
+        self.n_alt       = 0;
+        self.n_del       = 0;
+        self.n_ins       = 0;
+        self.n_masked    = 0;
         self.sample_bit  = read.sample_bit;
-        self.read_start0 = read.ref_pos0.min(re_fragment.start0);
         self.encoding.clear();
         self.insertion.clear();
         self.qname.clear();
-        self.qname.push_str(&read.qname); 
-        if read.ref_pos0 > re_fragment.start0 {
-            let len = (read.ref_pos0 - re_fragment.start0) as usize;
-            self.encoding.extend(vec![MASKED; len]);
-            self.insertion.push(format!("{}{}", MATCH, len));
+        self.qname.push_str(&read.qname);
+        let tgt_start0 = (read.aln_start0 - re_fragment.start0) as usize;
+        if tgt_start0 > 0 {
+            self.encoding.extend(vec![MASKED; tgt_start0]);
+            self.insertion.push(format!("{}{}", MATCH, tgt_start0));
         }
     }
 
@@ -81,8 +81,8 @@ impl AlignmentEncoding {
     pub fn prepare_read_on_hap(
         &mut self,
         re_fragment: &ReFragment,
-        read: &ReadInstance,
-        tgt_start0: usize,
+        read:        &ReadInstance,
+        tgt_start0:  usize,
     ) {
         self.re_fragment = *re_fragment;
         self.n_match  = 0;
@@ -91,7 +91,6 @@ impl AlignmentEncoding {
         self.n_ins    = 0;
         self.n_masked = 0;
         self.sample_bit  = read.sample_bit;
-        self.read_start0 = 0; // unlike read_on_ref, read_on_hap cannot align to bases before the consensus starts
         self.encoding.clear();
         self.insertion.clear();
         self.qname.clear();
@@ -158,9 +157,9 @@ impl AlignmentEncoding {
     }
 }
 
-/// EncodingMetadata reports summary results of read encoding accumulated
-/// over all reads.
-pub struct EncodingMetadata {
+/// FragmentHaplotypeMetadata reports summary results of read encoding 
+/// accumulated over all reads.
+pub struct FragmentHaplotypeMetadata {
     pub n_unique_spans:  usize,
     pub n_reads:         usize,
     pub n_ref_bases:     usize,
@@ -171,9 +170,9 @@ pub struct EncodingMetadata {
     pub n_ins:           usize,
     pub n_masked:        usize,
 }
-impl EncodingMetadata {
+impl FragmentHaplotypeMetadata {
     fn new(n_unique_spans: usize) -> Self {
-        EncodingMetadata {
+        FragmentHaplotypeMetadata {
             n_unique_spans,
             n_reads:         0,
             n_ref_bases:     0,
@@ -187,28 +186,31 @@ impl EncodingMetadata {
     }
 }
 
-/// A fully assembled encoding over multiple aggregated reads as written to file  
-/// for downstream use. 
+/// Fully assembled fragment+haplotype encodings over multiple aggregated reads
+///  as written to file for downstream use. 
 #[derive(Serialize)]
-struct EncodingRecord {
+struct FragmentHaplotypeRecord {
     chrom_index:  ChromIndex1,
     re_fragment:  ReFragment,
     #[serde(serialize_with = "serialize_haplotype")]
     haplotype:    Haplotype,
+    n_repeat_bases: u32,
     n_reads:      usize,
-    n_match:      u32, // aggregated valued over all reads
+    n_multivariant_reads: u16,
+    n_match:      u32, // aggregated encoding values over all reads
     n_alt:        u32,
     n_del:        u32,
-    n_ins:        u32,
+    n_ins:        u32, // number of insertion events (other counts are number of bases)
     n_masked:     u32,
+    n_variants:   usize,
     sample_bits:  SampleBits,
-    n_matches:    CommaDelimited, // comma-delimited values from the invidual reads
+    n_matches:    CommaDelimited, // comma-delimited values from the individual reads
     n_alts:       CommaDelimited,
     n_dels:       CommaDelimited,
     n_inss:       CommaDelimited,
     n_maskeds:    CommaDelimited,
+    n_variantss:  CommaDelimited,
     sample_bitss: CommaDelimited,
-    read_start0s: CommaDelimited,
     encodings:    CommaDelimited,
     insertions:   CommaDelimited,
     qnames:       CommaDelimited,
@@ -216,22 +218,25 @@ struct EncodingRecord {
     hap_vs_ref:   String, // encoding of haplotype consensus differences relative to reference
 }
 
-/// AlignmentEncodings aggregates AlignmentEncodings per ReFragment.
-pub struct AlignmentEncodings{
-    encodings: FxHashMap<(ReFragment, Haplotype), Vec<AlignmentEncoding>>
+/// FragmentHaplotypes aggregates AlignmentEncodings per ReFragment.
+pub struct FragmentHaplotypes{
+    encodings: FxHashMap<(ReFragment, Haplotype), Vec<AlignmentEncoding>>,
+    variants:  FxHashMap<(ReFragment, Haplotype), Vec<Variant>>,
 }
-impl AlignmentEncodings {
+impl FragmentHaplotypes {
 
-    /// Create a new empty AlignmentEncodings object. On encoding tally is 
+    /// Create a new empty FragmentHaplotypes object. On encoding tally is 
     /// instantiated per SnvChromWorker.
     pub fn new() -> Self{
         let mut encodings = FxHashMap::default();
         encodings.reserve(4096); // about 16 Mb of ReFragments to start out
-        Self{ encodings }
+        let mut variants = FxHashMap::default();
+        variants.reserve(4096); // about 16 Mb of ReFragments to start out
+        Self{ encodings, variants }
     }
 
     /// Add a completed alignment encoding to the map.
-    pub fn insert(
+    pub fn insert_encoding(
         &mut self, 
         re_fragment: &ReFragment, 
         haplotype:   Haplotype,
@@ -242,47 +247,69 @@ impl AlignmentEncodings {
             .push(encoding);          
     }
 
-    /// Sort and write a set of AlignmentEncodings to a temporary file for the
+    /// Record a Variant for a FragmentHaplotype.
+    pub fn insert_variant(
+        &mut self, 
+        re_fragment: &ReFragment, 
+        haplotype:   Haplotype,
+        variant:     Variant,
+    ) {
+        self.variants.entry((*re_fragment, haplotype))
+            .or_insert_with(|| Vec::with_capacity(8))
+            .push(variant);          
+    }
+
+    /// Sort and write a set of FragmentHaplotypes to a temporary file for the
     /// working chromosome.
     pub fn write_sorted(
         tool:      &SnvAnalysisTool,
-        worker:    &SnvChromWorker,
+        worker:    &mut SnvChromWorker,
         haplotype_consensuses: &mut HaplotypeConsensuses,
-        encodings: &AlignmentEncodings, // since there are multiple encodings files
-        encodings_file_path: &str,
-    ) -> EncodingMetadata {
+        fragment_haplotypes: &FragmentHaplotypes, // since there are multiple encodings files
+        file_path: String,
+    ) -> FragmentHaplotypeMetadata {
         let mut csv = OutputCsv::open_csv(
-            encodings_file_path, 
+            &file_path, 
             b'\t', 
             false, 
             Some(tool.n_cpu),
         );
-        let mut read_sets = encodings.encodings.keys()
+        let mut frag_haps = fragment_haplotypes.encodings.keys()
             .filter_map(|rs|{
                 let excluded  =  tool.exclusions.pos_in_region(&worker.chrom, rs.0.start0 + 1);
                 let on_target = !tool.targets.has_data || 
                                        tool.targets.pos_in_region(&worker.chrom, rs.0.start0 + 1);
                 if !excluded && on_target { Some(rs) } else { None }
             }).collect::<Vec<_>>();
-        read_sets.sort_unstable();
-        let mut md = EncodingMetadata::new(read_sets.len());
-        for rs in read_sets {
-            let encodings = &encodings.encodings[rs];
+        frag_haps.sort_unstable();
+        let mut md = FragmentHaplotypeMetadata::new(frag_haps.len());
+        for fh in frag_haps {
+            let encodings = &fragment_haplotypes.encodings[fh];
             let n_reads = encodings.len();
             let (hap_seq, hap_vs_ref) = haplotype_consensuses.cache
-                .get_mut(rs)
+                .get_mut(fh)
                 .expect("Failed to get haplotype seq from cache.");
-            let record = EncodingRecord {
+            let record = FragmentHaplotypeRecord {
                 chrom_index: worker.chrom_index,
-                re_fragment: rs.0,
-                haplotype:   rs.1,
+                re_fragment: fh.0,
+                n_repeat_bases: worker.simple_repeats.get_n_repeat_bases(&fh.0),
+                haplotype:   fh.1,
                 n_reads:     n_reads,
+                n_multivariant_reads: encodings.iter().filter(|&r|{
+                    worker.variant_reads_tally.tally.get(&r.qname)
+                        .map_or(false, |read|{
+                            read.n_variants > 1
+                        })
+                }).count() as u16,
 
                 n_match:     encodings.iter().map(|r| r.n_match).sum::<u32>(),
                 n_alt:       encodings.iter().map(|r| r.n_alt).sum::<u32>(),
                 n_del:       encodings.iter().map(|r| r.n_del).sum::<u32>(),
                 n_ins:       encodings.iter().map(|r| r.n_ins).sum::<u32>(),
                 n_masked:    encodings.iter().map(|r| r.n_masked).sum::<u32>(),
+                n_variants:  fragment_haplotypes.variants.get(fh).map_or(0, |variants|{
+                    variants.len()
+                }),
 
                 sample_bits: encodings.iter().fold(0_u32, |acc, rd| acc | rd.sample_bit),
 
@@ -296,11 +323,15 @@ impl AlignmentEncodings {
                                 .collect::<Vec<String>>().join(","),
                 n_maskeds:   encodings.iter().map(|r| r.n_masked.to_string())
                                 .collect::<Vec<String>>().join(","),
+                n_variantss: encodings.iter().map(|r|{
+                    worker.variant_reads_tally.tally.get(&r.qname)
+                        .map_or("0".to_string(), |read|{
+                            read.n_variants.to_string()
+                        })
+                }).collect::<Vec<String>>().join(","),
 
                 sample_bitss: encodings.iter().map(|r| r.sample_bit.to_string())
-                                .collect::<Vec<String>>().join(","),
-                read_start0s: encodings.iter().map(|r| r.read_start0.to_string())
-                                .collect::<Vec<String>>().join(","),                   
+                                .collect::<Vec<String>>().join(","),                  
 
                 encodings:    encodings.iter().map(|r| r.encoding.clone())
                                 .collect::<Vec<String>>().join(","),
@@ -316,7 +347,7 @@ impl AlignmentEncodings {
             };
             csv.serialize(&record);
 
-            let fragment_len = (rs.0.end1 - rs.0.start0) as usize;
+            let fragment_len = (fh.0.end1 - fh.0.start0) as usize;
             md.n_reads      += n_reads;
             md.n_ref_bases  += fragment_len;
             md.n_read_bases += n_reads * fragment_len;

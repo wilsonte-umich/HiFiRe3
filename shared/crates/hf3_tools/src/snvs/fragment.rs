@@ -12,26 +12,32 @@ use super::*;
 /// A unique read span on a known chromosome corresponding to a RE fragment. For 
 /// RE-based PacBio sequencing only a relatively limited number of unique read 
 /// spans are expected.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+/// 
+/// The SEQ of each read assigned to a specific ReFragment is flush out to the 
+/// exact start0 and end1 of the ReFragment, although the read's alignment may
+/// start up to three bases inside of that position due to clipping allowed to 
+/// account for RFLP SNPs. 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Debug)]
 pub struct ReFragment {
     pub start0: ChromPos0, // BED half-open coordinates (not site positions)
-    pub end1:   ChromPos1,
+    pub end1:   ChromPos1, // start0 and end1 are oriented to ref top strand
 }
 impl ReFragment {
 
     /// Return the standardized ReFragment that matches a newly encountered read.
-    pub fn new( 
-        mut site5_pos1: ChromPos1, 
-        mut site3_pos1: ChromPos1,
-        is_reverse: bool,
-    ) -> Self {
-        if is_reverse { // reverse endpoints for rare reverse strand reads
-            (site5_pos1, site3_pos1) = (site3_pos1, site5_pos1);
+    pub fn from_aln(aln: &BamRecord) -> Option<Self> {
+        let cigar = aln.cigar();
+        let left_clip  = cigar.leading_softclips();
+        let right_clip = cigar.trailing_softclips();
+        if left_clip  > 3 ||
+           right_clip > 3 {
+            return None;
         }
-        ReFragment{
-            start0: site5_pos1 - 1, // converts 1-based to 0-based RE fragment start
-            end1:   site3_pos1 - 1, // converts site pos1 AFTER the fragment to fragment end1
-        }
+        let re_fragment = ReFragment {
+            start0: (aln.pos() - left_clip) as ChromPos0,
+            end1: (cigar.end_pos() + right_clip) as ChromPos1
+        };
+        Some(re_fragment)
     }
 }
 
@@ -40,42 +46,39 @@ impl ReFragment {
 pub struct ReadInstance {
     pub sample_bit: SampleBit,
     pub qname:      QName,
-    pub seq_bytes:  Vec<BaseByteACGTN>, // htslib doesn't make it easy to cache as encoded seq
-    pub qual_bytes: Vec<PhredQual>,
     pub is_reverse: bool,
-    pub cs: String,
-    pub dd: String,
-    pub ref_pos0: ChromPos0, // where cs aln starts on ref, not necessarily at site pos
-    pub qry_pos0: SeqPos0,   // where cs aln starts on read AFTER re-orientation to ref strand
+    pub aln_score:  u32,
+    pub seq_bytes:  Vec<BaseByteACGTN>,
+    pub qual_bytes: Vec<PhredQual>,
+    pub cs: String, // as created by minimap2 during alignment
+    pub dd: String, // as created by hf3_tools pre-alignment
+    pub qry_pos0:   SeqPos0,   // where cs aln starts on SEQ, i.e., AFTER re-orientation to ref top strand
+    pub aln_start0: ChromPos0, // where cs aln starts on ref top strand, not necessarily at site pos
 }
 impl ReadInstance {
 
     /// Create a new ReadInstance from its BamRecord.
-    pub fn new(aln: &BamRecord) -> Self {
-        let is_reverse = aln.is_reverse();
-        let qry_pos0 = if is_reverse {
-            aln.cigar().trailing_softclips()
-        } else {
-            aln.cigar().leading_softclips()
-        } as u32;
+    pub fn from_aln(aln: &BamRecord) -> Self {
         ReadInstance {
             sample_bit: bam_tags::get_tag_u32(aln, SAMPLE_BIT),
-            qname: unsafe { from_utf8_unchecked(aln.qname()).to_string() },
-            seq_bytes:  aln.seq().as_bytes(), // SEQ and QUAL are not yet re-oriented if is_reverse (done by get_top_strand)
-            qual_bytes: aln.qual().to_vec(),  // defer these slower ops that won't be needed on discarded reads
-            is_reverse,
-            cs: bam_tags::get_tag_str(aln, DIFFERENCE_STRING),  // cs tag is implicity oriented to top strand
-            dd: bam_tags::get_tag_str(aln, STRAND_DIFFERENCES), // dd tag is NOT yet re-oriented (done by get_dd_mask)
-            ref_pos0: aln.pos() as u32, // leftmost reference position is implicity oriented to top strand
-            qry_pos0, // qry_pos0 is already re-oriented if is_reverse (done above)
-        }
-    }
+            qname:      unsafe { from_utf8_unchecked(aln.qname()).to_string() },
+            is_reverse: aln.is_reverse(),
+            aln_score:  bam_tags::get_tag_u32_default(aln, ALN_SCORE, 0), 
 
-    /// Return the QUAL of a read on the top reference strand. 
-    pub fn get_top_strand_qual(&self) -> Vec<PhredQual> {
-        let mut qual = self.qual_bytes.to_vec();
-        if self.is_reverse { qual.reverse(); }
-        qual
+            // SAM SEQ and QUAL are reference top-strand oriented
+            seq_bytes:  aln.seq().as_bytes(), 
+            qual_bytes: aln.qual().to_vec(),
+
+            // minimap2 cs tag is reference top-strand oriented
+            cs: bam_tags::get_tag_str(aln, DIFFERENCE_STRING),  
+
+            // dd tag is NOT reference top-strand oriented when is_reverse (done by get_dd_mask)
+            dd: bam_tags::get_tag_str(aln, STRAND_DIFFERENCES),
+
+            // qry_pos0, ref_start0, AND ref_end1 are reference top-strand oriented
+            qry_pos0:   aln.cigar().leading_softclips() as u32, // thus, the 3' clip when is_reverse
+            aln_start0: aln.pos() as ChromPos0
+        }
     }
 }
 
@@ -93,12 +96,17 @@ impl FragmentReads {
         Self{instances}
     }
     
-    /// Add a ReadInstance to the FragmentReads HashMap.
-    pub fn insert(&mut self, re_fragment: ReFragment, read_instance: ReadInstance) {
+    /// Add a ReadInstance to the FragmentReads HashMap. Reject reads that don't
+    /// cleanly end within 3 bp of their nominated RE sites.
+    pub fn insert(&mut self, aln: &BamRecord) -> usize {
+        let Some(re_fragment) = ReFragment::from_aln(aln) 
+            else { return 0; };
+        let read_instance= ReadInstance::from_aln(aln);
         self.instances
             .entry(re_fragment)
             .or_insert_with(|| Vec::with_capacity(8))
-            .push(read_instance);          
+            .push(read_instance);  
+        1
     }
 }
 
@@ -106,16 +114,18 @@ impl FragmentReads {
 /// ReadInstance, including whether it was observed there and at what quality.
 #[derive(Clone, Copy)]
 pub struct ReadMapEntry {
-    has_var:  bool, // immutable record of whether a read reported a specific variant
-    pub hap0: bool, // mutable haplotype initally == `has_var`, but may be flipped
+    has_var: bool, // immutable record of whether a read reported a specific variant
+    pub is_informative: bool, // false if the variant had N bases or bases error-corrected to reference
+    // pub hap0: bool, // mutable haplotype initally == `has_var`, but may be flipped
     pub avg_qual: PhredQual,
 }
 impl ReadMapEntry{
     /// Create a new empty ReadMapEntry.
     pub fn new() -> Self{
         Self { 
-            has_var:  false, 
-            hap0:     false,
+            has_var: false, 
+            is_informative: true,
+            // hap0: false,
             avg_qual: 0 
         }
     }
@@ -128,7 +138,9 @@ impl ReadMapEntry{
 /// ReadMap collects information of the specific ReadInstances that reported a 
 /// given Variant. Allocation is one-time fixed.
 pub struct ReadMap {
-    pub n_matching_reads:  usize,
+    pub n_matching_reads: u16,
+    pub n_informative: u16,
+    pub zyg_int: u8, // from 0==heterozygous(0.5) to 100=fully homozygous
     pub read_map: Vec<ReadMapEntry>,
 }
 impl ReadMap {
@@ -136,6 +148,8 @@ impl ReadMap {
     pub fn new(n_reads: usize) -> Self{
         Self{
             n_matching_reads: 0,
+            n_informative: 0, // n_matching_reads + reads that could have called the variant
+            zyg_int: 0,
             read_map: vec![ReadMapEntry::new(); n_reads],
         }
     } 
@@ -145,7 +159,7 @@ impl ReadMap {
 /// ReFragment over all FragmentReads. One FragmentVariants object is 
 /// instantiated per SnvChromWorker that is reset as needed per ReFragment.
 pub struct FragmentVariants {
-    pub n_reads: usize,
+    pub n_reads: usize, // total reads assigned to the ReFragment
     pub variant_map: FxHashMap<Variant, ReadMap>,
 }
 impl FragmentVariants {
@@ -167,20 +181,21 @@ impl FragmentVariants {
         self.variant_map.clear();
     }
 
-    /// Add one Variant from a read to the FragmentVariants map.
+    /// Add one Variant from a ReadInstance to its RefFragment's 
+    /// FragmentVariants map.
     pub fn insert(
         &mut self, 
         variant:  Variant,
         read_i:   ReadIndex,
         avg_qual: PhredQual,
     ) {
-        let map = self.variant_map
+        let vmap = self.variant_map
             .entry(variant.clone())
             .or_insert_with(|| ReadMap::new(self.n_reads));
-        map.n_matching_reads += 1;
-        map.read_map[read_i] = ReadMapEntry{
-            has_var: true,
-            hap0:    true,
+        vmap.n_matching_reads += 1;
+        vmap.read_map[read_i] = ReadMapEntry{
+            has_var:        true,
+            is_informative: true,
             avg_qual,
         };
     }

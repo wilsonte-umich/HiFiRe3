@@ -23,7 +23,7 @@ echo
 
 # concatenate and index the allowed variant lists
 echo "concatenating and indexing allowed variants file"
-zcat $INDEX_FILE_PREFIX_WRK.chr*.snv_indel.txt.bgz | 
+zcat $INDEX_FILE_PREFIX_WRK.chr*.snv_indel.variants.txt.bgz | 
 $BGZIP > $SNV_VARIANTS_BGZ
 checkPipe
 $TABIX --sequence 1 --begin 2 --end 2 --zero-based $SNV_VARIANTS_BGZ
@@ -31,26 +31,26 @@ checkPipe
 
 # concatenate and index the variant read list
 echo "concatenating and indexing variant reads file"
-zcat $INDEX_FILE_PREFIX_WRK.chr*.variant_reads.txt.bgz |
+zcat $INDEX_FILE_PREFIX_WRK.chr*.snv_indel.variant_reads.txt.bgz |
 sort --parallel $N_CPU -S 4G -k1,1 -k2,2n -k3,3n | 
 $BGZIP > $SNV_VARIANT_READS_BGZ
 checkPipe
-$TABIX --sequence 1 --begin 2 --end 3 --zero-based $SNV_VARIANT_READS_BGZ
+$TABIX --sequence 1 --begin 3 --end 4 --zero-based $SNV_VARIANT_READS_BGZ
 checkPipe
 
 # concatenate and index the read encodings
-echo "concatenating and indexing clonal read encodings"
-zcat $INDEX_FILE_PREFIX_WRK.chr*.encodings.reads_on_reference.bed.bgz | 
-$BGZIP > $SNV_CLONAL_ENCODINGS_BGZ
+echo "concatenating and indexing fragment reads_on_ref encodings"
+zcat $INDEX_FILE_PREFIX_WRK.chr*.fragments.on_reference.bed.bgz | 
+$BGZIP > $SNV_FRAGMENTS_ON_REFERENCE_BGZ
 checkPipe
-$TABIX -p bed $SNV_CLONAL_ENCODINGS_BGZ
+$TABIX -p bed $SNV_FRAGMENTS_ON_REFERENCE_BGZ
 checkPipe
 
-echo "concatenating and indexing subclonal read encodings"
-zcat $INDEX_FILE_PREFIX_WRK.chr*.encodings.reads_on_haplotype.bed.bgz | 
-$BGZIP > $SNV_SUBCLONAL_ENCODINGS_BGZ
+echo "concatenating and indexing fragment reads_on_hap encodings"
+zcat $INDEX_FILE_PREFIX_WRK.chr*.fragments.on_haplotype.bed.bgz | 
+$BGZIP > $SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ
 checkPipe
-$TABIX -p bed $SNV_SUBCLONAL_ENCODINGS_BGZ
+$TABIX -p bed $SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ
 checkPipe
 
 echo

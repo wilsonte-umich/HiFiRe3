@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use super::*;
 
 /// Haplotype enumerates the four allowed haplotype values in records.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Debug)]
 #[repr(u8)]
 pub enum Haplotype {
     Unspecified = 0, // used before haplotypes are resolved
@@ -15,7 +15,10 @@ pub enum Haplotype {
     Homozygous  = 3, // thus, bit encoded as 1 + 2
 }
 /// Helper function to serialize Haplotype as u8.
-pub fn serialize_haplotype<S: Serializer>(h: &Haplotype, serializer: S) -> Result<S::Ok, S::Error>{
+pub fn serialize_haplotype<S: Serializer>(
+    h: &Haplotype, 
+    serializer: S
+) -> Result<S::Ok, S::Error>{
     serializer.serialize_u8(*h as u8)
 }
 
@@ -43,7 +46,7 @@ impl HaplotypeConsensuses {
         hap_vs_ref:  Option<String>, // None when recording a reference sequence
     ){
         self.cache.insert( 
-            (re_fragment.clone(), haplotype), 
+            (*re_fragment, haplotype), 
             (seq, hap_vs_ref) 
         );
     }

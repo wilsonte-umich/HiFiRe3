@@ -1,7 +1,7 @@
 /// Support for calling and counting specific variants from error-corrected reads.
 
 // imports
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use super::*;
 
 /// A Variant encodes a specific SNV or indel, or a series of operations,
@@ -11,34 +11,52 @@ use super::*;
 /// A Variant allows any number of reference bases to be replaced by any number 
 /// of non-reference bases, so it is equally capable of representing 
 /// substitutions, insertions, deletions, and complex indels. 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Debug)]
 pub struct Variant {
     // leftmost position when n_tgt_bases > 0, or the position preceding an insertion
     pub tgt_pos0: SeqPos0,
-    // for substitutions and deletions, the number of expected bases replaced by alt_bases         
-    pub n_tgt_bases: ChromLength,
+    // for substitutions and deletions, the expected bases replaced by alt_bases         
+    pub tgt_bases: Option<UppercaseACGTN>,
     // for substitutions and insertions, the bases replacing the expected bases    
     pub alt_bases: Option<UppercaseACGTN>,
+    // whether the variant in an indel
+    #[serde(serialize_with = "serialize_indel")]
+    pub is_indel: bool,
+    pub re_fragment: ReFragment,
     // whether tgt_pos0 is relative to a reference chromosome or a haplotype consensus
     #[serde(serialize_with = "serialize_haplotype")]
     pub haplotype: Haplotype,
+}
+/// Helper function to serialize is_indel as u8.
+pub fn serialize_indel<S: Serializer>(
+    b: &bool, 
+    serializer: S
+) -> Result<S::Ok, S::Error>{
+    serializer.serialize_u8(*b as u8)
 }
 impl Variant {
     /// Create a new Variant instance with the specified fields.
     pub fn new(
         tgt_pos0:    SeqPos0, 
-        n_tgt_bases: ChromLength, 
+        tgt_bases:   &str,
         alt_bases:   &str,
+        re_fragment: &ReFragment,
         haplotype:   Haplotype,
     ) -> Self {
         Variant {
             tgt_pos0,
-            n_tgt_bases,
+            tgt_bases: if tgt_bases.is_empty() {
+                None 
+            } else { 
+                Some(tgt_bases.to_string()) 
+            },
             alt_bases: if alt_bases.is_empty() {
                 None 
             } else { 
                 Some(alt_bases.to_string()) 
             },
+            is_indel: tgt_bases.len() as usize != alt_bases.len(),
+            re_fragment: *re_fragment,
             haplotype,
         }
     }
@@ -46,7 +64,7 @@ impl Variant {
     /// Get the signed difference in ref vs. alt length.
     pub fn alt_minus_ref(&self) -> i32 {
         self.alt_bases.as_ref().map_or(0, |alt| alt.len() as i32) - 
-        self.n_tgt_bases as i32
+        self.tgt_bases.as_ref().map_or(0, |alt| alt.len() as i32)
     }
 
     /// Pack a variant into a string representation for printing to 
@@ -56,13 +74,16 @@ impl Variant {
         tgt_start0: SeqPos0, 
         avg_qual:   PhredQual
     ) -> String {
+        let tgt_bases = self.tgt_bases
+            .as_deref()
+            .unwrap_or("-");
         let alt_bases = self.alt_bases
             .as_deref()
             .unwrap_or("-");
         format!(
             "{}:{}:{}:{}", 
             tgt_start0 + self.tgt_pos0,
-            self.n_tgt_bases,
+            tgt_bases,
             alt_bases,
             avg_qual
         )

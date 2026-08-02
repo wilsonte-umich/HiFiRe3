@@ -35,13 +35,13 @@ uploadTypes:
                 required: true
             variantReadsTbi:
                 required: true
-            clonalEncodingsBgz:
+            fragmentsOnReferenceBgz:
                 required: true
-            clonalEncodingsTbi:
+            fragmentsOnReferenceTbi:
                 required: true
-            subclonalEncodingsBgz:
+            fragmentsOnHaplotypeBgz:
                 required: true
-            subclonalEncodingsTbi:
+            fragmentsOnHaplotypeTbi:
                 required: true
 #----------------------------------------------------------------------
 # labels and definitions for all sequential analysis steps shown in sidebar

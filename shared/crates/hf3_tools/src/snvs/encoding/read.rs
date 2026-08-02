@@ -13,8 +13,10 @@ pub struct VariantReadInstance {
     re_fragment:  ReFragment,
     haplotype:    Haplotype,
     sample_bit:   SampleBit,
-    n_bases:      u32, // number of bases in read, as compared to re_fragment size
-    n_variants:   u16,
+    n_bases:           u32, // number of bases in read, as compared to re_fragment size
+    n_haplotype_reads: u16, // number of reads in this read's haplotype
+    n_reads:           u16, // number of fragment reads in both haplotypes
+    pub n_variants:    u16,
     n_low_qual:   u16,
     n_snv:        u16, // single-nucleotide variant
     n_mnv:        u16, // equal-length multi-nucleotide variant
@@ -36,6 +38,8 @@ impl VariantReadInstance {
             haplotype:    *haplotype,
             sample_bit:   read.sample_bit,
             n_bases:      read.qual_bytes.len() as u32,
+            n_haplotype_reads:  0,
+            n_reads:      0,
             n_variants:   0,
             n_low_qual:   0,
             n_snv:        0, // single-nucleotide variant
@@ -77,12 +81,15 @@ impl VariantReadsMetadata {
 #[derive(Serialize)]
 struct VariantReadRecord {
     qname:       QName, // functionally a BED file, even if qname is not the proper ref
+    chrom_index: ChromIndex1,
     re_fragment: ReFragment,
     #[serde(serialize_with = "serialize_haplotype")]
     haplotype:   Haplotype,
-    chrom_index: ChromIndex1,
+    n_repeat_bases: u32,
     sample_bit:  SampleBit,
     n_bases:     u32, // number of bases in read, as compared to re_fragment size
+    n_haplotype_reads: u16,
+    n_reads:     u16,
     n_variants:  u16,
     n_low_qual:  u16,
     n_snv:       u16, // single-nucleotide variant
@@ -114,27 +121,35 @@ impl VariantReadsTally {
         re_fragment: &ReFragment,
         haplotype:   &Haplotype,
         variant:     &Variant, // allowed subclonal variants only
-        avg_qual:    PhredQual
+        avg_qual:    PhredQual,
+        n_haplotype_reads: usize,
+        n_reads:           usize,
     ){
         let instance = self.tally
             .entry(read.qname.clone())
             .or_insert_with(|| VariantReadInstance::new(read, re_fragment, haplotype));
+        instance.n_haplotype_reads = n_haplotype_reads as u16;
+        instance.n_reads           = n_reads as u16;
         instance.n_variants += 1;
         if avg_qual < MIN_SNV_INDEL_QUAL {
             instance.n_low_qual += 1;
         }
-        if variant.n_tgt_bases == 0 {
+        if variant.tgt_bases.is_none() {
             instance.n_ins += 1;
         } else if variant.alt_bases.is_none() {
             instance.n_del += 1;
         } else {   
+            let n_tgt_bases = variant.tgt_bases
+                .as_ref()
+                .map(|s| s.len() as u32)
+                .unwrap_or(0);
             let n_alt_bases = variant.alt_bases
                 .as_ref()
                 .map(|s| s.len() as u32)
                 .unwrap_or(0);
-            if variant.n_tgt_bases != n_alt_bases {
+            if n_tgt_bases != n_alt_bases {
                 instance.n_complex += 1;
-            } else if variant.n_tgt_bases == 1 {
+            } else if n_tgt_bases == 1 {
                 instance.n_snv += 1;
             } else {
                 instance.n_mnv += 1;
@@ -150,17 +165,15 @@ impl VariantReadsTally {
     /// working chromosome.
     pub fn write_sorted(
         tool:   &SnvAnalysisTool,
-        worker: &SnvChromWorker,
+        worker: &mut SnvChromWorker,
+        file_path: String,
     ) -> VariantReadsMetadata {
         let mut csv = OutputCsv::open_csv(
-            &worker.variant_reads_file_path, 
+            &file_path, 
             b'\t', 
             false, 
             Some(tool.n_cpu),
         );
-        // let mut qnames = worker.variant_reads_tally.tally.keys()
-        //     .cloned().collect::<Vec<_>>();
-        // qnames.sort_unstable(); not useful here, must sort qnames from different chroms together downstream
         let tally = &worker.variant_reads_tally.tally;
         let mut md = VariantReadsMetadata::new(tally.len());
         for (qname, instance) in tally {
@@ -168,9 +181,12 @@ impl VariantReadsTally {
                 qname:       qname.clone(),
                 re_fragment: instance.re_fragment,
                 haplotype:   instance.haplotype,
+                n_repeat_bases: worker.simple_repeats.get_n_repeat_bases(&instance.re_fragment),
                 chrom_index: worker.chrom_index,
                 sample_bit:  instance.sample_bit,
                 n_bases:     instance.n_bases, // number of bases in read, as compared to re_fragment size
+                n_haplotype_reads: instance.n_haplotype_reads,
+                n_reads:     instance.n_reads,
                 n_variants:  instance.n_variants,
                 n_low_qual:  instance.n_low_qual,
                 n_snv:       instance.n_snv, // single-nucleotide variant

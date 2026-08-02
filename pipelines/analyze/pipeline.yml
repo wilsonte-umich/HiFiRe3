@@ -161,18 +161,18 @@ package:
             variantReadsTbi:
                 type: txt.bgz.tbi
                 file: $SNV_VARIANT_READS_BGZ.tbi
-            clonalEncodingsBgz:
+            fragmentsOnReferenceBgz:
                 type: bed.bgz
-                file: $SNV_CLONAL_ENCODINGS_BGZ
-            clonalEncodingsTbi:
+                file: $SNV_FRAGMENTS_ON_REFERENCE_BGZ
+            fragmentsOnReferenceTbi:
                 type: bed.bgz.tbi
-                file: $SNV_CLONAL_ENCODINGS_BGZ.tbi
-            subclonalEncodingsBgz:
+                file: $SNV_FRAGMENTS_ON_REFERENCE_BGZ.tbi
+            fragmentsOnHaplotypeBgz:
                 type: bed.bgz
-                file: $SNV_SUBCLONAL_ENCODINGS_BGZ
-            subclonalEncodingsTbi:
+                file: $SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ
+            fragmentsOnHaplotypeTbi:
                 type: bed.bgz.tbi
-                file: $SNV_SUBCLONAL_ENCODINGS_BGZ.tbi
+                file: $SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ.tbi
 # container:
 #     supported: false    # set to true if you maintain a container registry for this pipeline [false]
 #     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]

@@ -24,17 +24,6 @@ settings <- activateMdiHeaderLinks( # uncomment as needed
     settings = file.path(app$sources$suiteGlobalDir, "settings", "jxn_filters.yml"), #id, # for step-level settings
     size = "m"
 )
-dpi <- 96
-encodingBaseColors <- list( # generally follow IGV base color conventions
-    M = rgb(0.75, 0.75, 0.75),   # any base match = light grey
-    A = rgb(0,    0.8,    0),    # green  
-    C = rgb(0,    0,    1),    # blue
-    G = rgb(0.82, 0.43, 0),      # orange
-    T = rgb(1,    0,    0),    # red
-    N = rgb(0.5, 0.5, 0.5),      # N, treated as M
-    D = rgb(0.1, 0.1, 0.1),      # deleted/missing = black
-    I = rgb(0.75,   0,    0.75)  # insertion = purple
-)
 
 #----------------------------------------------------------------------
 # load data
@@ -45,10 +34,15 @@ variants <- reactive({
     startSpinner(session, message = "loading variants")
     hf3_getVariants_cached(sourceId)
 })
-clonal_encodings <- reactive({
+reads_on_reference <- reactive({
     sourceId <- req(sourceId())
-    startSpinner(session, message = "loading clonal encodings")
-    hf3_getEncodings_cached(sourceId, "clonal")
+    startSpinner(session, message = "loading reads on reference")
+    hf3_getFragments_cached(sourceId, "reference")
+})
+reads_on_haplotype <- reactive({
+    sourceId <- req(sourceId())
+    startSpinner(session, message = "loading reads on haplotype")
+    hf3_getFragments_cached(sourceId, "haplotype")
 })
 
 #----------------------------------------------------------------------
@@ -65,7 +59,7 @@ fragLengthPlot <- mdiInteractivePlotBoxServer(
     create = function(...) {
         sourceId <- req(sourceId())
         sample_bits <- hf3_sample_bits(sourceId)
-        d <- req(clonal_encodings())
+        d <- req(reads_on_reference())
         startSpinner(session, message = "rendering length distribution")
         ymax <- 0
         d <- lapply(sample_bits, function(sample_bit){
@@ -116,7 +110,7 @@ fragCoveragePlot <- mdiInteractivePlotBoxServer(
     settings = NULL, # an additional settings template as a list()
     defaults = NULL, # list of default settings values use to inialize settings
     create = function(...) {
-        d <- req(clonal_encodings())
+        d <- req(reads_on_reference())
         startSpinner(session, message = "rendering coverage distribution")
         d <- d[, .(count = .N), keyby = .(n_reads)]
         d[, freq := count / sum(count)]
@@ -152,7 +146,7 @@ lengthVsCoveragePlot <- mdiInteractivePlotBoxServer(
     settings = NULL, # an additional settings template as a list()
     defaults = NULL, # list of default settings values use to inialize settings
     create = function(...) {
-        d <- req(clonal_encodings())
+        d <- req(reads_on_reference())
         startSpinner(session, message = "rendering correlation")
         layout <- lengthVsCoveragePlot$initializePng(mar = c(4.1, 4.1, 0.9, 0.9)) %>% 
                   lengthVsCoveragePlot$initializeFrame(
@@ -176,10 +170,10 @@ lengthVsCoveragePlot <- mdiInteractivePlotBoxServer(
 )
 
 #----------------------------------------------------------------------
-# zygosity distribution plot
+# VAF distribution plot
 #----------------------------------------------------------------------
-zygosityPlot <- mdiInteractivePlotBoxServer(
-    "zygosity",
+vafPlot <- mdiInteractivePlotBoxServer(
+    "vafPlot",
     # click = TRUE,
     # brush = TRUE,
     points  = TRUE, # set to TRUE to expose relevant plot options
@@ -188,15 +182,16 @@ zygosityPlot <- mdiInteractivePlotBoxServer(
     defaults = NULL, # list of default settings values use to inialize settings
     create = function(...) {
         d <- req(variants())
-        startSpinner(session, message = "rendering zygosity")
+        startSpinner(session, message = "rendering VAF")
         d <- d[
-            is_snp == TRUE &
-            coverage >= input$minCoverage
+            is_snv == TRUE &
+            n_reads >= input$minCoverage &
+            clonal == 1
         ]
         d <- d[, .(count = .N), keyby = .(vaf_bin)]
         d[, freq := count / sum(count)]
-        layout <- zygosityPlot$initializePng(mar = c(4.1, 4.1, 0.9, 0.9)) %>% 
-                  zygosityPlot$initializeFrame(
+        layout <- vafPlot$initializePng(mar = c(4.1, 4.1, 0.9, 0.9)) %>% 
+                  vafPlot$initializeFrame(
             xlim = c(0, 1),
             ylim = c(0, d[vaf_bin < 1, max(freq) * 1.05]),
             xlab = "Variant Allele Frequency",
@@ -204,86 +199,154 @@ zygosityPlot <- mdiInteractivePlotBoxServer(
             # xaxs = "i",
             yaxs = "i"
         )
-        zygosityPlot$addLines(
+        vafPlot$addLines(
             x = d$vaf_bin,
             y = d$freq,
             typ = "h",
             lwd = 1
         )
         stopSpinner(session)
-        zygosityPlot$finishPng(layout)
+        vafPlot$finishPng(layout)
     }
 )
 
 #----------------------------------------------------------------------
 # fragment variants tables
 #----------------------------------------------------------------------
+comp <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
+add_canonical_mutation <- function(dt) {
+  dt[, mutation := fcase(
+    tgt_bases %in% c("C", "T"), paste0(     tgt_bases,  ">",      alt_bases),
+    tgt_bases %in% c("A", "G"), paste0(comp[tgt_bases], ">", comp[alt_bases])
+  )]
+}
 variantSummaryTableData <- reactive({
-    # fragment <- req(fragment())
-    # d <- fragment$variants
-    # d$qnames <- NULL
-    # d
     sourceId <- req(sourceId())
     smp_bits <- hf3_sample_bits(sourceId)
-
-    clonal_encodings <- req(clonal_encodings())
+    reads_on_hap <- req(reads_on_haplotype())
     variants <- req(variants())
 
     startSpinner(session, message = "assembling summary table")
 
-    clonal_encodings <- clonal_encodings[n_reads >= input$minCoverage]
-    snps <- variants[
-        coverage >= input$minCoverage & 
-        is_snp == TRUE
-    ]
-    snps_clonal <- snps[vaf >= 0.2]
-    snps_singleton <- snps[n_matching_reads == 1]
+    # haplotype FILTER 1: reject heterozygous haplotypes with too few reads to establish a consensus
+    startSpinner(session, message = "applying read filter 1")
+    message(paste(nrow(reads_on_hap), " = number of fragment haplotypes"))
+    print(reads_on_hap[, .(
+        .N, 
+        n_bases          = sprintf("%2e", sum(n_bases)), 
+        n_unmasked_bases = sprintf("%2e", sum(n_unmasked_bases))
+    ), keyby = .(haplotype)])
+    reads_on_hap <- reads_on_hap[n_reads >= 3]
+    message(paste(nrow(reads_on_hap), " = number of allowed haplotypes, n_reads >= 3"))
+    print(reads_on_hap[, .(
+        .N, 
+        n_bases          = sprintf("%2e", sum(n_bases)), 
+        n_unmasked_bases = sprintf("%2e", sum(n_unmasked_bases))
+    ), keyby = .(haplotype)])
+    print(reads_on_hap[n_reads <= 65, .N, keyby = .(haplotype, n_reads)] %>% dcast(n_reads ~ haplotype))
 
-    enc_exp <- clonal_encodings[, 
+    # TODO: filter away problematic fragment haplotypes?
+
+    # expand haplotypes to one read per row with metadata for further filtering and grouping
+    startSpinner(session, message = "expanding reads")
+    reads_on_hap_expanded <- reads_on_hap[, 
         .(
-            n_bases = n_bases,
-            sample_bit = as.integer(strsplit(sample_bitss, ",")[[1]])
+            sample_bit      = as.integer(strsplit(sample_bitss, ",")[[1]]),
+            qname           =            strsplit(qnames, ",")[[1]],
+            n_read_variants = as.integer(strsplit(n_variantss, ",")[[1]])
         ),
-        keyby = .(chrom_index1, start0, end1)
+        keyby = .(
+            chrom_index1, 
+            start0, 
+            end1, 
+            haplotype, 
+            n_unmasked_bases
+        )
     ]
+    message(paste(nrow(reads_on_hap_expanded), " = number of reads in allowed haplotypes"))
+    print(reads_on_hap_expanded[n_read_variants <= 10, .N, keyby = .(n_read_variants)])
+
+    # haplotype FILTER 2: filter to reads suitable for SNV calling
+    startSpinner(session, message = "applying read filter 2")
+    reads_on_hap_expanded <- reads_on_hap_expanded[
+        haplotype != 3 |     # all heterozygous haplotype read are informative
+        n_read_variants <= 1 # cannot trust multi-variant homozogyous reads
+    ]
+    message(paste(nrow(reads_on_hap_expanded), " = number of allowed reads in allowed haplotypes"))
+    print(reads_on_hap_expanded[n_read_variants <= 10, .N, keyby = .(n_read_variants)])
+
+    # variant FILTER 1: restrict to subclonal SNVs with the same coverage threshold as above
+    startSpinner(session, message = "applying variant filter 1")
+    snvs_subclonal <- variants[
+        is_snv == TRUE & 
+        clonal == 0 &
+        n_samples == 1 & 
+        n_haplotype_reads >= 3 &
+        tgt_bases != "N" & 
+        alt_bases != "N"
+    ]    
+    message(paste(nrow(snvs_subclonal), " = number of single-sample subclonal SNVs, n_reads >= 3"))
+    print(snvs_subclonal[, .N, keyby = .(n_matching_reads)])
+
+    # variant FILTER 2: filter to reads suitable for SNV calling
+    startSpinner(session, message = "applying variant filter 2")
+    snvs_subclonal[, n_passing_reads := fcase(
+        haplotype == 3,
+        n_matching_reads - n_multivariant_reads, # matches read FILTER 2 above
+        default = n_matching_reads
+    )]
+    print(snvs_subclonal[, .N, keyby = .(n_passing_reads)])
+    snvs_subclonal <- snvs_subclonal[n_passing_reads > 0]
+    snvs_singleton <- snvs_subclonal[n_passing_reads == 1]
+    message(paste(nrow(snvs_subclonal), " = number of allowed single-sample subclonal SNVs"))
+    print(snvs_subclonal[, .N, keyby = .(tgt_bases, alt_bases)] %>% dcast(tgt_bases ~ alt_bases))
+    add_canonical_mutation(snvs_subclonal)
+    print(snvs_subclonal[, .N, keyby = .(mutation, sample_bits)] %>% dcast(mutation ~ sample_bits))
 
     smp_all <- "all"
     d <- data.table(
         metric = c("n_reads", "n_bases"),
+        sample_bit = c(NA, NA),
         sample = c(smp_all, smp_all),
-        value = clonal_encodings[, c(sum(n_reads), sum(n_reads * n_bases))]
+        value = reads_on_hap_expanded[, c(.N, sum(n_unmasked_bases))]
     )
     for (i in 1:length(smp_bits)){
-        smp <- paste0("smp", i)
         d <- rbind(d, data.table(
             metric = c("n_reads", "n_bases"),
-            sample = c(smp, smp),
-            value = enc_exp[, {
-                is_smp <- sample_bit == smp_bits[i]
-                c(sum(is_smp), sum(n_bases * is_smp))
-            }]
+            sample_bit = c(smp_bits[i], smp_bits[i]),
+            sample = hf3_getSampleNames(sourceId, c(smp_bits[i], smp_bits[i]), as_string = FALSE),
+            value = reads_on_hap_expanded[
+                sample_bit == smp_bits[i], 
+                c(.N, sum(n_unmasked_bases))
+            ]
         ))
     }
 
     d <- rbind(d, data.table(
-        metric = c("n_snps_clonal", "n_snps_singleton"),
+        metric = c("n_snvs_subclonal", "n_snvs_singleton"),
+        sample_bit = c(NA, NA),
         sample = c(smp_all, smp_all),
-        value = c(nrow(snps_clonal), nrow(snps_singleton))
+        value = c(nrow(snvs_subclonal), nrow(snvs_singleton))
     ))
     for (i in 1:length(smp_bits)){
-        smp <- paste0("smp", i)
         d <- rbind(d, data.table(
-            metric = c("n_snps_clonal", "n_snps_singleton"),
-            sample = c(smp, smp),
+            metric = c("n_snvs_subclonal", "n_snvs_singleton"),
+            sample_bit = c(smp_bits[i], smp_bits[i]),
+            sample = hf3_getSampleNames(sourceId, c(smp_bits[i], smp_bits[i]), as_string = FALSE),
             value = c(
-                snps_clonal[, sum(bitwAnd(sample_bits, smp_bits[i]) > 0)],
-                snps_singleton[, sum(bitwAnd(sample_bits, smp_bits[i]) > 0)]
+                snvs_subclonal[, sum(bitwAnd(sample_bits, smp_bits[i]) > 0)],
+                snvs_singleton[, sum(bitwAnd(sample_bits, smp_bits[i]) > 0)]
             )
         ))
     }
 
     stopSpinner(session)
-    dcast(d, metric ~ sample)
+    d <- dcast(d, sample_bit + sample ~ metric)
+    d[, ":="(
+        subclonal_rate = sprintf("%.2e", n_snvs_subclonal / n_bases),
+        singleton_rate = sprintf("%.2e", n_snvs_singleton / n_bases)
+    )]
+    d
 })
 variantSummaryTable <- bufferedTableServer(
     "variantSummaryTable",
@@ -305,10 +368,10 @@ bookmarkObserver <- observe({
     # # updateSelectInput(session, "sampleSet-sampleSet", selected = bm$input[['sampleSet-sampleSet']])
     if(!is.null(bm$outcomes)) {
     #     # outcomes <<- listToReactiveValues(bm$outcomes)
-        fragLengthPlot$settings$replace(bm$outcomes$fragLengthPlotSettings)
-        fragCoveragePlot$settings$replace(bm$outcomes$fragCoveragePlotSettings)
-        lengthVsCoveragePlot$settings$replace(bm$outcomes$lengthVsCoveragePlotSettings)
-        zygosityPlot$settings$replace(bm$outcomes$zygosityPlotSettings)
+        # fragLengthPlot$settings$replace(bm$outcomes$fragLengthPlotSettings)
+        # fragCoveragePlot$settings$replace(bm$outcomes$fragCoveragePlotSettings)
+        # lengthVsCoveragePlot$settings$replace(bm$outcomes$lengthVsCoveragePlotSettings)
+        # vafPlot$settings$replace(bm$outcomes$vafPlotSettings)
     }
     bookmarkObserver$destroy()
 })
@@ -320,10 +383,10 @@ list(
     input = input,
     settings = settings$all_,
     outcomes = reactive({ list(
-        fragLengthPlotSettings = fragLengthPlot$settings$all_(),
-        fragCoveragePlotSettings = fragCoveragePlot$settings$all_(),
-        lengthVsCoveragePlotSettings = lengthVsCoveragePlot$settings$all_(),
-        zygosityPlotSettings = zygosityPlot$settings$all_()
+        # fragLengthPlotSettings = fragLengthPlot$settings$all_(),
+        # fragCoveragePlotSettings = fragCoveragePlot$settings$all_(),
+        # lengthVsCoveragePlotSettings = lengthVsCoveragePlot$settings$all_(),
+        # vafPlotSettings = vafPlot$settings$all_()
     ) }),
     settingsObject = settings,
     # junctions_filtered = junctions_filtered,

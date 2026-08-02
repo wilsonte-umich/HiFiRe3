@@ -314,30 +314,37 @@ hf3_bgzColumns <- list(
         seq               = "character",
         qual              = "character"
     ),
-    variantsBgz = c(
+    variantsBgz = c( # one entry per clonal or subclonal variant
         chrom_index1     = "integer", # 1
         tgt_pos0         = "integer", # 2
-        n_tgt_bases      = "integer", # 3
+        tgt_bases        = "character", # 3
         alt_bases        = "character", # 4
-        haplotype        = "integer", # 5
-        n_fragments      = "integer", # 6
-        n_matching_reads = "integer", # 7
-        coverage         = "integer", # 8
-        sample_bits      = "integer", # 9
-        n_samples        = "integer", # 10
-        zygosity         = "integer", # 11
-        vaf              = "double",  # 12
-        max_avg_qual     = "integer", # 13
-        qnames           = "character"# 14
+        is_indel         = "integer", # 5
+        start0           = "integer", # 2
+        end1             = "integer",
+        haplotype        = "integer", # 6
+        n_repeat_bases   = "integer", # 7
+        n_matching_reads = "integer", # 8
+        n_haplotype_reads = "integer",
+        n_reads           = "integer",
+        n_multivariant_reads = "integer",
+        sample_bits      = "integer",
+        n_samples        = "integer",
+        clonal           = "integer",
+        max_avg_qual     = "integer",
+        qnames           = "character"
     ),
-    variantReadsBgz = c(
+    variantReadsBgz = c( # one entry per read with a subclonal variant
         qname           = "character", # first since indexed by qname
+        chrom_index1    = "integer",
         start0          = "integer", # for the RE fragment
         end1            = "integer",
         haplotype       = "integer",
-        chrom_index1    = "integer",
+        n_repeat_bases  = "integer",
         sample_bit      = "integer",
         n_bases         = "integer",
+        n_haplotype_reads = "integer",
+        n_reads         = "integer",
         n_variants      = "integer",
         n_low_qual      = "integer",
         n_snv           = "integer",
@@ -347,34 +354,37 @@ hf3_bgzColumns <- list(
         n_complex       = "integer",
         variants        = "character"
     ),
-    clonalEncodingsBgz = c(
-        chrom_index1   = "integer", # 1
+    fragmentsOnReferenceBgz = c( # one entry per fully analyzed ReFragment+Haplotype read set
+        chrom_index1   = "integer", # 1 # two files, one as aligned to ref, one as aligned to haplotypes
         start0         = "integer", # 2
         end1           = "integer",
         haplotype      = "integer",
+        n_repeat_bases = "integer",
         n_reads        = "integer",
+        n_multivariant_reads = "integer",
         n_match        = "integer",
         n_alt          = "integer",
         n_del          = "integer",
         n_ins          = "integer",
-        n_masked       = "integer",
+        n_masked       = "integer",  
+        n_variants     = "integer",  
         sample_bits    = "integer",
         n_matches      = "character",
         n_alts         = "character",
         n_dels         = "character",
         n_inss         = "character",
         n_maskeds      = "character",
+        n_variantss    = "character",
         sample_bitss   = "character",
-        read_start0s   = "character",
         encodings      = "character",
-        insertions     = "character",
+        insertions     = "character",  
         qnames         = "character",
         seq            = "character",
         hap_vs_ref     = "character"
     )
 )
 hf3_bgzColumns$svJunctions2Bgz <- hf3_bgzColumns$svJunctions1Bgz
-hf3_bgzColumns$subclonalEncodingsBgz <- hf3_bgzColumns$clonalEncodingsBgz
+hf3_bgzColumns$fragmentsOnHaplotypeBgz <- hf3_bgzColumns$fragmentsOnReferenceBgz
 
 # column display definitions
 hf3_bgzColumns_display <- list(
