@@ -106,6 +106,11 @@ reads_on_haplotype <- reactive({
 })
 fragment <- reactiveVal(NULL)
 setFragment <- function(reads_on_ref){
+    if (nrow(reads_on_ref) != 1) {
+        message("!! NO FRAGMENT TO PLOT !!")
+        stopSpinner(session)
+    }
+    req(nrow(reads_on_ref) == 1)
     variants <- variants()
     reads_on_haplotype <- reads_on_haplotype()
     reads_on_hap1 <- reads_on_haplotype[
@@ -191,8 +196,12 @@ observeEvent(input$snv5Read, {
     variant_reads <- req(variant_reads())
     reads_on_reference <- req(reads_on_reference())
     startSpinner(session, message = "selecting read with 5+SNVs")
-    qname <- variant_reads[n_snv >= 5][sample(.N, 1), qname]
-    reads_on_ref <- reads_on_reference[grepl(qname, qnames)][1]
+    read <- variant_reads[n_snv >= 5][sample(.N, 1)]
+    reads_on_ref <- reads_on_reference[
+        read$chrom_index1 == chrom_index1 & 
+        read$start0 == start0 &
+        read$end1 == end1
+    ]
     setFragment(reads_on_ref)
 })
 observeEvent(input$jumpToFragment, {
