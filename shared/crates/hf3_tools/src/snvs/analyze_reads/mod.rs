@@ -85,7 +85,7 @@ impl SnvChromWorker {
                 self.process_cs_tag(
                     reads_on_reference, re_fragment, Haplotype::Unspecified, 
                     None, None, 
-                    0, &mut ref_pos_maps[read_i],
+                    &mut ref_pos_maps[read_i],
                     read_i, read, &read_masks[read_i]
                 );
                 reads_on_reference.insert_encoding(
@@ -150,12 +150,12 @@ impl SnvChromWorker {
                 // require a minimum read count to avoid false homozygosity
                 if n_reads < self.min_homozygous_reads { continue; }
                 let hap1_read_is: Vec<ReadIndex> = (0..n_reads).map(|i| i).collect();
-                let mm2_hap3 = self.build_haplotype_consensus(
+                let mm2_hap1 = self.build_haplotype_consensus(
                     haplotype_consensuses, re_fragment, Haplotype::Homozygous, 
                     &mut ref_pos0_map1, 
                     &reads, &hap1_read_is
                 );
-                let Some(mm2_hap1) = mm2_hap3 else { continue; };
+                let Some(mm2_hap1) = mm2_hap1 else { continue; };
                 self.align_to_haplotype_consensus(
                     reads_on_haplotype, re_fragment, Haplotype::Homozygous,
                     &mut ref_pos0_map1, 
@@ -174,21 +174,45 @@ impl SnvChromWorker {
 
             // search for the variant to use as the index for defining haplotype consensuses
             // prefer the variant with vaf nearest to 0.5
-            // it does not have to be perfect, just sufficient to build consensuses
-            let index_var = self.tracking_variants.iter()
-                .min_by_key(|&variant| {
+            // let index_var = self.tracking_variants.iter()
+            //     .min_by_key(|&variant| {
+            //         let vmap =  &self.frag_vars.variant_map[variant];
+            //         vmap.zyg_int // smallest values are the closest to vaf==0.5
+            //     })
+            //     .unwrap();
+            // let index_vmap = &self.frag_vars.variant_map[&index_var];
+
+            // find the most likely zygosity among the tracking variants by majority vote
+            // when two zygosities are equally frequent, choose the vaf nearest to 0.5 (zyg_int closest to zero)
+            let mut tracking_zyg_ints: Vec<_> = self.tracking_variants.iter()
+                .map(|variant|{
                     let vmap =  &self.frag_vars.variant_map[variant];
                     vmap.zyg_int // smallest values are the closest to vaf==0.5
+                }).collect();
+            tracking_zyg_ints.sort_unstable();
+            let mut tracking_zyg_ints: Vec<(isize, u8)> = tracking_zyg_ints
+                    .chunk_by(|a, b| a == b)
+                    .map(|chunk| (-(chunk.len() as isize), chunk[0]))
+                    .collect();
+            tracking_zyg_ints.sort_unstable();
+
+            // select a single index variant with the most frequently observed zygosity
+            // it does not have to be perfect, just sufficient to build consensuses
+            let index_zyg_int = tracking_zyg_ints[0].1;
+            let index_variant = self.tracking_variants.iter()
+                .find(|&variant| {
+                    let vmap =  &self.frag_vars.variant_map[variant];
+                    vmap.zyg_int == index_zyg_int
                 })
                 .unwrap();
-            let index_vmap = &self.frag_vars.variant_map[&index_var];
+            let index_vmap = &self.frag_vars.variant_map[&index_variant];
             // if self.show_debug {
             //     for variant in &self.tracking_variants {
             //         eprintln!("tracking_variant {:?}", variant);
             //         let vmap = self.frag_vars.variant_map.get(&variant).unwrap();
             //         eprintln!("n_matching_reads {:?}", vmap.n_matching_reads);
             //     }
-            //     eprintln!("index_var {:?}", index_var);
+            //     eprintln!("index_var {:?}", index_variant);
             //     eprintln!("index_vmap.n_matching_reads {}", index_vmap.n_matching_reads);
             // }
 

@@ -74,7 +74,7 @@ pub fn process_chrom(
             op_val:         String::with_capacity(128),
             variant_tally:       VariantsTally::new(),
             variant_reads_tally: VariantReadsTally::new(),
-            // debug: ReFragment { start0: 5817288, end1: 5824253 },
+            // debug: ReFragment { start0: 112213159, end1: 112220205 },
             // show_debug: false,
         };
         worker.hap_vars.insert(Haplotype::Haplotype1, FxHashSet::default());

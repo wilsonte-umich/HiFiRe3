@@ -104,6 +104,83 @@ reads_on_haplotype <- reactive({
     startSpinner(session, message = "loading reads on haplotype")
     hf3_getFragments_cached(sourceId, "haplotype")
 })
+called_haplotypes <- reactive({
+    sourceId <- req(sourceId())
+
+    startSpinner(session, message = "loading valid subclonal SNVs")
+    valid_subclonal_snvs <- hf3_getValidSubclonalSnvs(sourceId)
+
+    startSpinner(session, message = "loading valid haplotypes")
+    valid_haplotypes <- hf3_getValidHaplotypes(sourceId)
+
+    startSpinner(session, message = "loading trustworthy haplotypes")
+    trustworthy_haplotypes <- hf3_getTrustworthyHaplotypes(
+        sourceId, valid_subclonal_snvs, valid_haplotypes
+    )
+    trustworthy_haplotypes <- trustworthy_haplotypes[n_snv_bases > 0]
+
+    startSpinner(session, message = "loading trustworthy subclonal SNVs")
+    trustworthy_subclonal_snvs <- hf3_getTrustworthySubclonalSnvs(
+        sourceId, valid_subclonal_snvs, trustworthy_haplotypes
+    )
+
+    called_haplotypes <- merge(
+        trustworthy_haplotypes,
+        trustworthy_subclonal_snvs[, 
+            .(n_called_snvs = .N), 
+            keyby = hf3_haplotype_cols
+        ],
+        all.x = TRUE,
+        all.y = FALSE,  
+    )
+    called_haplotypes <- called_haplotypes[, 
+        .(
+            fragment = paste0(
+                hf3_getChromNames(sourceId, chrom_index1), ":",
+                start0, "-", end1
+            ),
+            haplotype,
+            n_bases,
+            n_unmasked_bases,
+            frac_unmasked = round(frac_unmasked, 2),
+            n_snv_bases,
+            n_called_snvs = fcase(
+                is.na(n_called_snvs), 0L,
+                default = n_called_snvs
+            ),
+            n_reads,
+            n_valid_reads,
+            n_multivariant_reads,
+            sample_bits
+        )
+    ]
+    stopSpinner(session)
+    called_haplotypes
+})   
+
+#----------------------------------------------------------------------
+# table of haplotypes with called SNVs
+#----------------------------------------------------------------------
+haplotypesTable <- bufferedTableServer(
+    "haplotypesTable",
+    id,
+    input,
+    called_haplotypes,
+    selection = 'single',
+    selectionFn = function(selectedRows) {
+        called_haplotypes <- called_haplotypes()
+        updateTextInput(
+            session, 
+            "jumpToFragment", 
+            value = called_haplotypes[selectedRows, fragment]
+        )
+    },
+    options = list()
+)
+
+#----------------------------------------------------------------------
+# select a fragment-haplotype
+#----------------------------------------------------------------------
 fragment <- reactiveVal(NULL)
 setFragment <- function(reads_on_ref){
     if (nrow(reads_on_ref) != 1) {
@@ -155,9 +232,7 @@ observeEvent(input$singletonSnv, {
         is_snv == TRUE & 
         n_matching_reads == 1 & 
         clonal == 0 &
-        n_samples == 1 & 
-        tgt_bases != "N" & 
-        alt_bases != "N"
+        n_samples == 1
     ]
     snv <- snvs[sample(.N, 1)]
     qname <- strsplit(snv$qname, ",")[[1]][1]
@@ -173,9 +248,8 @@ observeEvent(input$trueSubclonal, {
         is_snv == TRUE & 
         n_matching_reads >= 1 & 
         clonal == 0 &
+        matches_clonal == 0 &
         n_samples == 1 & 
-        tgt_bases != "N" & 
-        alt_bases != "N" & 
         (
             (
                 haplotype == 3 &
@@ -440,6 +514,7 @@ variantsTableData <- reactive({
             sample_bits = sample_bits,
             n_samples = n_samples,
             clonal = clonal,
+            matches_clonal = matches_clonal,
             vaf = round(vaf, 3),
             qual = max_avg_qual,
             qnames = qnames

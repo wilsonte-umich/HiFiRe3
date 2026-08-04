@@ -314,7 +314,7 @@ hf3_bgzColumns <- list(
         seq               = "character",
         qual              = "character"
     ),
-    variantsBgz = c( # one entry per clonal or subclonal variant
+    variantsBgz = c( # one entry per allowed clonal or subclonal variant
         chrom_index1     = "integer", # 1
         tgt_pos0         = "integer", # 2
         tgt_bases        = "character", # 3
@@ -331,6 +331,7 @@ hf3_bgzColumns <- list(
         sample_bits      = "integer",
         n_samples        = "integer",
         clonal           = "integer",
+        matches_clonal   = "integer",
         max_avg_qual     = "integer",
         qnames           = "character"
     ),

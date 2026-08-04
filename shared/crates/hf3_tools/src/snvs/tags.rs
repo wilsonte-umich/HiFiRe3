@@ -194,7 +194,6 @@ impl SnvChromWorker {
         haplotype:    Haplotype,
         mapping:      Option<(i32, i32)>, // minimap2 query_start, target_start
         cs_tag:       Option<&String>,
-        offset:       ChromPos0, // to ensure that variant positions become ref positions
         ref_pos0_map: &mut Vec<ChromPos0>, // used different depending on tgt_is_hap bool
         read_i:       ReadIndex,
         read:         &ReadInstance,
@@ -230,7 +229,7 @@ impl SnvChromWorker {
                 self.op_val.push(char);
             } else {
                 self.handle_cs_op(
-                    frag_haps, offset, ref_pos0_map,
+                    frag_haps, ref_pos0_map,
                     re_fragment, haplotype, tgt_is_hap, 
                     qual, &mut qry_pos0, &mut tgt_pos0, 
                     read_i, mask,
@@ -240,7 +239,7 @@ impl SnvChromWorker {
             }
         }
         self.handle_cs_op(
-            frag_haps, offset, ref_pos0_map,
+            frag_haps, ref_pos0_map,
             re_fragment, haplotype, tgt_is_hap, 
             qual, &mut qry_pos0, &mut tgt_pos0, 
             read_i, mask,
@@ -252,7 +251,6 @@ impl SnvChromWorker {
     fn handle_cs_op(
         &mut self,
         frag_haps:    &mut FragmentHaplotypes,
-        offset:       ChromPos0,
         ref_pos0_map: &mut Vec<ChromPos0>,
         re_fragment:  &ReFragment,
         haplotype:    Haplotype,
@@ -269,8 +267,13 @@ impl SnvChromWorker {
             ':' => {
                 if self.var_tgt_pos0.is_some() { // commit any preceding variant stretch
                     if self.allowed {
+                        let ref_pos0 = if tgt_is_hap {
+                            ref_pos0_map[self.var_tgt_pos0.unwrap() as usize]
+                        } else {
+                            self.var_tgt_pos0.unwrap()
+                        };
                         let variant = Variant::new(
-                            self.var_tgt_pos0.unwrap() + offset,
+                            ref_pos0,
                             &self.tgt_bases,
                             &self.alt_bases,
                             re_fragment, haplotype

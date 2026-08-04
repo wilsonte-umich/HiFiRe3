@@ -92,7 +92,7 @@ summarizeLibrariesUI <- function(id, options) {
                 title = "VariantSummary Table",
                 width = 12, 
                 collapsible = TRUE, 
-                collapsed = TRUE
+                collapsed = FALSE
             )
         ),
         NULL

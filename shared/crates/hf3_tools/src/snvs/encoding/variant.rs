@@ -1,14 +1,14 @@
 //! Support for creating encoded variant-level files for downstream use.
 
 // imports
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Serialize, Serializer};
 use mdi::OutputCsv;
 use crate::snvs::*;
 
 /// Clonality lists the types of variant calls. Unlike encodings, a single
 /// output file includes all variants calls.
-#[derive(Clone, Copy, Serialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Serialize)]
 #[repr(u8)]
 pub enum Clonality {
     Clonal    = 1,
@@ -91,13 +91,15 @@ struct VariantRecord<'a> {
     n_samples:        u32,
     #[serde(serialize_with = "serialize_clonality")]
     clonal:           Clonality,
+    matches_clonal:   u8,
     max_avg_qual:     PhredQual, // max_avg_qual set on subclonal
     qnames: CommaDelimited, // comma-delimited list of QNAMEs with this variant
 }
 
 /// VariantsTally aggregates accumulated VariantInstances per Variant.
 pub struct VariantsTally {
-    pub tally: FxHashMap<Variant, VariantInstances>
+    pub tally:  FxHashMap<Variant, VariantInstances>,
+    pub clonal: FxHashSet<VariantLocation>
 }
 impl VariantsTally {
 
@@ -106,7 +108,9 @@ impl VariantsTally {
     pub fn new() -> Self {
         let mut tally = FxHashMap::default();
         tally.reserve(1_048_576);
-        Self{ tally }
+        let mut clonal = FxHashSet::default();
+        clonal.reserve(1_048_576);
+        Self{ tally, clonal }
     }
 
     /// Update the instances tally of a specific clonal Variant derived from
@@ -128,6 +132,11 @@ impl VariantsTally {
             instances.sample_bits |= read.sample_bit;
             instances.qnames.push(read.qname.clone());
         }
+        self.clonal.insert(VariantLocation { 
+            tgt_pos0:    variant.tgt_pos0, 
+            is_indel:    variant.is_indel, 
+            re_fragment: variant.re_fragment, 
+        });
     }
 
     /// Update the instances tally of a specific subclonal Variant derived from
@@ -195,6 +204,13 @@ impl VariantsTally {
                 sample_bits:   instances.sample_bits,
                 n_samples:     instances.sample_bits.count_ones(),
                 clonal:        instances.clonal,
+                matches_clonal: if instances.clonal == Clonality::Clonal { 0 } else {
+                    worker.variant_tally.clonal.contains(&VariantLocation { 
+                        tgt_pos0:    variant.tgt_pos0, 
+                        is_indel:    variant.is_indel, 
+                        re_fragment: variant.re_fragment, // on either haplotype
+                    }) as u8
+                },
                 max_avg_qual:  instances.max_avg_qual,
                 qnames:   instances.qnames.join(",")
             };

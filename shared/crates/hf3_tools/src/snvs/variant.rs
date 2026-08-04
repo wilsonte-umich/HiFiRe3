@@ -89,3 +89,14 @@ impl Variant {
         )
     }
 }
+
+/// A VariantLocation records just the position and type of variant in a 
+/// ReFragment. It is used to flag whether subclonal variant matches a clonal
+/// variant of the same type called at the same position, which can flag the 
+/// subclonal variant as untrustworthy.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct VariantLocation {
+    pub tgt_pos0:    SeqPos0,
+    pub is_indel:    bool,
+    pub re_fragment: ReFragment, // not haplotype here, we seek to compare across haplotypes
+}

@@ -146,6 +146,15 @@ exploreFragmentsUI <- function(id, options) {
             )
         ),
         fluidRow(
+            bufferedTableUI(
+                ns("haplotypesTable"),
+                title = "Final Haplotypes Table",
+                width = 12, 
+                collapsible = TRUE, 
+                collapsed = TRUE
+            )
+        ),
+        fluidRow(
             mdiInteractivePlotBoxUI(
                 ns("readsOnRefPlot"), 
                 "Reads On Reference",

@@ -213,139 +213,72 @@ vafPlot <- mdiInteractivePlotBoxServer(
 #----------------------------------------------------------------------
 # fragment variants tables
 #----------------------------------------------------------------------
-comp <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
-add_canonical_mutation <- function(dt) {
-  dt[, mutation := fcase(
-    tgt_bases %in% c("C", "T"), paste0(     tgt_bases,  ">",      alt_bases),
-    tgt_bases %in% c("A", "G"), paste0(comp[tgt_bases], ">", comp[alt_bases])
-  )]
-}
 variantSummaryTableData <- reactive({
     sourceId <- req(sourceId())
     smp_bits <- hf3_sample_bits(sourceId)
-    reads_on_hap <- req(reads_on_haplotype())
-    variants <- req(variants())
+    samples  <- hf3_getSampleNames(sourceId, smp_bits, as_string = FALSE)
 
-    startSpinner(session, message = "assembling summary table")
+    startSpinner(session, message = "loading valid subclonal SNVs")
+    valid_subclonal_snvs <- hf3_getValidSubclonalSnvs(sourceId)
 
-    # haplotype FILTER 1: reject heterozygous haplotypes with too few reads to establish a consensus
-    startSpinner(session, message = "applying read filter 1")
-    message(paste(nrow(reads_on_hap), " = number of fragment haplotypes"))
-    print(reads_on_hap[, .(
-        .N, 
-        n_bases          = sprintf("%2e", sum(n_bases)), 
-        n_unmasked_bases = sprintf("%2e", sum(n_unmasked_bases))
-    ), keyby = .(haplotype)])
-    reads_on_hap <- reads_on_hap[n_reads >= 3]
-    message(paste(nrow(reads_on_hap), " = number of allowed haplotypes, n_reads >= 3"))
-    print(reads_on_hap[, .(
-        .N, 
-        n_bases          = sprintf("%2e", sum(n_bases)), 
-        n_unmasked_bases = sprintf("%2e", sum(n_unmasked_bases))
-    ), keyby = .(haplotype)])
-    print(reads_on_hap[n_reads <= 65, .N, keyby = .(haplotype, n_reads)] %>% dcast(n_reads ~ haplotype))
+    startSpinner(session, message = "loading valid haplotypes")
+    valid_haplotypes <- hf3_getValidHaplotypes(sourceId)
 
-    # TODO: filter away problematic fragment haplotypes?
+    startSpinner(session, message = "loading trustworthy haplotypes")
+    trustworthy_haplotypes <- hf3_getTrustworthyHaplotypes(
+        sourceId, valid_subclonal_snvs, valid_haplotypes
+    )
 
-    # expand haplotypes to one read per row with metadata for further filtering and grouping
-    startSpinner(session, message = "expanding reads")
-    reads_on_hap_expanded <- reads_on_hap[, 
-        .(
-            sample_bit      = as.integer(strsplit(sample_bitss, ",")[[1]]),
-            qname           =            strsplit(qnames, ",")[[1]],
-            n_read_variants = as.integer(strsplit(n_variantss, ",")[[1]])
-        ),
-        keyby = .(
-            chrom_index1, 
-            start0, 
-            end1, 
-            haplotype, 
-            n_unmasked_bases
-        )
-    ]
-    message(paste(nrow(reads_on_hap_expanded), " = number of reads in allowed haplotypes"))
-    print(reads_on_hap_expanded[n_read_variants <= 10, .N, keyby = .(n_read_variants)])
+    startSpinner(session, message = "loading trustworthy subclonal SNVs")
+    trustworthy_subclonal_snvs <- hf3_getTrustworthySubclonalSnvs(
+        sourceId, valid_subclonal_snvs, trustworthy_haplotypes
+    )
 
-    # haplotype FILTER 2: filter to reads suitable for SNV calling
-    startSpinner(session, message = "applying read filter 2")
-    reads_on_hap_expanded <- reads_on_hap_expanded[
-        haplotype != 3 |     # all heterozygous haplotype read are informative
-        n_read_variants <= 1 # cannot trust multi-variant homozogyous reads
-    ]
-    message(paste(nrow(reads_on_hap_expanded), " = number of allowed reads in allowed haplotypes"))
-    print(reads_on_hap_expanded[n_read_variants <= 10, .N, keyby = .(n_read_variants)])
+    startSpinner(session, message = "loading trustworthy haplotype reads")
+    trustworthy_haplotype_reads <- hf3_getHaplotypeReads(
+        sourceId, trustworthy_haplotypes
+    )
 
-    # variant FILTER 1: restrict to subclonal SNVs with the same coverage threshold as above
-    startSpinner(session, message = "applying variant filter 1")
-    snvs_subclonal <- variants[
-        is_snv == TRUE & 
-        clonal == 0 &
-        n_samples == 1 & 
-        n_haplotype_reads >= 3 &
-        tgt_bases != "N" & 
-        alt_bases != "N"
-    ]    
-    message(paste(nrow(snvs_subclonal), " = number of single-sample subclonal SNVs, n_reads >= 3"))
-    print(snvs_subclonal[, .N, keyby = .(n_matching_reads)])
-
-    # variant FILTER 2: filter to reads suitable for SNV calling
-    startSpinner(session, message = "applying variant filter 2")
-    snvs_subclonal[, n_passing_reads := fcase(
-        haplotype == 3,
-        n_matching_reads - n_multivariant_reads, # matches read FILTER 2 above
-        default = n_matching_reads
-    )]
-    print(snvs_subclonal[, .N, keyby = .(n_passing_reads)])
-    snvs_subclonal <- snvs_subclonal[n_passing_reads > 0]
-    snvs_singleton <- snvs_subclonal[n_passing_reads == 1]
-    message(paste(nrow(snvs_subclonal), " = number of allowed single-sample subclonal SNVs"))
-    print(snvs_subclonal[, .N, keyby = .(tgt_bases, alt_bases)] %>% dcast(tgt_bases ~ alt_bases))
-    add_canonical_mutation(snvs_subclonal)
-    print(snvs_subclonal[, .N, keyby = .(mutation, sample_bits)] %>% dcast(mutation ~ sample_bits))
-
+    # assemble a table of metric values
+    startSpinner(session, message = "building metrics table")
     smp_all <- "all"
+    metrics <- c("n_reads", "n_unmasked_bases", "n_subclonal_snvs")
+    n_col <- length(metrics)
     d <- data.table(
-        metric = c("n_reads", "n_bases"),
-        sample_bit = c(NA, NA),
-        sample = c(smp_all, smp_all),
-        value = reads_on_hap_expanded[, c(.N, sum(n_unmasked_bases))]
+        metric     = metrics,
+        sample_bit = rep(NA,      n_col),
+        sample     = rep(smp_all, n_col),
+        value = c(
+            trustworthy_haplotype_reads[, c(
+                .N, 
+                sum(n_unmasked_bases) # includes invariant reads in tally
+            )],
+            nrow(trustworthy_subclonal_snvs)
+        )
     )
     for (i in 1:length(smp_bits)){
         d <- rbind(d, data.table(
-            metric = c("n_reads", "n_bases"),
-            sample_bit = c(smp_bits[i], smp_bits[i]),
-            sample = hf3_getSampleNames(sourceId, c(smp_bits[i], smp_bits[i]), as_string = FALSE),
-            value = reads_on_hap_expanded[
-                sample_bit == smp_bits[i], 
-                c(.N, sum(n_unmasked_bases))
-            ]
-        ))
-    }
-
-    d <- rbind(d, data.table(
-        metric = c("n_snvs_subclonal", "n_snvs_singleton"),
-        sample_bit = c(NA, NA),
-        sample = c(smp_all, smp_all),
-        value = c(nrow(snvs_subclonal), nrow(snvs_singleton))
-    ))
-    for (i in 1:length(smp_bits)){
-        d <- rbind(d, data.table(
-            metric = c("n_snvs_subclonal", "n_snvs_singleton"),
-            sample_bit = c(smp_bits[i], smp_bits[i]),
-            sample = hf3_getSampleNames(sourceId, c(smp_bits[i], smp_bits[i]), as_string = FALSE),
+            metric     = metrics,
+            sample_bit = rep(smp_bits[i], n_col),
+            sample     = rep(samples[i],  n_col),
             value = c(
-                snvs_subclonal[, sum(bitwAnd(sample_bits, smp_bits[i]) > 0)],
-                snvs_singleton[, sum(bitwAnd(sample_bits, smp_bits[i]) > 0)]
+                trustworthy_haplotype_reads[sample_bit == smp_bits[i], c(
+                    .N, 
+                    sum(n_unmasked_bases)
+                )],
+                nrow(trustworthy_subclonal_snvs[sample_bits == smp_bits[i]]) # since n_samples == 1
             )
         ))
     }
 
-    stopSpinner(session)
+    # cast to one row per sample, metrics in columns
     d <- dcast(d, sample_bit + sample ~ metric)
+
+    # calculate subclonal SNV rates and return the result
     d[, ":="(
-        subclonal_rate = sprintf("%.2e", n_snvs_subclonal / n_bases),
-        singleton_rate = sprintf("%.2e", n_snvs_singleton / n_bases)
+        subclonal_snv_rate = sprintf("%.2e", n_subclonal_snvs / n_unmasked_bases)
     )]
+    stopSpinner(session)
     d
 })
 variantSummaryTable <- bufferedTableServer(

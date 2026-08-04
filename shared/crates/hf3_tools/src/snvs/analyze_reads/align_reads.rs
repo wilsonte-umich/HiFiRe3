@@ -193,8 +193,7 @@ impl SnvChromWorker {
                 self.process_cs_tag(
                     reads_on_haplotype, re_fragment, haplotype, 
                     Some((assignment.query_start, assignment.target_start)), 
-                    Some(&assignment.cs), re_fragment.start0,
-                    ref_pos0_map,
+                    Some(&assignment.cs), ref_pos0_map,
                     // not read_i; read_j indexes into frag_vars
                     read_j, read, &read_masks[read_i] 
                 );  
@@ -216,8 +215,7 @@ impl SnvChromWorker {
                 self.process_cs_tag(
                     reads_on_haplotype, re_fragment, haplotype, 
                     Some((read_on_hap.query_start, read_on_hap.target_start)), 
-                    Some(cs), re_fragment.start0,
-                    ref_pos0_map,
+                    Some(cs), ref_pos0_map,
                     // not read_i; read_j indexes into frag_vars
                     read_j, read, &read_masks[read_i] 
                 );     

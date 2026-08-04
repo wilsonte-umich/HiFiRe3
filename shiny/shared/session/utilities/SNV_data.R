@@ -101,10 +101,281 @@ hf3_getFragments_cached <- function(sourceId, reads_on){
                 n_bases = end1 - start0,
                 n_bases_bin = floor((end1 - start0) / 250) * 250
             )]
-            d[, ":="(
-                n_unmasked_bases = n_bases - n_repeat_bases
-            )]
             d
+        }  
+    )$value
+}
+
+hf3_cached_create2 <- "asNeeded"  
+hf3_haplotype_cols <- c("chrom_index1", "start0", "end1", "haplotype")
+# establish the list of variants to be kept on their own merit, keeping 
+# high-quality, subclonal SNVs on:
+#   - heterozygous reads (at this point, still including n_haplotype_reads==2)
+#   - homozygous reads that are not multivariant
+# all matching variants from all samples are present, one row per variant, 
+# at this point, sample_bits may carry more than one sample if an SNV
+# was detected in more than one sample and might still match a clonal SNV 
+# position (these are filtered below)
+hf3_getValidSubclonalSnvs <- function(sourceId){
+    sessionCache$get(
+        "validSubclonalSnvs", 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create2,
+        createFn = function(...) {
+            startSpinner(session, message = "loading valid subclonal SNVs")
+
+            # collect high-quality subclonal SNVs
+            variants <- hf3_getVariants_cached(sourceId)
+            subclonal_snvs <- variants[
+                is_snv == TRUE & 
+                clonal == 0 & # subclonal might have >1 valid read instance in one or more samples
+                max_avg_qual >= 30
+            ]  
+            subclonal_snvs[, n_valid_matching_reads := fcase(
+                haplotype == 3, n_matching_reads - n_multivariant_reads, # homozyogous fragments
+                default = n_matching_reads # heterozygous fragments, multivariant reads permitted
+            )]  
+
+            message(paste(nrow(subclonal_snvs), " = number of high-quality subclonal SNVs"))
+            print(subclonal_snvs[, .N, keyby = .(n_matching_reads)])
+            print(subclonal_snvs[, .N, keyby = .(n_valid_matching_reads)])
+            print(subclonal_snvs[, .N, keyby = .(n_samples)])
+            print(subclonal_snvs[, .N, keyby = .(matches_clonal)])
+
+            # reject homozygous multivariant to yield valid SNVs
+            subclonal_snvs <- subclonal_snvs[n_valid_matching_reads > 0]
+
+            message(paste(nrow(subclonal_snvs), " = number of valid subclonal SNVs"))
+            print(subclonal_snvs[, .N, keyby = .(n_samples)])
+            print(subclonal_snvs[, .N, keyby = .(matches_clonal)])
+
+            subclonal_snvs
+        }  
+    )$value
+}
+# establish the list of fragment-haplotypes to be kept on their own merit, rejecting:
+#   - (heterozygous) fragment-haplotypes with only two reads
+#   - entire fragments with too little base complexity, i.e., too many masked simple repeats
+# this is a fragment/haplotype-level analysis and result; all sample data are 
+# aggregated when making decisions about coverage sufficiency for determining 
+# accurate haplotype consensuses, etc.
+hf3_getValidHaplotypes <- function(sourceId){
+    sessionCache$get(
+        "validHaplotypes", 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create2,
+        createFn = function(...) {
+            startSpinner(session, message = "loading valid haplotypes")
+
+            # collect and characterize reads_on_hap fragment-haplotypes
+            haplotypes <- hf3_getFragments_cached(sourceId, "haplotype")
+            haplotypes[, n_bases := end1 - start0]
+            haplotypes[, n_unmasked_bases := n_bases - n_repeat_bases]
+            haplotypes[, ":="(
+                n_valid_reads = fcase(
+                    haplotype == 3, n_reads - n_multivariant_reads, # homozyogous fragments
+                    default = n_reads # heterozygous fragments, multivariant reads permitted
+                ),
+                frac_unmasked = n_unmasked_bases / n_bases
+            )]
+
+            message(paste(nrow(haplotypes), " = number of fragment-haplotypes, unfiltered"))
+            print(haplotypes[, .(
+                .N, 
+                n_reads          = sum(n_reads),
+                n_valid_reads    = sum(n_valid_reads),
+                n_bases          = sprintf("%.2e", sum(n_bases)), 
+                n_unmasked_bases = sprintf("%.2e", sum(n_unmasked_bases))
+            ), keyby = .(haplotype)])
+            print(haplotypes[, .(
+                n_reads          = sum(n_reads),
+                n_valid_reads    = sum(n_valid_reads),
+                n_bases          = sprintf("%.2e", sum(n_bases)), 
+                n_unmasked_bases = sprintf("%.2e", sum(n_unmasked_bases))
+            ), keyby = .(round(frac_unmasked * 20, 0) / 20)])
+
+            # reject low complexity and low coverage heterozygous to yield valid haplotypes
+            haplotypes <- haplotypes[
+                n_valid_reads >= 3 &  # need three reads to establish a reliable haplotype consensus
+                frac_unmasked >= 0.75 # exclude low complexity fragments; ~99.5% of fragments pass this filter
+            ]
+
+            message(paste(nrow(haplotypes), " = number of valid high-complexity fragment-haplotypes"))
+            print(haplotypes[, .(
+                .N, 
+                n_reads          = sum(n_reads),
+                n_valid_reads    = sum(n_valid_reads),
+                n_bases          = sprintf("%.2e", sum(n_bases)), 
+                n_unmasked_bases = sprintf("%.2e", sum(n_unmasked_bases))
+            ), keyby = .(haplotype)])
+            print(
+                haplotypes[n_valid_reads <= 65, .N, keyby = .(haplotype, n_valid_reads)] %>% 
+                dcast(n_valid_reads ~ haplotype, value.var = "N")
+            )
+
+            haplotypes
+        }  
+    )$value
+}
+# use the list of valid SNVs to further reject entire fragment-haplotypes, where
+# untrustworthy fragment-haplotypes are rejected if they have 
+#   - excessive subclonal SNVs (often across multiple samples and positions)
+#   - excessive multivariant reads
+# this is a haplotype-level analysis and result; all sample SNVs are aggregated 
+# when using SNV counts to reject suspicious, misbehaving haplotypes and entire 
+# haplotypes are kept or rejected
+hf3_getTrustworthyHaplotypes <- function(sourceId, subclonal_snvs, haplotypes){
+    sessionCache$get(
+        "trustworthyHaplotypes", 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create2,
+        createFn = function(...) {
+            startSpinner(session, message = "loading trustworthy haplotypes")
+
+            # left-join valid haplotypes to valid SNVs
+            haplotype_snvs <- merge(
+                haplotypes[,     .SD, .SDcols = c(hf3_haplotype_cols, "n_multivariant_reads")], 
+                subclonal_snvs[, .SD, .SDcols = c(hf3_haplotype_cols, "n_valid_matching_reads")], 
+                by = hf3_haplotype_cols, 
+                all.x = TRUE, 
+                all.y = FALSE, 
+                sort = TRUE
+            )
+            haplotype_filter <- haplotype_snvs[,
+                .( 
+                    n_snv_bases = sum(n_valid_matching_reads, na.rm = TRUE) 
+                ),
+                keyby = c(hf3_haplotype_cols, "n_multivariant_reads")
+            ]
+
+            print(
+                haplotype_filter[, .N, keyby = .(haplotype, n_snv_bases)] %>% 
+                dcast(n_snv_bases ~ haplotype, value.var = "N")
+            )
+            print(
+                haplotype_filter[, .N, keyby = .(haplotype, n_multivariant_reads)] %>% 
+                dcast(n_multivariant_reads ~ haplotype, value.var = "N")
+            )
+
+            # inner-join haplotypes and the filter based on total valid SNV count
+            haplotypes$n_multivariant_reads <- NULL
+            haplotypes <- merge(
+                haplotype_filter[
+                    n_snv_bases <= 5 & 
+                    n_multivariant_reads <= 5
+                ],
+                haplotypes,
+                by = hf3_haplotype_cols, 
+                all.x = FALSE, 
+                all.y = FALSE,
+                sort = TRUE
+            )
+
+            message(paste(nrow(haplotypes), " = number of trustworthy fragment-haplotypes, <= 5 SNVs"))
+            
+            haplotypes
+        }  
+    )$value
+}
+# use trustworthy haplotypes to remove untrustworthy subclonal SNVs from the list
+# also enforce:
+#   - n_samples==1 as true subclonal SNVs will only be in one sample
+#   - matches_clonal==0 (false), to further catch read-haplotype mismatches
+hf3_getTrustworthySubclonalSnvs <- function(sourceId, subclonal_snvs, haplotypes){
+    sessionCache$get(
+        "trustworthySubclonalSnvs", 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create2,
+        createFn = function(...) {
+            startSpinner(session, message = "loading trustworthy SNVs")
+
+            # inner-join trustworthy haplotypes to valid SNVs to yield trustworthy SNVs
+            subclonal_snvs <- merge(
+                haplotypes[, .SD, .SDcols = hf3_haplotype_cols],
+                subclonal_snvs[
+                    n_samples == 1 & 
+                    matches_clonal == 0
+                ], 
+                by = hf3_haplotype_cols, 
+                all.x = FALSE, 
+                all.y = FALSE, 
+                sort = TRUE
+            )
+
+            message(paste(nrow(subclonal_snvs), " = number of trustworthy single-sample subclonal SNVs"))
+
+            # parse ref and alt bases into mutation types
+            comp <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
+            subclonal_snvs[, mutation := fcase(
+                tgt_bases %in% c("C", "T"), paste0(     tgt_bases,  ">",      alt_bases),
+                tgt_bases %in% c("A", "G"), paste0(comp[tgt_bases], ">", comp[alt_bases])
+            )]
+
+            print(
+                subclonal_snvs[, .N, keyby = .(tgt_bases, alt_bases)] %>% 
+                dcast(tgt_bases ~ alt_bases, value.var = "N")
+            )
+            print(
+                subclonal_snvs[, .N, keyby = .(mutation, sample_bits)] %>% 
+                dcast(mutation ~ sample_bits, value.var = "N")
+            )
+
+            subclonal_snvs
+        }  
+    )$value
+}
+# expand trustworthy haplotypes to one read per row with metadata for further  
+# filtering and grouping, to begin the sample-level analysis of haplotypes
+# remove multivariant reads from homozygous haplotypes - it is possible that 
+# this will leave zero fragments in a haplotype for a specific sample, which is OK
+# note that all reads are present, even the majority invariant reads
+hf3_getHaplotypeReads <- function(sourceId, haplotypes){
+    sessionCache$get(
+        "haplotypeReads", 
+        key = sourceId, 
+        permanent = TRUE,
+        from = "ram",
+        create = hf3_cached_create2,
+        createFn = function(...) {
+            startSpinner(session, message = "expanding haplotype reads")
+
+            # expand haplotypes data to one row per source read
+            haplotype_reads <- haplotypes[, 
+                .(
+                    sample_bit      = as.integer(strsplit(sample_bitss, ",")[[1]]),
+                    # qname           =            strsplit(qnames, ",")[[1]],
+                    n_read_variants = as.integer(strsplit(n_variantss, ",")[[1]])
+                ),
+                keyby = c(hf3_haplotype_cols, "n_unmasked_bases")
+            ]
+
+            message(paste(nrow(haplotype_reads), " = number of reads in trustworthy haplotypes"))
+            print(
+                haplotype_reads[n_read_variants <= 10, .N, keyby = .(n_read_variants, haplotype)] %>%
+                dcast(n_read_variants ~ haplotype, value.var = "N")
+            )
+
+            #  remove multivariant homozogyous reads to match the valid SNVs filter above
+            haplotype_reads <- haplotype_reads[
+                haplotype != 3 | # all heterozygous haplotype reads are informative
+                n_read_variants <= 1 # cannot trust multivariant homozogyous reads
+            ]
+
+            message(paste(nrow(haplotype_reads), " = number of valid reads in trustworthy haplotypes"))
+            print(
+                haplotype_reads[n_read_variants <= 10, .N, keyby = .(n_read_variants, haplotype)] %>%
+                dcast(n_read_variants ~ haplotype, value.var = "N")
+            )
+
+            haplotype_reads
         }  
     )$value
 }
