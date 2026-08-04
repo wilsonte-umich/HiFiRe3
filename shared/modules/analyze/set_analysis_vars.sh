@@ -28,7 +28,7 @@ export GENOME_TALLY_FILE=${DATA_GENOME_PREFIX}.genome_tally.txt
 
 # SNV analysis output
 export SNV_SAMPLES_FILE=${ANALYSIS_PREFIX}.snv_samples.txt
-export SNV_ALL_READS_PILEUP_BGZ=${DATA_GENOME_PREFIX}.all_reads.pileup.bed.bgz 
-export SNV_ALL_READS_VARIANTS_BGZ=${DATA_GENOME_PREFIX}.all_reads.snv_indel.txt.bgz
-export SNV_ERROR_CORRECTED_PILEUP_BGZ=${DATA_GENOME_PREFIX}.error_corrected_${MIN_N_PASSES}.pileup.bed.bgz 
-export SNV_ERROR_CORRECTED_VARIANTS_BGZ=${DATA_GENOME_PREFIX}.error_corrected_${MIN_N_PASSES}.snv_indel.txt.bgz
+export SNV_VARIANTS_BGZ=${DATA_GENOME_PREFIX}.snv_indel.variants.min_passes_${MIN_N_PASSES}.txt.bgz
+export SNV_VARIANT_READS_BGZ=${DATA_GENOME_PREFIX}.snv_indel.variant_reads.min_passes_${MIN_N_PASSES}.txt.bgz
+export SNV_FRAGMENTS_ON_REFERENCE_BGZ=${DATA_GENOME_PREFIX}.fragments.on_reference.min_passes_${MIN_N_PASSES}.bed.bgz
+export SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ=${DATA_GENOME_PREFIX}.fragments.on_haplotype.min_passes_${MIN_N_PASSES}.bed.bgz

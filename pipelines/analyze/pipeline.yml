@@ -53,9 +53,9 @@ actions:
             - SNV
         resources:
             required:
-                total-ram: 24G
+                total-ram: 12G
             recommended: 
-                n-cpu: 8
+                n-cpu: 12
                 ram-per-cpu: 4G
         job-manager:
             recommended:
@@ -149,30 +149,30 @@ package:
             exclusionsBed:
                 type: bed
                 file: $GENOME_EXCLUSIONS_BED
-            allReadsPileupBgz:
-                type: bed.bgz
-                file: $SNV_ALL_READS_PILEUP_BGZ
-            allReadsPileupTbi:
-                type: bed.bgz.tbi
-                file: $SNV_ALL_READS_PILEUP_BGZ.tbi
-            allReadsVariantsBgz:
+            variantsBgz:
                 type: txt.bgz
-                file: $SNV_ALL_READS_VARIANTS_BGZ
-            allReadsVariantsTbi:
+                file: $SNV_VARIANTS_BGZ
+            variantsTbi:
                 type: txt.bgz.tbi
-                file: $SNV_ALL_READS_VARIANTS_BGZ.tbi
-            errorCorrectedPileupBgz:
-                type: bed.bgz
-                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ
-            errorCorrectedPileupTbi:
-                type: bed.bgz.tbi
-                file: $SNV_ERROR_CORRECTED_PILEUP_BGZ.tbi
-            errorCorrectedVariantsBgz:
+                file: $SNV_VARIANTS_BGZ.tbi
+            variantReadsBgz:
                 type: txt.bgz
-                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ
-            errorCorrectedVariantsTbi:
+                file: $SNV_VARIANT_READS_BGZ
+            variantReadsTbi:
                 type: txt.bgz.tbi
-                file: $SNV_ERROR_CORRECTED_VARIANTS_BGZ.tbi
+                file: $SNV_VARIANT_READS_BGZ.tbi
+            fragmentsOnReferenceBgz:
+                type: bed.bgz
+                file: $SNV_FRAGMENTS_ON_REFERENCE_BGZ
+            fragmentsOnReferenceTbi:
+                type: bed.bgz.tbi
+                file: $SNV_FRAGMENTS_ON_REFERENCE_BGZ.tbi
+            fragmentsOnHaplotypeBgz:
+                type: bed.bgz
+                file: $SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ
+            fragmentsOnHaplotypeTbi:
+                type: bed.bgz.tbi
+                file: $SNV_FRAGMENTS_ON_HAPLOTYPE_BGZ.tbi
 # container:
 #     supported: false    # set to true if you maintain a container registry for this pipeline [false]
 #     registry:  ghcr.io  # domain name of your OCI-compatible, oras-accessible, container registry [ghcr.io]

@@ -1,20 +1,33 @@
-//! Module to handle SNV/indel analysis according to expectations
-//! and encoding of HiFiRe3 libraries. 
+//! Module to handle SNV/indel analysis according to expectations and encoding 
+//! of HiFiRe3 libraries. 
 
 // modules 
+pub mod fragment;
 pub mod tags;
-pub mod pileup;
+pub mod simple_repeat;
 pub mod variant;
+pub mod analyze_reads;
+pub mod haplotype;
+pub mod encoding;
 
 // re-exports
-pub use pileup::*;
+pub use fragment::*;
+pub use tags::*;
+pub use simple_repeat::*;
 pub use variant::*;
+pub use haplotype::*;
+pub use encoding::*;
 
-// dependencies
+// imports
 use std::error::Error;
+use rustc_hash::{FxHashMap, FxHashSet};
+use minimap2::{Aligner as Minimap2, PresetSet};
+use faimm::IndexedFasta;
+use serde::Serialize;
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
-use genomex::genome::{Chroms, TargetRegions, Exclusions};
+use genomex::genome::{TargetRegions, Exclusions};
+use crate::tools::type_aliases::*;
 
 // constants
 pub_key_constants!(
@@ -22,9 +35,11 @@ pub_key_constants!(
     SEQUENCING_PLATFORM
     LIBRARY_TYPE
 );
+pub const MIN_SNV_INDEL_QUAL: u8 = 27;
+pub const MAX_EXPECTED_READ_LEN:  usize = 10000; // use for allocating recycled objects
 
-/// Ensure that PacBio SNV analysis is performed on a library from 
-/// the PacBioStrand sequencing platform.
+/// Ensure that PacBio SNV analysis is performed on a library from the 
+/// PacBioStrand sequencing platform.
 pub fn check_pacbio_strand(tool: &str, cfg: &mut Config) -> Result<(), Box<dyn Error>> {
     cfg.set_string_env(&[SEQUENCING_PLATFORM, LIBRARY_TYPE]);
     let sequencing_platform = cfg.get_string(SEQUENCING_PLATFORM);
@@ -39,46 +54,65 @@ pub fn check_pacbio_strand(tool: &str, cfg: &mut Config) -> Result<(), Box<dyn E
     Ok(())
 }
 
-/// The SnvAnalysisTool collects structs and methods for SNV analysis
-/// at the genome level after all chromosomes have been processed.
+/// SnvAnalysisTool collects tools for SNV analysis shared with all chromosome 
+/// workers.
 pub struct SnvAnalysisTool {
 
     // global configuration parameters
-    pub n_cpu:     u32,
+    pub n_cpu: u32,
 
     // chromosomes and regions
-    pub chroms:     Chroms,
     pub targets:    TargetRegions,
     pub exclusions: Exclusions,
+    pub fa:         IndexedFasta,
 }
 
-/// The SnvChromWorker tool collects structs and methods 
-/// for SNV analysis while processing a single chromosome.
+/// SnvChromWorker collects tools for SNV analysis that are specific to 
+/// processing of a single specific chromosome in parallel.
 pub struct SnvChromWorker{
 
     // chromosome parsing
-    pub chrom:       String,
-    pub chrom_index: u8,
+    pub chrom:       ChromName,
+    pub chrom_index: ChromIndex1,
+    pub chrom_tid:   usize,
+    pub simple_repeats: SimpleRepeats,
 
-    // the level of reads and bases to include
-    pub include_all_reads: bool,
-    pub min_n_passes:       u8,
-    pub min_snv_indel_qual: usize,
+    // option parameters
+    pub min_fragment_reads:   usize,
+    pub min_homozygous_reads: usize,
 
-    // data structures for chromosome processing
-    pub pileup:   ChromPileup,
-    pub variants: ChromVariants,
+    // processing tools
+    pub minimap2: Minimap2<PresetSet>,
+    pub frag_vars:      FragmentVariants,
+    pub encoding:       AlignmentEncoding,  // read encoding for visualization
+    pub tracking_variants: Vec<Variant>, // potentially heterozygous variants
+    pub seq0_bases:     Vec<String>, // used with cs_map for consensus calling
+    pub cs_map:         Vec<FxHashMap<String, u8>>,
+    pub hap_vs_ref:     Vec<String>, // consensus encoding for visualization
+    pub hap_vars:       FxHashMap<Haplotype, FxHashSet<Variant>>,
+    pub hap_votes:      FxHashMap<Haplotype, usize>,
+    pub var_tgt_pos0:   Option<SeqPos0>, 
+    pub tgt_bases:      UppercaseACGTN,
+    pub alt_bases:      UppercaseACGTN,
+    pub alt_qual:       Vec<PhredQual>,
+    pub allowed:        bool,
+    pub cs_op:          char,
+    pub op_val:         String,
+    // pub debug:      ReFragment,
+    // pub show_debug: bool,
 
-    // output file paths
-    pub pileup_file_path:   String,
-    pub variants_file_path: String,
+    // metadata aggregation
+    pub variant_tally:       VariantsTally,
+    pub variant_reads_tally: VariantReadsTally,
 }
 
-// SnvChromWorkerData enum allows difference types of metadata to be
-// trasmitted to the main thread for aggregation.
+/// SnvChromWorkerData allows difference types of metadata to be trasmitted to 
+/// the main thread for aggregation over the entire input.
 pub enum SnvChromWorkerData {
     TotalAlnCount(usize),
-    ErrorCorrectedAlignmentCount((String, usize)),
-    PileupMetadata(PileupMetadata),
+    UsableAlnCount((ChromName, usize)),
     VariantMetadata(VariantMetadata),
+    VariantReadsMetadata(VariantReadsMetadata),
+    ReadsOnReferenceMetadata(FragmentHaplotypeMetadata),
+    ReadsOnHaplotypeMetadata(FragmentHaplotypeMetadata),
 }

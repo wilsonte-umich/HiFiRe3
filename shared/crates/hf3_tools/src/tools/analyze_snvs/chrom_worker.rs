@@ -1,28 +1,24 @@
-//! Process reads with first alignments on a specific chromosome, 
-//! provided as a message on a channel.
+//! Process reads with first alignments on a specific chromosome, provided as a 
+//! message on a channel.
 
-// dependencies
+// imports
 use std::error::Error;
+use rustc_hash::{FxHashMap, FxHashSet};
 use crossbeam::channel::{Receiver, Sender};
+use minimap2::{Aligner as Minimap2};
 use rust_htslib::bam::{Reader, Read, Record as BamRecord};
 use mdi::pub_key_constants;
 use mdi::workflow::Config;
-use genomex::bam::tags as bam_tags;
-use genomex::sam::cigar::CigarString;
-use crate::formats::hf3_tags::*;
-use crate::snvs::{
-    tags as snv_tags, 
-    SnvChromWorkerData, SnvChromWorker, 
-    SnvAnalysisTool, 
-    ChromPileup, ChromVariants
-};
+use crate::snvs::*;
 
 // constants
 pub_key_constants!(
     // from environment variables
+    MIN_FRAGMENT_READS
+    MIN_HOMOZYGOUS_READS
     INDEX_FILE_PREFIX_WRK
-    MIN_N_PASSES
-    MIN_SNV_INDEL_QUAL
+    GENOME_REPEAT_MASKER_BED
+    GENOME_SIMPLE_REPEAT_BED
 );
 
 // process chromosomes received on the channel
@@ -34,122 +30,130 @@ pub fn process_chrom(
 
     // get config from environment variables
     let mut cfg = Config::new();
-    cfg.set_u8_env(&[MIN_N_PASSES, MIN_SNV_INDEL_QUAL]);
-    cfg.set_string_env(&[INDEX_FILE_PREFIX_WRK]);
-    let chrom_file_prefix = cfg.get_string(INDEX_FILE_PREFIX_WRK);
+    cfg.set_usize_env(&[MIN_FRAGMENT_READS, MIN_HOMOZYGOUS_READS]);
+    cfg.set_string_env(&[INDEX_FILE_PREFIX_WRK, GENOME_REPEAT_MASKER_BED, GENOME_SIMPLE_REPEAT_BED]);
+    let chrom_file_prefix = cfg.get_string(INDEX_FILE_PREFIX_WRK); // created by split_bam_by_chrom
+    let rmsk_simple_repeats_bed = cfg.get_string(GENOME_REPEAT_MASKER_BED);
+    let trf_simple_repeats_bed = cfg.get_string(GENOME_SIMPLE_REPEAT_BED);
 
     // process chromosomes received on the channel
     for (chrom_name, chrom_index) in rx_chrom.iter() {
         let chrom_index_padded = format!("{:02}", chrom_index);
-        let chrom_size = *tool.chroms.sizes.get(&chrom_name).unwrap();
+        let chrom_bam_path  = format!("{}.chr{}.bam", chrom_file_prefix, &chrom_index_padded);
+        eprintln!("    {}", chrom_name);
 
-        // run SNV/indel analysis twice
-        //   once with all reads for maximally sensitive (sub)clonal variant calling
-        //   once with only error-corrected reads filtered for n_passes for maximally specific rare variant calling
-        for read_type in ["all_reads", "error_corrected"] {
-            eprintln!("    {} {}", chrom_name, read_type);
+        // open the input BAM file
+        // all reads are on-target and have first alignment on chrom
+        let mut chrom_bam = Reader::from_path(&chrom_bam_path)?;
 
-            // open the input BAM file
-            // all reads are on-target and have first alignment on chrom
-            let chrom_bam_path  = format!("{}.chr{}.bam", chrom_file_prefix, &chrom_index_padded);
-            let mut chrom_bam = Reader::from_path(&chrom_bam_path)?;
+        // assemble the chromosome worker tool
+        let mut worker = SnvChromWorker {
+            chrom: chrom_name.clone(),
+            chrom_index,
+            chrom_tid: tool.fa.fai().tid(&chrom_name).expect("Failed to get chrom TID"),
+            simple_repeats: SimpleRepeats::new(
+                tool, &chrom_name, rmsk_simple_repeats_bed, trf_simple_repeats_bed
+            ),
+            min_fragment_reads:   *cfg.get_usize(MIN_FRAGMENT_READS),
+            min_homozygous_reads: *cfg.get_usize(MIN_HOMOZYGOUS_READS),
+            minimap2:       Minimap2::builder().map_hifi().with_cigar(),
+            frag_vars:      FragmentVariants::new(),
+            encoding:       AlignmentEncoding::new(), // read encoding for visualization
+            tracking_variants: Vec::with_capacity(1024),
+            seq0_bases:     Vec::with_capacity(MAX_EXPECTED_READ_LEN), // used with cs_map for consensus calling
+            cs_map:         Vec::with_capacity(MAX_EXPECTED_READ_LEN),
+            hap_vs_ref:     Vec::with_capacity(256), // consensus encoding for visualization
+            hap_vars:       FxHashMap::default(),
+            hap_votes:      FxHashMap::default(),
+            var_tgt_pos0:   None,
+            tgt_bases:      String::with_capacity(128),
+            alt_bases:      String::with_capacity(128),
+            alt_qual:       Vec::with_capacity(128),
+            allowed:        true,
+            cs_op:          ':',
+            op_val:         String::with_capacity(128),
+            variant_tally:       VariantsTally::new(),
+            variant_reads_tally: VariantReadsTally::new(),
+            // debug: ReFragment { start0: 112213159, end1: 112220205 },
+            // show_debug: false,
+        };
+        worker.hap_vars.insert(Haplotype::Haplotype1, FxHashSet::default());
+        worker.hap_vars.insert(Haplotype::Haplotype2, FxHashSet::default());
+        worker.hap_vars.insert(Haplotype::Homozygous, FxHashSet::default());
+        worker.hap_votes.insert(Haplotype::Haplotype1, 0);
+        worker.hap_votes.insert(Haplotype::Haplotype2, 0);
 
-            // assemble the chromosome worker tool
-            let pileup_file_path   = format!(
-                "{}.chr{}.{}.pileup.bed.bgz",    
-                chrom_file_prefix, &chrom_index_padded, read_type
-            );
-            let variants_file_path = format!(
-                "{}.chr{}.{}.snv_indel.txt.bgz", 
-                chrom_file_prefix, &chrom_index_padded, read_type
-            );
-            let mut worker = SnvChromWorker {
-                chrom:              chrom_name.clone(),
-                chrom_index,
-                include_all_reads:  read_type == "all_reads",
-                min_n_passes:       *cfg.get_u8(MIN_N_PASSES),
-                min_snv_indel_qual: *cfg.get_u8(MIN_SNV_INDEL_QUAL) as usize,
-                pileup:             ChromPileup::with_capacity(chrom_size as usize),
-                variants:           ChromVariants::new(),
-                pileup_file_path,
-                variants_file_path,
-            };
-
-            // process alignment records one at a time
-            let mut aln = BamRecord::new();
-            let mut chrom_aln_count:    usize = 0;
-            let mut chrom_aln_count_ec: usize = 0;
-            while let Some(result) = chrom_bam.read(&mut aln) {
-                match result {
-                    Ok(_)  => {
-                        process_aln(&aln, &mut worker, &mut chrom_aln_count_ec)?;
-                        chrom_aln_count += 1;
-                    },
-                    Err(_) => panic!("BAM parsing failed")
-                }
-            }
-
-            // finish processing and writing pileup and variants
-            let pileup_metadata   = ChromPileup::write_chunked( tool, &mut worker);
-            let variant_metadata = ChromVariants::write_sorted(tool, &mut worker);
-
-            // send chrom read count to main thread
-            if !worker.include_all_reads {
-                tx_data.send(SnvChromWorkerData::TotalAlnCount(chrom_aln_count))?;
-                tx_data.send(SnvChromWorkerData::ErrorCorrectedAlignmentCount((chrom_name.clone(), chrom_aln_count_ec)))?;
-                tx_data.send(SnvChromWorkerData::PileupMetadata(pileup_metadata))?;
-                tx_data.send(SnvChromWorkerData::VariantMetadata(variant_metadata))?;
+        // process alignment records one at a time, add to growing RE fragment collections
+        let mut aln = BamRecord::new();
+        let mut chrom_aln_count:      usize = 0;
+        let mut chrom_aln_count_used: usize = 0;
+        let mut fragment_reads = FragmentReads::new();
+        while let Some(result) = chrom_bam.read(&mut aln) {
+            match result {
+                Ok(_)  => {
+                    chrom_aln_count += 1;
+                    chrom_aln_count_used += fragment_reads.insert(&aln);
+                },
+                Err(_) => panic!("BAM parsing failed")
             }
         }
+
+        // post-process read groups by re-aligning reads to fragment consensus(es)
+        let mut haplotype_consensuses = HaplotypeConsensuses::new();
+        let mut reads_on_reference = FragmentHaplotypes::new();
+        let mut reads_on_haplotype = FragmentHaplotypes::new();
+        worker.analyze_reads(
+            tool, fragment_reads, 
+            &mut haplotype_consensuses,
+            &mut reads_on_reference,
+            &mut reads_on_haplotype,
+        );
+
+        // finish processing and writing pileup and variants
+        let variants_file_path = format!(
+            "{}.chr{}.snv_indel.variants.txt.bgz", 
+            chrom_file_prefix, &chrom_index_padded
+        );
+        let variant_reads_file_path = format!(
+            "{}.chr{}.snv_indel.variant_reads.txt.bgz", 
+            chrom_file_prefix, &chrom_index_padded
+        );
+        let reads_on_reference_path = format!(
+            "{}.chr{}.fragments.on_reference.bed.bgz", 
+            chrom_file_prefix, &chrom_index_padded
+        );
+        let reads_on_haplotype_path = format!(
+            "{}.chr{}.fragments.on_haplotype.bed.bgz", 
+            chrom_file_prefix, &chrom_index_padded
+        );
+        let variant_metadata = VariantsTally::write_sorted(
+            tool, 
+            &mut worker,
+            variants_file_path
+        );
+        let variant_reads_metadata = VariantReadsTally::write_sorted(
+            tool, 
+            &mut worker,
+            variant_reads_file_path
+        );
+        let reads_on_reference_metadata = FragmentHaplotypes::write_sorted(
+            tool, &mut worker, &mut haplotype_consensuses,
+            &reads_on_reference, 
+            reads_on_reference_path
+        );
+        let reads_on_haplotype_metadata = FragmentHaplotypes::write_sorted(
+            tool, &mut worker, &mut haplotype_consensuses,
+            &reads_on_haplotype, 
+            reads_on_haplotype_path
+        );
+
+        // send error corrected metadata to main thread
+        tx_data.send(SnvChromWorkerData::TotalAlnCount(chrom_aln_count))?;
+        tx_data.send(SnvChromWorkerData::UsableAlnCount((chrom_name.clone(), chrom_aln_count_used)))?;
+        tx_data.send(SnvChromWorkerData::VariantMetadata(variant_metadata))?;
+        tx_data.send(SnvChromWorkerData::VariantReadsMetadata(variant_reads_metadata))?;
+        tx_data.send(SnvChromWorkerData::ReadsOnReferenceMetadata(reads_on_reference_metadata))?;
+        tx_data.send(SnvChromWorkerData::ReadsOnHaplotypeMetadata(reads_on_haplotype_metadata))?;
     }
-    Ok(())
-}
-
-// process one alignment
-fn process_aln(
-    aln:    &BamRecord, 
-    worker: &mut SnvChromWorker,
-    chrom_aln_count_ec: &mut usize,
-) -> Result<(), Box<dyn Error>>{
-
-    // short-circuit reads that do not meet duplex filtering criteria when restricting to error-corrected reads
-    // valid EC reads must have a dd tag and meet the minimum number of total PacBio passes reqested by the user
-    let dd = bam_tags::get_tag_str_opt(aln, STRAND_DIFFERENCES);
-    let n_passes = bam_tags::get_tag_f32_default(aln, PACBIO_EFF_COVERAGE, 0.0) as u8;
-    if !worker.include_all_reads {
-        if dd.is_none() || 
-           n_passes < worker.min_n_passes {
-            return Ok(());
-        } else {
-            *chrom_aln_count_ec += 1;
-        }
-    }
-
-    // when available, process the read-level dd:Z: tag into a variant calling mask
-    let cigar      = aln.cigar().to_string();
-    let cigar = CigarString{cigar: cigar};
-    let read_len    = cigar.get_read_len() as usize;
-    let mask = if let Some(dd) = dd {
-        let is_reverse = aln.is_reverse(); // expect most but not all alignments with a dd tag to be forward
-        snv_tags::DdTag(dd).get_read_mask(read_len, is_reverse)   // in alignment order, not read order
-    } else {
-        vec![false; read_len]
-    };
-
-    // process the alignment-level cs:Z: tag into a read pileup and allowed variant list
-    let left_clip = cigar.get_clip_left();
-    let ref_pos0 = aln.pos() as u32;
-    let cs = bam_tags::get_tag_str(aln, DIFFERENCE_STRING);
-    let cs = snv_tags::CsTag(cs);
-    let sample_bit = bam_tags::get_tag_u32(aln, SAMPLE_BIT);
-    cs.process_aln(
-        worker, 
-        &mask, 
-        aln.qual(),
-        left_clip, 
-        ref_pos0, 
-        sample_bit, 
-        n_passes
-    ); 
     Ok(())
 }

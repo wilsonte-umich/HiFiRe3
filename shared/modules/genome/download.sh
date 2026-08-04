@@ -106,6 +106,30 @@ copy_excluderegions () { # for newer genomes lacking Boyle lab exclusions
     cp ${MODULES_DIR}/genome/resources/${GENOME}.exclusions.bed ${GENOME_EXCLUSIONS_BED}
 }
 
+# repeat masker files used for SNV masking at simple repeats
+download_repeat_masker () {
+    ALLOW_MISSING_FILE=""
+    UCSC_FILE="${GENOME}.fa.out.gz"
+    if [ "${GENOME}" = "hs1" ]; then
+        UCSC_FILE="${GENOME}.repeatMasker.out.gz"
+    fi
+    download_and_unzip_UCSC \
+        bigZips/${UCSC_FILE} \
+        ${GENOME_REPEAT_MASKER_OUT} \
+        "repeat masker .out" \
+        "TRUE"
+    if [ ! -f $GENOME_REPEAT_MASKER_BED ]; then
+        echo "  converting repeatMasker out to simple repeat BED"
+        # keep in file if a simple repeat is at least 6 repeat units in length
+        zcat ${GENOME_REPEAT_MASKER_OUT} |
+        grep -i "simple_repeat" | 
+        awk 'BEGIN{OFS="\t"}{print $5,$6,$7,$10}' | 
+        awk 'BEGIN{OFS="\t"}{$2 = $2 - 1; print $0}' | 
+        awk '($3 - $2) >= (length($4) - 3) * 6' | 
+        gzip -c > ${GENOME_REPEAT_MASKER_BED}
+    fi
+}
+
 # annotation GTF and processed BED
 download_annotation_gtf () {
     TO_FILE=${ANNOTATION_GTF}
@@ -158,18 +182,21 @@ if [ "$GENOME" == "hs1" ]; then
     echo "  touching genome gaps (hs1/CHM13 has no gaps!)"
     touch ${GENOME_GAPS_FILE}
     copy_excluderegions hs1.exclusions.bed
+    download_repeat_masker
     download_annotation_gtf
 
 elif [ "$GENOME" == "hg38" ]; then
     download_and_index_genome ${HG38_ANALYSIS_SET} # already carries EBV
     download_genome_gaps
     download_ENCODE_exclusions
+    download_repeat_masker
     download_annotation_gtf
 
 elif [ "$GENOME" == "mm39" ]; then
     download_and_index_genome ""
     download_genome_gaps
     copy_excluderegions mm39.exclusions.bed
+    download_repeat_masker
     download_annotation_gtf
 
 # attempt all other genomes in standardized format(s)
@@ -178,5 +205,6 @@ else
     download_and_index_genome ""
     download_genome_gaps
     download_ENCODE_exclusions
+    download_repeat_masker
     download_annotation_gtf
 fi

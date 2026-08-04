@@ -314,38 +314,78 @@ hf3_bgzColumns <- list(
         seq               = "character",
         qual              = "character"
     ),
-    allReadsPileupBgz = c(
-        chrom_index1 = "integer",
-        start        = "integer",
-        end          = "integer",
-        M            = "integer",
-        A            = "integer",
-        C            = "integer",
-        G            = "integer",
-        T            = "integer",
-        N            = "integer",
-        D            = "integer",
-        I            = "integer",
-        D_allowed    = "integer",
-        I_allowed    = "integer"
+    variantsBgz = c( # one entry per allowed clonal or subclonal variant
+        chrom_index1     = "integer", # 1
+        tgt_pos0         = "integer", # 2
+        tgt_bases        = "character", # 3
+        alt_bases        = "character", # 4
+        is_indel         = "integer", # 5
+        start0           = "integer", # 2
+        end1             = "integer",
+        haplotype        = "integer", # 6
+        n_repeat_bases   = "integer", # 7
+        n_matching_reads = "integer", # 8
+        n_haplotype_reads = "integer",
+        n_reads           = "integer",
+        n_multivariant_reads = "integer",
+        sample_bits      = "integer",
+        n_samples        = "integer",
+        clonal           = "integer",
+        matches_clonal   = "integer",
+        max_avg_qual     = "integer",
+        qnames           = "character"
     ),
-    allReadsVariantsBgz = c(
-        chrom_index1 = "integer",
-        start0       = "integer",
-        n_ref_bases  = "integer",
-        alt_bases    = "character",
-        count        = "integer",
-        coverage     = "integer",
-        sample_bits  = "integer",
-        n_samples    = "integer",
-        max_n_passes = "integer",
-        any_allowed  = "integer",
-        all_allowed  = "integer"
+    variantReadsBgz = c( # one entry per read with a subclonal variant
+        qname           = "character", # first since indexed by qname
+        chrom_index1    = "integer",
+        start0          = "integer", # for the RE fragment
+        end1            = "integer",
+        haplotype       = "integer",
+        n_repeat_bases  = "integer",
+        sample_bit      = "integer",
+        n_bases         = "integer",
+        n_haplotype_reads = "integer",
+        n_reads         = "integer",
+        n_variants      = "integer",
+        n_low_qual      = "integer",
+        n_snv           = "integer",
+        n_mnv           = "integer",
+        n_del           = "integer",
+        n_ins           = "integer",
+        n_complex       = "integer",
+        variants        = "character"
+    ),
+    fragmentsOnReferenceBgz = c( # one entry per fully analyzed ReFragment+Haplotype read set
+        chrom_index1   = "integer", # 1 # two files, one as aligned to ref, one as aligned to haplotypes
+        start0         = "integer", # 2
+        end1           = "integer",
+        haplotype      = "integer",
+        n_repeat_bases = "integer",
+        n_reads        = "integer",
+        n_multivariant_reads = "integer",
+        n_match        = "integer",
+        n_alt          = "integer",
+        n_del          = "integer",
+        n_ins          = "integer",
+        n_masked       = "integer",  
+        n_variants     = "integer",  
+        sample_bits    = "integer",
+        n_matches      = "character",
+        n_alts         = "character",
+        n_dels         = "character",
+        n_inss         = "character",
+        n_maskeds      = "character",
+        n_variantss    = "character",
+        sample_bitss   = "character",
+        encodings      = "character",
+        insertions     = "character",  
+        qnames         = "character",
+        seq            = "character",
+        hap_vs_ref     = "character"
     )
 )
-hf3_bgzColumns$svJunctions2Bgz           <- hf3_bgzColumns$svJunctions1Bgz
-hf3_bgzColumns$errorCorrectedPileupBgz   <- hf3_bgzColumns$allReadsPileupBgz
-hf3_bgzColumns$errorCorrectedVariantsBgz <- hf3_bgzColumns$allReadsVariantsBgz
+hf3_bgzColumns$svJunctions2Bgz <- hf3_bgzColumns$svJunctions1Bgz
+hf3_bgzColumns$fragmentsOnHaplotypeBgz <- hf3_bgzColumns$fragmentsOnReferenceBgz
 
 # column display definitions
 hf3_bgzColumns_display <- list(
@@ -387,6 +427,12 @@ hf3_getSampleNames <- Vectorize(function(sourceId, sampleBits_, as_string = TRUE
     if(as_string) sample_names <- paste0(sample_names, collapse = " ")
     sample_names
 })
+hf3_sample_bits <- function(sourceId){
+    if(is.null(hf3_sampleIndex[[sourceId]])) {
+        hf3_sampleIndex[[sourceId]] <<- fread(getSourceFilePath(sourceId, "samplesFile"))
+    }  
+    hf3_sampleIndex[[sourceId]]$sample_bit
+}
 
 # chrom to chromIndex conversion for bgz queries
 # simple cache, sessionCache not used

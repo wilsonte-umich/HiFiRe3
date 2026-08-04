@@ -1,12 +1,12 @@
-//! Split input name-sorted BAM file(s) into temporary per-chromosome BAM 
-//! files based on the chromosome of the first alignment in each read.
+//! Split input name-sorted BAM file(s) into temporary per-chromosome BAM files 
+//! based on the chromosome of the first alignment in each read.
 //! 
-//! Output only includes usable on-target reads, as defined by the absence 
-//! the UNMAPPED flag bit and READ_IS_OFF_TARGET and READ_FAILURE_FLAG tags.
+//! Output only includes usable on-target reads, as defined by the absence the 
+//! UNMAPPED flag bit and READ_IS_OFF_TARGET and READ_FAILURE_FLAG tags.
 //! 
 //! Along the way, collect de-duplicated on-target coverage statistics.
 //! 
-//! Support multiple BAM files for multi-sample variant calling.
+//! Support multiple input BAM files for multi-sample variant calling.
 
 // dependencies
 use std::error::Error;
@@ -14,7 +14,11 @@ use std::fs::File;
 use std::io::Write;
 use rustc_hash::FxHashMap;
 use rayon::prelude::*;
-use rust_htslib::bam::{Reader, Read, Writer, Record as BamRecord, Header, Format, record::Aux};
+use rust_htslib::bam::{
+    Reader, Read, Writer, 
+    Record as BamRecord, Header, 
+    Format, record::Aux
+};
 use rust_htslib::tpool::ThreadPool;
 use mdi::pub_key_constants;
 use mdi::workflow::{Workflow, Config, Counters};
@@ -48,7 +52,7 @@ pub_key_constants!(
 );
 const READ_FAILURE: &[u8] = READ_FAILURE_FLAG.as_bytes();
 const OFF_TARGET: &[u8]   = READ_IS_OFF_TARGET.as_bytes(); 
-const SB_TAG: &[u8] = SAMPLE_BIT.as_bytes();
+const SB_TAG: &[u8] = SAMPLE_BIT.as_bytes(); // set here
 const COUNTER_CAPACITY: usize = 100_000_000;
 
 // main function called by xxx_tools main()
