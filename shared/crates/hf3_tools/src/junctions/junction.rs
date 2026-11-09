@@ -291,18 +291,18 @@ pub struct FinalJunction {
     pub ref_pos1_2:      u32,
     pub strand_index0_2:     u8,
     pub offset:  i16,    // most frequent junction offset in a fuzzy-matched group
-    jxn_seq:     String, // most frequent junction bases among instances with the best junction offset
+    pub jxn_seq:     String, // most frequent junction bases among instances with the best junction offset
     /* ------------------------------------------- */
     // junction properties that derive deterministically from nodes
     pub jxn_type: u8,
     strands:      u8,
-    sv_size:      u32,
+    pub sv_size:      u32,
     /* ------------------------------------------- */
     // values maintained as lists of values per junction instance
     /* ------------------------------------------- */
     // values expanded and updated from read_data (ReadLevelMetadata); includes all instances, even duplicates
     pub qnames:        String, // comma-delimited of read QNAMEs that sequenced this junction; may have duplicates if a read had multiple identical junctions
-    insert_sizes:  String, // comma-delimited insert sizes of qnames
+    pub insert_sizes:  String, // comma-delimited insert sizes of qnames
     outer_node1s:  String, // comma-delimited outer node1 values of qnames
     outer_node2s:  String, // comma-delimited outer node2 values of qnames
     channels:      String, // comma-delimited ONT channel numbers of qnames; 0 if not applicable
@@ -672,4 +672,20 @@ impl FinalJunction {
          else if self.n_instances == 2 { "two instances" }
                                   else { ">=3 instances" }
     }
+
+    /// Get the median insert size
+    pub fn get_median_insert_size(&self) -> u32 {
+        let mut insert_sizes: Vec<_> = self.insert_sizes
+            .split(',')
+            .map(|s| s.trim().parse::<u32>().unwrap())
+            .collect();
+        insert_sizes.sort_unstable();
+        let n = insert_sizes.len();
+        if n % 2 == 0 {
+            ((insert_sizes[n / 2 - 1] as f64 + insert_sizes[n / 2] as f64) / 2.0) as u32
+        } else {
+            insert_sizes[n / 2]
+        }
+    }   
+
 }
