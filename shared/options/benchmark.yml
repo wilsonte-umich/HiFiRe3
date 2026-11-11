@@ -8,8 +8,15 @@ options:
         required: false
         default: 100
         description: "only report SVs of at least this length (INV have special handling)"
-    restriction-enzymes: 
+    min-n-observed:
         order: 2
+        short: null
+        type: integer
+        required: false
+        default: 3
+        description: "only report SVs with this many supporting reads"
+    restriction-enzymes: 
+        order: 3
         short: null
         type: string
         required: true

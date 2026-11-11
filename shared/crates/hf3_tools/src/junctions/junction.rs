@@ -335,13 +335,13 @@ pub struct FinalJunction {
     has_multi_instance_read: u8,  // integer bool; true if any QNAME had multiple instances of this junction
     has_duplex_read:         u8,  // integer bool; true if any read with this junction had duplex basecalling performed
     is_bidirectional:        u8,  // integer bool; true if junction instances were observed in both orientations
-    jxn_failure_flag:        u8,  // bitwise OR of all instance jxn_failure_flags
-    aln_failure_flag:        u8,  // bitwise OR of all instance aln_failure_flags
+    pub jxn_failure_flag:        u8,  // bitwise OR of all instance jxn_failure_flags
+    pub aln_failure_flag:        u8,  // bitwise OR of all instance aln_failure_flags
     pub any_was_chimeric:    u8,  // integer bool; true if any jxn_failure_flag had a chimeric bit set
-    any_was_not_chimeric:    u8,  // integer bool; true if any jxn_failure_flag did not have a chimeric bit set
-    min_stem_length:         u32, // best stem length over all instances; thus, whether any instance was a high-quality detection
+    pub any_was_not_chimeric:    u8,  // integer bool; true if any jxn_failure_flag did not have a chimeric bit set
+    pub min_stem_length:         u32, // best stem length over all instances; thus, whether any instance was a high-quality detection
     pub max_min_mapq:            u8,  // best min_mapq over all instances
-    min_max_divergence:      f32, // best max_divergence over all instances
+    pub min_max_divergence:      f32, // best max_divergence over all instances
     /* ------------------------------------------- */
     // additional junction properties that derive deterministically from nodes
     pub is_intergenomic: u8,     // integer bool; true if the junction connects different genomes of a composite reference
@@ -677,8 +677,18 @@ impl FinalJunction {
     pub fn get_median_insert_size(&self) -> u32 {
         let mut insert_sizes: Vec<_> = self.insert_sizes
             .split(',')
-            .map(|s| s.trim().parse::<u32>().unwrap())
+            .map(str::trim)
+            .filter(|&s| !s.is_empty())
+            .filter_map(|s| {
+                if let Ok(num) = s.parse::<i32>() {
+                    Some(num.unsigned_abs())
+                } else {
+                    eprintln!("bad insert size: {}", s);
+                    None
+                }
+            })
             .collect();
+        if insert_sizes.len() == 0 { return 0 }
         insert_sizes.sort_unstable();
         let n = insert_sizes.len();
         if n % 2 == 0 {
@@ -686,6 +696,19 @@ impl FinalJunction {
         } else {
             insert_sizes[n / 2]
         }
-    }   
+    }  
+
+    /// Convert strand indices to "+-", "-+", "++", "--".
+    pub fn get_strand_encoding(&self) -> String {
+        let strand1 = match self.strand_index0_1 {
+            0 => "+",
+            _ => "-", // thus, as would be used in paired end reads
+        };
+        let strand2 = match self.strand_index0_2 {
+            0 => "-",
+            _ => "+",
+        };
+        format!("{}{}", strand1, strand2)
+    } 
 
 }

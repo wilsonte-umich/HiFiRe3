@@ -14,7 +14,7 @@ options:
         type: string
         required: true
         default: null
-        description: "directory containing a truth-set VCF with INFO/FRAGSIZES" 
+        description: "directory containing truth-set VCFs with INFO/FRAGSIZES" 
     truthset-is-composite-genome:
         order: 3
         short: null

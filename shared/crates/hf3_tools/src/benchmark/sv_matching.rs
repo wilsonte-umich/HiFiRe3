@@ -2,11 +2,12 @@
 
 // imports
 // use std::error::Error;
+use std::cmp::Ordering;
 use std::str::from_utf8_unchecked;
 use serde::Serialize;
 use rust_htslib::bcf;
 use genomex::sam::junction::JunctionType;
-use genomex::genome::Chroms;
+use genomex::genome::{Chroms, TargetRegions};
 use crate::junctions::FinalJunction;
 use super::*;
 
@@ -41,19 +42,35 @@ pub fn simplify_chrom_name(
     }
 }
 
+/// Check whether an SV breakpoint is on target.
+pub fn sv_is_on_target(
+    chrom_1: &str,
+    pos1_1:  u32,
+    chrom_2: &str,
+    pos1_2:  u32,
+    targets: &TargetRegions
+) -> bool {
+    !targets.has_data || 
+    targets.get_pos_region(chrom_1, pos1_1).2 == INSIDE_REGION ||
+    targets.get_pos_region(chrom_2, pos1_2).2 == INSIDE_REGION
+}
+
 // -----------------------------------------------------------------------------
 // SV sources and types for HF3 vs. VCF comparison
 // -----------------------------------------------------------------------------
 /// Enum for tracking SV/junction sources.
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum SvSource {
+    #[serde(rename = "HF3")]
     HiFiRe3,
-    TruthSet,
+    #[serde(rename = "SNF")]
+    Sniffles,
+    #[serde(rename = "CSV")]
+    CuteSV,
 }
 
 /// Enum for normalizing SV/junction types.
-#[derive(Serialize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SvType {
     Del,
@@ -65,37 +82,36 @@ pub enum SvType {
     Unknown,
 }
 impl SvType {
-    pub fn from_vcf(sv: &bcf::Record) -> Self {
-        match sv.info(b"SVTYPE").string() {
-            Ok(Some(tag)) => match tag[0] {
-                b"DEL" => SvType::Del,
-                b"DUP" => SvType::Dup,
-                b"INV" => SvType::Inv,
-                b"INS" => SvType::Ins,
-                b"BND" => match sv.info(b"CHR2").string() {
-                    Ok(Some(chr2)) => unsafe { 
-                        let (chrom_1, _) = get_vcf_left_node(&sv)
-                            .expect("Failed chrom in SvType::from_vcf");
-                        let chrom_2 = from_utf8_unchecked(chr2[0]);
-                        if chrom_1 == chrom_2 {
-                            let alt  = get_vcf_alt(&sv).expect("Failed alt in SvType::from_vcf");
-                            match alt {
-                                b"<DEL>" => SvType::Del,
-                                b"<DUP>" => SvType::Dup,
-                                b"<INV>" => SvType::Inv,
-                                b"<INS>" => SvType::Ins,
-                                _ => SvType::Bnd,
-                            }
-                        } else {
-                            SvType::Trans
+    pub fn from_vcf(jxn: &bcf::Record) ->  (Self, Vec<u8>) {
+        let sv_type_vcf = get_vcf_sv_type_str(jxn);
+        let sv_type = match sv_type_vcf.as_str() {
+            "DEL" => SvType::Del,
+            "DUP" => SvType::Dup,
+            "INV" => SvType::Inv,
+            "INS" => SvType::Ins,
+            "BND" => match jxn.info(b"CHR2").string() {
+                Ok(Some(chr2)) => unsafe { 
+                    let (chrom_1, _) = get_vcf_left_node(&jxn)
+                        .expect("Failed chrom in SvType::from_vcf");
+                    let chrom_2 = from_utf8_unchecked(chr2[0]);
+                    if chrom_1 == chrom_2 {
+                        let alt  = get_vcf_alt(&jxn).expect("Failed alt in SvType::from_vcf");
+                        match alt {
+                            b"<DEL>" => SvType::Del,
+                            b"<DUP>" => SvType::Dup,
+                            b"<INV>" => SvType::Inv,
+                            b"<INS>" => SvType::Ins,
+                            _ => SvType::Bnd,
                         }
-                    },
-                    _ => SvType::Bnd,
+                    } else {
+                        SvType::Trans
+                    }
                 },
-                _ => SvType::Unknown
+                _ => SvType::Bnd,
             },
             _ => SvType::Unknown
-        }
+        };
+        (sv_type, sv_type_vcf.as_bytes().to_vec())
     }
     pub fn from_final_junction(item: &FinalJunction) -> Self {
         match item.jxn_type {
@@ -114,16 +130,90 @@ impl SvType {
 /// Table for aggregating SV/junction calls.
 #[derive(Serialize)]
 pub struct JunctionCall {
-    pub source:  SvSource,
     pub sv_type: SvType,
-    pub sv_size: u32,
-    pub n_observed: u16,
+
     pub chrom_1: String,
     pub pos1_1:  u32,
     pub chrom_2: String,
     pub pos1_2:  u32,
-    pub jxn_seq: String,
-    pub frag_size: i32,
+    pub strands: String,
+
+    pub source:  SvSource,
+
+    pub sv_size:     u32,
+    pub frag_size:   i32, // sign records whether it passed size filters
+    pub stem_length: u32,
+
+    pub offset:  i16,
+    pub ins_seq: String,
+
+    pub n_observed: u16,
+    pub mapq: u8,
+    pub divergence: f32,
+
+    pub jxn_fail: u8,
+    pub aln_fail: u8,
+    pub all_chimeric: u8,
+
+    pub mosaic: bool,
+    pub vaf: f32,
+    
     pub qnames: String,
 }
-    
+impl JunctionCall {
+    fn sort_key(
+        &self,
+    ) -> (&SvType, &str, u32, &str, u32, &str, &SvSource) {
+        (
+            &self.sv_type,
+            self.chrom_1.as_str(),
+            self.pos1_1,
+            self.chrom_2.as_str(),
+            self.pos1_2,
+            self.strands.as_str(),
+            &self.source,
+        )
+    }
+}
+impl PartialEq for JunctionCall {
+    fn eq(&self, other: &Self) -> bool {
+        self.sort_key() == other.sort_key()
+    }
+}
+impl Eq for JunctionCall {}
+impl PartialOrd for JunctionCall {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for JunctionCall {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.sort_key().cmp(&other.sort_key())
+    }
+}
+// is_excluded_1:  u8,
+// is_excluded_2:  u8,
+
+// -----------------------------------------------------------------------------
+//sorted QNAME lists
+// -----------------------------------------------------------------------------
+/// Assemble a sorted qnames concatenation from a comma-delimited String (HF3).
+pub fn get_sorted_qnames_str(qnames: &str) -> String {
+    let mut qnames: Vec<_> = qnames
+        .split(",")
+        .map(str::trim)
+        .filter(|&s| !s.is_empty())
+        .collect();
+    sort_and_concatenate_qnames(&mut qnames[1..]) // since formatted as `,xxx,...`
+}
+/// Assemble a sorted qnames concatenation from a Vec<Vec<u8>> (VCF).
+pub fn get_sorted_qnames_bytes(qnames: Vec<Vec<u8>>) -> String {
+    let mut qnames: Vec<_> = qnames.iter().map(|x|{
+        unsafe{ from_utf8_unchecked(x) }
+    }).collect();
+    sort_and_concatenate_qnames(&mut qnames)
+}
+fn sort_and_concatenate_qnames(qnames: &mut [&str]) -> String {
+    qnames.sort_unstable();
+    qnames.join(",")
+}

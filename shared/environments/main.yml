@@ -21,3 +21,4 @@ dependencies:
   # SV benchmarkging
     - python=3
     - sniffles=2.8
+    - cutesv=2.1

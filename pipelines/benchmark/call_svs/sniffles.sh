@@ -1,19 +1,33 @@
+# run Sniffles2 on library reads re-aligned using HiFiRe3 minimap2 parameters
+# unfortunately, Sniffles2 does not have an option for integer min-support
+
+export TRUTHSET_ALGORITHM=sniffles
+export TRUTHSET_VCF=${SNIFFLES_VCF}
 
 echo "calling SVs with Sniffles2"
+rm -f ${SNIFFLES_VCF}
 sniffles \
     --input ${BENCHMARK_BAM} \
     --vcf ${SNIFFLES_VCF} \
     --reference ${GENOME_FASTA} \
     --threads ${N_CPU} \
     --tmp-dir ${TMP_DIR_WRK_SMALL} \
+    --minsvlen ${MIN_SV_LEN} \
     --mapq ${MIN_SV_MAPQ} \
+    --max-del-seq-len 500 \
     --output-rnames \
     --allow-overwrite \
     --mosaic \
-    --mosaic-include-germline
+    --mosaic-include-germline 2>&1 | grep -v "sniffles.worker"
 checkPipe
-
 echo "done"
+
+echo
+echo "determining sizes of RE fragments that contain called SVs"
+${HF3_TOOLS_BIN} digest_sv_alleles > ${SNIFFLES_FRAGSIZES_VCF}
+checkPipe
+echo "done"
+
 
 # $ sniffles --help
 # usage: sniffles --input SORTED_INPUT.bam [--vcf OUTPUT.vcf] [--snf MERGEABLE_OUTPUT.snf] [--threads 4] [--mosaic]

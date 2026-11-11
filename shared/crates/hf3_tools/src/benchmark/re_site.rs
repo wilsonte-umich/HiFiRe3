@@ -11,8 +11,8 @@ pub struct ReSite {
 }
 impl ReSite {
     pub fn from_re_name(re_name: &str, site: Option<&str>) -> Self {
-        let (size_tag, size_tag_str) = get_re_tag_name(re_name, "SIZES");
-        let (dist_tag, dist_tag_str) = get_re_tag_name(re_name, "DISTS");
+        let (size_tag, size_tag_str) = get_re_tag_name(re_name, "SIZE");
+        let (dist_tag, dist_tag_str) = get_re_tag_name(re_name, "DIST");
         ReSite {
             name: re_name.to_string(),
             site: site.unwrap_or("NA").to_string(),

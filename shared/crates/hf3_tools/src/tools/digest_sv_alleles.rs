@@ -1,21 +1,24 @@
-//! Annotate SVs in a Sniffles2-compatible VCF with the size of the RE fragments 
-//! that contain the junction for a requested series of REs, as well as the 
+//! Annotate SVs in a Sniffles2 or CuteSV VCF with the size of the RE fragments 
+//! that contain SV junctions for a requested series of REs, as well as the 
 //! distance from the junction to the nearest RE site. Steps are to:
-//!     - extract SV lines from the VCF
-//!     - reject SVs that are too small or too close to chrom ends
-//!     - collect all unique QNAMEs that supported any passing SV
+//!     - scan SV records from the VCF
+//!     - reject Sniffles2 symbolic INV records (INV junctions are in BND records)
+//!     - reject SVs that are too close to chrom ends
+//!     - reject SVs that are too small
+//!     - collect all unique QNAMEs that supported any passing junction
 //!     - collect SEQ for those reads from the BAM file that generated the VCF
-//!     - for each SV, assemble its reference sequence, i.e., scaffold, from VCF data
-//!     - use mini_consensus to assemble a read consensus for the SV allele, i.e., haplotype
-//!     - locate the junction(s) in the consensus, noting that INV SVs have two junctions
-//!     - in silico digest the consensus with each enzyme and report for one or two SV junctions:
-//!         - any de novo base insertions in INFO/SVINSSEQS
-//!         - fragment sizes in INFO/<RE_NAME>SIZES
-//!         - nearest RE site distances in INFO/<RE_NAME>DISTS
+//!     - for each junction, assemble its reference sequence, i.e., scaffold, from VCF data
+//!     - use mini_consensus to assemble a read consensus bounding the junction, i.e., a haplotype
+//!     - locate the junction in the consensus
+//!     - in silico digest the consensus with each enzyme and report:
+//!         - any de novo base insertions in INFO/SVINSSEQ
+//!         - fragment sizes in INFO/<RE_NAME>SIZE
+//!         - nearest RE site distances in INFO/<RE_NAME>DIST
 
 // imports
 use std::error::Error;
 use std::str::from_utf8_unchecked;
+use crossbeam::channel::{bounded, Receiver, Sender};
 use rustc_hash::FxHashMap;
 use rust_htslib::bcf;
 use rust_htslib::bcf::Read as VcfRead;
@@ -35,20 +38,24 @@ pub_key_constants!(
     N_CPU
     GENOME_FASTA
     BENCHMARK_BAM
-    SNIFFLES_VCF
+    TRUTHSET_VCF
+    TRUTHSET_ALGORITHM
     RESTRICTION_ENZYMES
     MIN_SV_LEN
     // counter keys
-    N_INPUT_SVS
-    N_OUTPUT_SVS
+    N_INPUT_SV_RECORDS
+    N_OUTPUT_JXN_RECORDS
     N_UNIQUE_QNAMES
 );
+const CHANNEL_CAPACITY: usize = 100;
+
 /// Tool for processing VCF SV calls.
 struct DigestionTool {
+    is_sniffles: bool,
     n_cpu: usize,
     min_sv_len: u32,
-    svs:  Vec<bcf::Record>,
-    scfs: Vec<Vec<Vec<u8>>>,
+    jxns: Vec<bcf::Record>,
+    scfs: Vec<Vec<u8>>,
     seqs: FxHashMap<Vec<u8>, Vec<u8>>,
     res:  Vec<ReSite>,
 }
@@ -59,16 +66,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // get config from environment variables
     let mut cfg = Config::new();
     cfg.set_string_env(&[
-        GENOME_FASTA, BENCHMARK_BAM, SNIFFLES_VCF, 
+        GENOME_FASTA, BENCHMARK_BAM, 
+        TRUTHSET_VCF, TRUTHSET_ALGORITHM,
         RESTRICTION_ENZYMES
     ]);
     cfg.set_usize_env( &[N_CPU, MIN_SV_LEN]);
 
     // initialize counters
     let ctrs = Counters::new(TOOL, &[
-        (N_INPUT_SVS,     "number of input SV lines in VCF"),
-        (N_OUTPUT_SVS,    "number of output SV lines after size filtering"),
-        (N_UNIQUE_QNAMES, "number of unique reads used to assemble SV consensuses"),
+        (N_INPUT_SV_RECORDS,   "number of input SV records in VCF"),
+        (N_OUTPUT_JXN_RECORDS, "number of output junction records after size and other limited filtering"),
+        (N_UNIQUE_QNAMES,      "number of unique reads used to assemble junction allele consensuses"),
     ]);
 
     // initialize the tool
@@ -77,9 +85,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
     // create the digestion tool
     let mut tool = DigestionTool {
+        is_sniffles: w.cfg.get_string(TRUTHSET_ALGORITHM) == "sniffles",
         n_cpu:      *w.cfg.get_usize(N_CPU),
         min_sv_len: *w.cfg.get_usize(MIN_SV_LEN) as u32,
-        svs:  Vec::with_capacity(10_000),
+        jxns: Vec::with_capacity(10_000),
         scfs: Vec::with_capacity(10_000),
         seqs: FxHashMap::default(),
         res: w.cfg.get_string(RESTRICTION_ENZYMES).split(',').map(|re: &str|{
@@ -89,14 +98,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     };
     
     // execute the workflow
-    let mut header = scan_vcf(&mut w, &mut tool)?;
+    let vcf_out = scan_vcf(&mut w, &mut tool)?;
     collect_read_seqs(&mut w, &mut tool)?;
-    let mut vcf = get_bcf_writer(&tool, &mut header)?;
-    resolve_consensuses(&mut w, &mut tool, &mut vcf)?;
+    resolve_consensuses(&mut w, &mut tool, vcf_out)?;
 
     // print counts
     w.ctrs.print_grouped(&[
-        &[N_INPUT_SVS, N_OUTPUT_SVS, N_UNIQUE_QNAMES],
+        &[N_INPUT_SV_RECORDS, N_OUTPUT_JXN_RECORDS, N_UNIQUE_QNAMES],
     ]);
     Ok(())
 }
@@ -105,171 +113,185 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 // initial VCF scan
 // -----------------------------------------------------------------------------
 /// Scan the input VCF file to collect SV calls and unique QNAMEs.
-fn scan_vcf (w: &mut Workflow, tool: &mut DigestionTool) -> Result<bcf::Header, Box<dyn Error>> {
+fn scan_vcf (w: &mut Workflow, tool: &mut DigestionTool) -> Result<bcf::Writer, Box<dyn Error>> {
     w.log.print("scanning input VCF");
 
     // initialize all readers
-    let sniffles_vcf = w.cfg.get_string(SNIFFLES_VCF).to_string();
-    let mut vcf = bcf::Reader::from_path(sniffles_vcf)?;
+    let truthset_vcf = w.cfg.get_string(TRUTHSET_VCF).to_string();
+    let mut vcf = bcf::Reader::from_path(truthset_vcf)?;
     let header = vcf.header().to_owned();
     let genome_fasta = w.cfg.get_string(GENOME_FASTA).to_string();
     let faidx = faidx::Reader::from_path(genome_fasta)?;
+    let mut vcf_out = get_bcf_writer(&tool, bcf::Header::from_template(&header))?;
 
     // process SV records one at a time
     // ignore any non-SV variants, although they are not expected from benchmark VCF files
     for result in vcf.records() {
-        let sv = result?;
-        let Some(sv_type) = get_vcf_sv_type(&sv)? else { continue };
-        w.ctrs.increment(N_INPUT_SVS);
+        let mut jxn = result?;
+        let Some(sv_type) = get_vcf_sv_type(&jxn)? else { continue };
+        let sv_type_str = unsafe{ from_utf8_unchecked(&sv_type) };
+        w.ctrs.increment(N_INPUT_SV_RECORDS);
 
-        // skip SVs that are too small
-        if sv_type != b"BND" {
-            let Some(sv_len) = get_vcf_sv_len(&sv)? else { continue };
-            let min_sv_len: u32 = if sv_type == b"INV" {
-                SCAFFOLD_FLANK_LEN as u32 // ensure that scaffolds don't cross both INV junctions
-            } else {
-                tool.min_sv_len
-            };
-            if sv_len < min_sv_len { continue }     
+        // short-circuit Sniffles2 symbolic inversions, they aren't unique junctions 
+        // (see notes in build_scaffold())
+        if tool.is_sniffles && sv_type_str == "INV" { continue }
+        let alt = get_vcf_alt(&jxn)?;
+
+        // collect metadata on the left side of the SV; check position on chrom
+        let (chrom_1, pos1_1) = get_vcf_left_node(&jxn)?;
+        let chrom_len_1 = faidx.fetch_seq_len(&chrom_1) as u32;
+        if pos1_1 <= SCAFFOLD_FLANK_LEN || pos1_1 + SCAFFOLD_FLANK_LEN >= chrom_len_1 { 
+            continue
         }
 
-        // collect information required to collect SEQs and build consensus for site analysis
-        let Some(qnames) = get_vcf_qnames(&sv)? else { continue };
-        if let Some(scfs) = build_scaffolds(&faidx, &sv, &sv_type)? {
-            tool.svs.push(sv);   
-            tool.scfs.push(scfs); 
-            let downsampled_qnames = &qnames[0..qnames.len().min(MAX_CONSENSUS_SEQS)];
-            for qname in downsampled_qnames {
-                tool.seqs.insert(qname.clone(), Vec::new());
-            }       
+        // collect metadata on the right side of the SV; check position on chrom
+        let (chrom_2, pos1_2) = get_vcf_right_node(&jxn, &chrom_1, alt, &sv_type)?;
+        let chrom_len_2 = faidx.fetch_seq_len(&chrom_2) as u32;
+        if pos1_2 <= SCAFFOLD_FLANK_LEN || pos1_2 + SCAFFOLD_FLANK_LEN >= chrom_len_2 { 
+            continue
+        }
+
+        // skip SVs that are too small
+        let sv_len = if chrom_1 == chrom_2 {
+            (pos1_2 as i32 - pos1_1 as i32).unsigned_abs()
+        } else {
+            999_999_999
         };
+        let min_sv_len: u32 = match sv_type_str {
+            "INV" | "BND" => SCAFFOLD_FLANK_LEN as u32, // ensure that scaffolds don't cross both INV junctions
+            _ => tool.min_sv_len
+        };
+        if sv_len < min_sv_len { continue } 
+
+        // collect information required to collect SEQs and build consensus for site analysis
+        let Some(qnames) = get_vcf_qnames(&jxn)? else { continue }; 
+        let downsampled_qnames = &qnames[0..qnames.len().min(MAX_CONSENSUS_SEQS)];
+        for qname in downsampled_qnames {
+            tool.seqs.insert(qname.clone(), Vec::new());
+        } 
+
+        // build the scaffold sequence for later use
+        //  - throughout, truthset VCF does not provide information on bases inserted 
+        //    at junctions, but these bases should resolve in the consensus
+        //  - Sniffles2 INFO/STRAND is NOT information about the junction path, it  
+        //    summarizes the orientation(s) of supporting reads    
+        let mut scf: Vec<u8>;   
+        let scf2: Vec<u8>;
+        match sv_type_str {
+            "DEL" => {
+                // POS: 2707, REF: TCTgca...ccg, ALT: T, SVLEN=-259; END=2966; (2707 + 259 = 2966)
+                // DEL is a single junction that is a fully resolved SV (sub)path
+                scf  = get_ref_seq(&faidx, &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
+                scf2 = get_ref_seq(&faidx, &chrom_2, pos1_2 + 1, pos1_2 + SCAFFOLD_FLANK_LEN, false)?;  
+            },
+            "INS" => {
+                // POS: 2566, REF: c, ALT: cCCTCACCCTCACCCTCACCCTCACCCTGACCCTGACCCTGACCCTCACCCTGACCCTCACCCTCACCCTCA, SVLEN=71; END=2566;
+                // INS is a single junction that is a fully resolved SV (sub)path (but DEL+INS at same junction is ambiguous)
+                scf  = get_ref_seq(&faidx, &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
+                scf2 = get_ref_seq(&faidx, &chrom_2, pos1_2 + 1, pos1_2 + SCAFFOLD_FLANK_LEN, false)?;
+                scf.extend(alt[1..].to_ascii_uppercase());
+            },
+            "DUP" => {
+                // POS: 3009031, REF: G, ALT: <DUP>, SVLEN=1394; END=3010425; (3009031 + 1394 = 3010425)
+                // DUP is a single junction that is a fully resolved SV (sub)path
+                scf  = get_ref_seq(&faidx, &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, false)?;
+                scf2 = get_ref_seq(&faidx, &chrom_1, pos1_1 + 1, pos1_1 + SCAFFOLD_FLANK_LEN, false)?;
+            },
+            "INV" => {
+                // INV encoding
+                //  Sniffles2 
+                //    A symbolic representation of the overall inversion, ignored. 
+                //      chr10  91443587  Sniffles2.INV.B69S9  N  <INV>              SVTYPE=INV;SVLEN=2442;END=91446029;SUPPORT=45;
+                //    Two matching BND records for the actual junctions; these are what we care about.
+                //      chr10  91443587  Sniffles2.BND.CF3S9  N  N]chr10:91446029]  SVTYPE=BND;SUPPORT=25;
+                //      chr10  91443588  Sniffles2.BND.CF6S9  N  [chr10:91446031[N  SVTYPE=BND;SUPPORT=22;
+                //    A mysterious entry that seems to encode a direct continuity from base 91443587 to the next, should be ignored.
+                //      chr10  91443587  Sniffles2.BND.CF2S9  N  N[chr10:91443588[  SVTYPE=BND;SUPPORT=20;
+                // CuteSV
+                //    Two INV records encoding the paired ++ and -- junctions, used as is.
+                //      chr10  91443587  cuteSV.INV.41        c  <INV>              SVTYPE=INV;SVLEN=2442;END=91446029;RE=47;STRAND=++;
+                //      chr10  91443588  cuteSV.INV.42        c  <INV>              SVTYPE=INV;SVLEN=2442;END=91446030;RE=46;STRAND=--;
+                // in all, (POS + LEN = END)
+                let strand = get_vcf_strand_bytes(&jxn, &SvSource::CuteSV)?;
+                let strand_str = unsafe{ from_utf8_unchecked(&strand) };
+                match strand_str {
+                    "++" => {
+                        scf  = get_ref_seq(&faidx, &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
+                        scf2 = get_ref_seq(&faidx, &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, true)?;
+                    },
+                    _ => {
+                        scf  = get_ref_seq(&faidx, &chrom_1, pos1_1 + 1, pos1_1 + SCAFFOLD_FLANK_LEN, true)?;
+                        scf2 = get_ref_seq(&faidx, &chrom_2, pos1_2 + 1, pos1_2 + SCAFFOLD_FLANK_LEN, false)?;
+                    }
+                }
+            },
+            "BND" => {
+                // CHR1: chr5, POS1: 16396441, REF: C, ALT: [chr1:145169227[C, CHR2=chr1; (no SVLEN or END)
+                // orientation encoded in ALT
+                // BND is a single junction from either a fully or partially resolved SV (sub)path
+                let bnd_type = BndType::from_alt(alt)?;
+                match bnd_type {
+                    BndType::AfterRight => {
+                        scf  = get_ref_seq(&faidx,  &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
+                        scf2 = get_ref_seq(&faidx, &chrom_2, pos1_2, pos1_2 + SCAFFOLD_FLANK_LEN - 1, false)?;
+                    },
+                    BndType::AfterRcLeft => {
+                        scf  = get_ref_seq(&faidx,  &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
+                        scf2 = get_ref_seq(&faidx, &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, true)?;
+                    },
+                    BndType::BeforeLeft => {
+                        scf  = get_ref_seq(&faidx,  &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, false)?;
+                        scf2 = get_ref_seq(&faidx, &chrom_1, pos1_1, pos1_1 + SCAFFOLD_FLANK_LEN - 1, false)?;
+                    },
+                    BndType::BeforeRcRight => {
+                        scf  = get_ref_seq(&faidx,  &chrom_2, pos1_2, pos1_2 + SCAFFOLD_FLANK_LEN - 1, true)?;
+                        scf2 = get_ref_seq(&faidx, &chrom_1, pos1_1, pos1_1 + SCAFFOLD_FLANK_LEN - 1, false)?;
+                    },
+                }
+            },
+            _ => panic!("Failed to match sv_type {}", sv_type_str)
+        }
+        scf.extend(scf2);
+        tool.scfs.push(scf);
+
+        // prepare jxn record for new tags in parallel thread following SEQ recovery
+        vcf_out.translate(&mut jxn);
+        tool.jxns.push(jxn);      
     };
 
     // return the input header for modifcation by the VCF writer
-    w.ctrs.add_to(N_OUTPUT_SVS, tool.svs.len());
+    w.ctrs.add_to(N_OUTPUT_JXN_RECORDS, tool.jxns.len());
     w.ctrs.add_to(N_UNIQUE_QNAMES, tool.seqs.len());
-    Ok(bcf::Header::from_template(&header))
+    Ok(vcf_out)
 }
 
-/// Build the reference scaffold sequence(s) for an SV's junction(s).
-fn build_scaffolds(
-    // header:  &bcf::header::HeaderView,
-    faidx:   &faidx::Reader, 
-    sv:      &bcf::Record,
-    sv_type: &[u8],
-) -> Result<Option<Vec<Vec<u8>>>, Box<dyn Error>> {
-    let alt  = get_vcf_alt(&sv)?;
-
-    // collect metadata on the left side of the SV
-    let (chrom_1, pos1_1) = get_vcf_left_node(&sv)?;
-    let chrom_len_1 = faidx.fetch_seq_len(&chrom_1) as usize;
-    if pos1_1 <= SCAFFOLD_FLANK_LEN || pos1_1 + SCAFFOLD_FLANK_LEN >= chrom_len_1 { 
-        return Ok(None) 
+/// Establish a bcf::Writer updates to the required new tags:
+fn get_bcf_writer(tool: &DigestionTool, mut header: bcf::Header) -> Result<bcf::Writer, Box<dyn Error>>{
+    for re in &tool.res {
+        let record = format!("##INFO=<ID={},Number=1,Type=String,Description=\"de novo base insertion at junction\">", SVINSSEQ);
+        header.push_record(record.as_bytes());  
+        let record = format!("##INFO=<ID={},Number=1,Type=Integer,Description=\"{} fragment size\">", re.size_tag_str, re.name);
+        header.push_record(record.as_bytes());  
+        let record = format!("##INFO=<ID={},Number=1,Type=Integer,Description=\"{} nearest site distance\">", re.dist_tag_str, re.name);
+        header.push_record(record.as_bytes());  
     }
-
-    // collect metadata on the right side of the SV
-    let (chrom_2, pos1_2) = get_vcf_right_node(&sv, &alt, &chrom_1)?;
-    let chrom_len_2 = faidx.fetch_seq_len(&chrom_2) as usize;
-    if pos1_2 <= SCAFFOLD_FLANK_LEN || pos1_2 + SCAFFOLD_FLANK_LEN >= chrom_len_2 { 
-        return Ok(None) 
-    }
-
-    // parse the scaffold sequences for later use
-    //  - throughout, Sniffles2 VCF does not provide information on bases inserted 
-    //    at junctions, but these bases should resolve in the consensus
-    //  - INFO/STRAND is NOT information about the junction path, it summarizes 
-    //    the orientation(s) of supporting reads    
-    let mut scfs: Vec<Vec<u8>> = Vec::new();
-    match sv_type {
-        b"DEL" => {
-            // POS: 2707, REF: TCTgca...ccg, ALT: T, SVLEN=-259; END=2966; (2707 + 259 = 2966)
-            // DEL is a single junction that is a fully resolved SV (sub)path
-            let mut scf_left = get_ref_seq(faidx, &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
-            let scf_right = get_ref_seq(faidx, &chrom_2, pos1_2 + 1, pos1_2 + SCAFFOLD_FLANK_LEN, false)?;
-            scf_left.extend(scf_right);
-            scfs.push(scf_left);
-        },
-        b"INS" => {
-            // POS: 2566, REF: c, ALT: cCCTCACCCTCACCCTCACCCTCACCCTGACCCTGACCCTGACCCTCACCCTGACCCTCACCCTCACCCTCA, SVLEN=71; END=2566;
-            // INS is a single junction that is a fully resolved SV (sub)path (but DEL+INS at same junction is ambiguous)
-            let mut scf_left = get_ref_seq(faidx, &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
-            let scf_ins = alt[1..].to_ascii_uppercase();
-            let scf_right = get_ref_seq(faidx, &chrom_2, pos1_2 + 1, pos1_2 + SCAFFOLD_FLANK_LEN, false)?;
-            scf_left.extend(scf_ins);
-            scf_left.extend(scf_right);
-            scfs.push(scf_left);
-        },
-        b"DUP" => {
-            // POS: 3009031, REF: G, ALT: <DUP>, SVLEN=1394; END=3010425; (3009031 + 1394 = 3010425)
-            // DUP is a single junction that is a fully resolved SV (sub)path
-            let mut scf_left = get_ref_seq(faidx, &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, false)?;
-            let scf_right = get_ref_seq(faidx, &chrom_1, pos1_1 + 1, pos1_1 + SCAFFOLD_FLANK_LEN, false)?;
-            scf_left.extend(scf_right);
-            scfs.push(scf_left);
-        },
-        b"INV" => {
-            // POS: 40653961, REF: c, ALT: <INV>, SVLEN=434; END=40654395; (40653961 + 434 = 40654395)
-            // INV is TWO junctions from a fully resolved inversion segment 
-
-            // left junction
-            let mut scf_left = get_ref_seq(faidx, &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
-            let scf_right = get_ref_seq(faidx, &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, true)?;
-            scf_left.extend(scf_right);
-            scfs.push(scf_left);
-
-            // right junction
-            let mut scf_left = get_ref_seq(faidx, &chrom_1, pos1_1 + 1, pos1_1 + SCAFFOLD_FLANK_LEN, true)?;
-            let scf_right = get_ref_seq(faidx, &chrom_2, pos1_2 + 1, pos1_2 + SCAFFOLD_FLANK_LEN, false)?;
-            scf_left.extend(scf_right);
-            scfs.push(scf_left);
-        },
-        b"BND" => {
-            // CHR1: chr5, POS1: 16396441, REF: C, ALT: [chr1:145169227[C, CHR2=chr1; (no SVLEN or END)
-            // orientation encoded in ALT
-            // BND is a single junction from either a fully or partially resolved SV (sub)path
-
-            // REF  ALT   Meaning
-            // s    t[p[  piece extending to the right of p is joined after t
-            // s    t]p]  reverse comp piece extending left of p is joined after t    *****
-            // s    ]p]t  piece extending to the left of p is joined before t
-            // s    [p[t  reverse comp piece extending right of p is joined before t  *****
-
-            // I  do not know why mostly the ***** orientation are found in Sniffles2 output
-            // found exactly one exception: chr10   t       ]chr10:26653933]t       chr10
-
-            let alt_end0 = alt.len() - 1;
-            let mut scf_left: Vec<u8>;
-            let scf_right: Vec<u8>;
-            if alt[alt_end0] == b'[' {
-                scf_left = get_ref_seq(faidx,  &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
-                scf_right = get_ref_seq(faidx, &chrom_2, pos1_2, pos1_2 + SCAFFOLD_FLANK_LEN - 1, false)?;
-            } else if alt[alt_end0] == b']' {
-                scf_left = get_ref_seq(faidx,  &chrom_1, pos1_1 - SCAFFOLD_FLANK_LEN + 1, pos1_1, false)?;
-                scf_right = get_ref_seq(faidx, &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, true)?;
-            } else if alt[0] == b']' {
-                scf_left = get_ref_seq(faidx,  &chrom_2, pos1_2 - SCAFFOLD_FLANK_LEN + 1, pos1_2, false)?;
-                scf_right = get_ref_seq(faidx, &chrom_1, pos1_1, pos1_1 + SCAFFOLD_FLANK_LEN - 1, false)?;
-            } else {
-                scf_left = get_ref_seq(faidx,  &chrom_2, pos1_2, pos1_2 + SCAFFOLD_FLANK_LEN - 1, true)?;
-                scf_right = get_ref_seq(faidx, &chrom_1, pos1_1, pos1_1 + SCAFFOLD_FLANK_LEN - 1, false)?;
-            }
-            scf_left.extend(scf_right); 
-            scfs.push(scf_left);
-        },
-        _ => {}
-    }
-    Ok(Some(scfs))
+    let vcf = bcf::Writer::from_stdout(
+        &header, 
+        false, // compress output with BGZF
+        bcf::Format::Vcf
+    )?;
+    Ok(vcf)
 }
 
 /// Fetch a reference sequence given chrom, 1-based start, and 1-based end.
 fn get_ref_seq(
     faidx:  &faidx::Reader, 
     chrom:  &str, 
-    start1: usize, 
-    end1:   usize,
+    start1: u32, 
+    end1:   u32,
     rc:     bool,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let seq = faidx.fetch_seq(chrom, start1 - 1, end1)?;
+    let seq = faidx.fetch_seq(chrom, (start1 - 1) as usize, end1 as usize)?;
     let mut seq = seq.to_ascii_uppercase();
     if rc { 
         seq = seq.iter().rev().map(|&b| match b {
@@ -312,113 +334,144 @@ fn collect_read_seqs(w: &mut Workflow, tool: &mut DigestionTool) -> Result<(), B
 // -----------------------------------------------------------------------------
 // site finding in read consensuses
 // -----------------------------------------------------------------------------
-/// Establish a bcf::Writer updates to the required new tags:
-fn get_bcf_writer(tool: &DigestionTool, header: &mut bcf::Header) -> Result<bcf::Writer, Box<dyn Error>>{
-    for re in &tool.res {
-        let record = format!("##INFO=<ID={},Number=.,Type=String,Description=\"de novo base insertions at junctions\">", SVINSSEQS);
-        header.push_record(record.as_bytes());  
-        let record = format!("##INFO=<ID={},Number=.,Type=String,Description=\"{} fragment sizes\">", re.size_tag_str, re.name);
-        header.push_record(record.as_bytes());  
-        let record = format!("##INFO=<ID={},Number=.,Type=String,Description=\"{} nearest site distances\">", re.dist_tag_str, re.name);
-        header.push_record(record.as_bytes());  
-    }
-    let vcf = bcf::Writer::from_stdout(
-        header, 
-        false, // compress output with BGZF
-        bcf::Format::Vcf
-    )?;
-    Ok(vcf)
-}
-
 /// Resolve consensus sequences of SV reads on their scaffolds and perform RE
 /// site finding.
-fn resolve_consensuses(w: &mut Workflow, tool: &mut DigestionTool, vcf: &mut bcf::Writer) -> Result<(), Box<dyn Error>>{
+fn resolve_consensuses(
+    w: &mut Workflow,
+    tool: &DigestionTool,
+    mut vcf_out: bcf::Writer,
+) -> Result<(), Box<dyn Error>> {
     w.log.print("resolving consensuses and performing RE site analysis");
+
+    // create channels for parallel processing
+    let (tx_jxn_data, rx_jxn_data) =    
+        bounded::<(bcf::Record, usize, &DigestionTool)>(CHANNEL_CAPACITY);
+    let (tx_jxn_mod, rx_jxn_mod) =
+        bounded::<bcf::Record>(CHANNEL_CAPACITY);
+    let n_worker_threads = (*w.cfg.get_usize(N_CPU))
+        .saturating_sub(1)
+        .max(1);
+
+    // spawn worker threads
+    crossbeam::scope(|scope| -> Result<(), Box<dyn Error>> {
+        
+        // Workers consume junctions and return modified records.
+        for worker_i0 in 0..n_worker_threads {
+            let rx_jxn_data = rx_jxn_data.clone();
+            let tx_jxn_mod = tx_jxn_mod.clone();
+            scope.spawn(move |_| {
+                process_jxn_tags(worker_i0, rx_jxn_data, tx_jxn_mod)
+                    .expect("Junction processing failed");
+            });
+        }
+        drop(tx_jxn_mod);
+        drop(rx_jxn_data);
+
+        // Produce inputs concurrently with output collection. Clone each
+        // record so tool.jxns remains available to the processing code.
+        scope.spawn(move |_| {
+            for (jxn_i0, jxn) in tool.jxns.iter().enumerate() {
+                tx_jxn_data
+                    .send((jxn.clone(), jxn_i0, tool))
+                    .expect("Junction workers disconnected");
+            }
+            drop(tx_jxn_data);
+        });
+
+        // Write results on this thread. If writing fails, keep draining the
+        // channel so workers cannot deadlock on a full output channel.
+        for jxn in rx_jxn_mod.iter() {
+            vcf_out.write(&jxn)?
+        }
+        Ok(())
+    }).expect("Crossbeam scope panicked")
+}
+
+/// Process site tags from a single junction in parallel. Modify the owned 
+/// record and send it back with new tags added.
+fn process_jxn_tags(
+    worker_i0: usize,
+    rx_jxn_data: Receiver<(bcf::Record, usize, &DigestionTool)>,
+    tx_jxn_mod:  Sender<bcf::Record>,
+) -> Result<(), Box<dyn Error>> {
+
+    // one consensus resolver per thread
     let (mut resolver, mut poa_pool) = Resolver::with_capacity(
         ResolverConfig::default(),
         100, 
-        SCAFFOLD_FLANK_LEN * 2 + 1000,
+        (SCAFFOLD_FLANK_LEN * 2 + 1000) as usize,
     );
 
-    // process one SV line at a time
-    for (sv, scfs) in tool.svs.iter_mut().zip(tool.scfs.iter()) {
+    // process one kept junction at a time
+    for (mut jxn, jxn_i0, tool) in rx_jxn_data.iter() {
+        let scf = &tool.scfs[jxn_i0];
 
         // initialize the SV record for site analysis
-        vcf.translate(sv);
-        let Some(qnames) = get_vcf_qnames(sv)? else { continue };
+        let Some(qnames) = get_vcf_qnames(&jxn)? else { continue };
         let downsampled_qnames = &qnames[0..qnames.len().min(MAX_CONSENSUS_SEQS)];
-        let mut ins_seqs = vec!["?".to_string(); scfs.len()];
-        let mut site_metadata: FxHashMap<Vec<u8>, Vec<i32>> = FxHashMap::default();
 
-        // get the fragment sizes for each RE for each junction in the SV line (are two for INV SVs)
-        for (scf_i0, scf) in scfs.iter().enumerate() {
+        // build the SV allele haplotype consensus sequence
+        let seqs: Vec<_> = downsampled_qnames.iter().map(|qname|{
+            tool.seqs.get(qname).unwrap().to_vec()
+        }).collect();
+        resolver.set_scaffold_with_aligner(scf);
+        resolver.par_set_seqs(seqs, |_, _| true);
+        // for qname in downsampled_qnames {
+        //     let seq = tool.seqs.get(qname).unwrap();
+        //     /let _ = resolver.add_seq(seq, |_aln| true);
+        // }
+        let haplotype = resolver.get_consensus(&mut poa_pool);
+        let haplotype_str = unsafe{ from_utf8_unchecked(&haplotype) };
 
-            // build the SV allele haplotype consensus sequence
-            resolver.set_scaffold_with_aligner(scf);
-            for qname in downsampled_qnames {
-                let seq = tool.seqs.get(qname).unwrap();
-                let _ = resolver.add_seq(seq, |_aln| true);
-            }
-            let haplotype = resolver.get_consensus(&mut poa_pool);
-            let haplotype_str = unsafe{ from_utf8_unchecked(&haplotype) };
-
-            // locate the junction in the consensus and characterize de novo base insertions
-            let minimap2 = Minimap2::builder()
-                .map_hifi()
-                .with_cigar() // required if CS tag is desired
-                .with_seq(scf)
-                .expect("Failed to build minimap2 index");
-            let hap_on_scf = minimap2.map(
-                &haplotype, true, false, 
-                None, None, None
-            )?;
-            let mut hap_on_scf_map = vec![None::<usize>; scf.len()];
-            for mapping in &hap_on_scf{
-                if !mapping.is_primary { break }
-                process_cs_tag(&mut hap_on_scf_map, mapping);
-            }
-            let mut jxn_pos0 = None::<usize>;
-            if let (
-                Some(left_bkpt0), 
-                Some(right_bkpt0)
-            ) = (
-                hap_on_scf_map[..SCAFFOLD_FLANK_LEN - 1].iter().rev().find_map(|&x| x),
-                hap_on_scf_map[scf.len() - SCAFFOLD_FLANK_LEN..].iter().find_map(|&x| x)
-            ) {
-                jxn_pos0 = Some(left_bkpt0 + (right_bkpt0 - left_bkpt0) / 2);
-                ins_seqs[scf_i0] = if right_bkpt0 - left_bkpt0 > 1 {
-                    unsafe{ from_utf8_unchecked(&haplotype[left_bkpt0 + 1..right_bkpt0]).to_string() }
-                } else {
-                    "-".to_string()
-                }
-            }
-
-            // get fragment metadata for each RE
-            for re in &tool.res {
-                let (frag_size, min_site_dist) = if let Some(jxn_pos0) = jxn_pos0 {
-                    get_site_data(haplotype_str, &re.site, jxn_pos0)
-                } else {
-                    (-1, -1)
-                };
-                site_metadata.entry(re.size_tag.clone())
-                    .or_insert_with(|| Vec::with_capacity(2))
-                    .push(frag_size);
-                site_metadata.entry(re.dist_tag.clone())
-                    .or_insert_with(|| Vec::with_capacity(2))
-                    .push(min_site_dist);
+        // locate the junction in the consensus and characterize de novo base insertions
+        let minimap2 = Minimap2::builder()
+            .map_hifi()
+            .with_cigar() // required if CS tag is desired
+            .with_seq(scf)
+            .expect("Failed to build minimap2 hap_on_scf index");
+        let hap_on_scf = minimap2.map(
+            &haplotype, true, false, 
+            None, None, None
+        )?;
+        let mut hap_on_scf_map = vec![None::<usize>; scf.len()];
+        for mapping in &hap_on_scf {
+            if !mapping.is_primary { break }
+            process_cs_tag(&mut hap_on_scf_map, mapping);
+        }
+        let mut jxn_pos0 = None::<usize>;
+        let mut ins_seq: String = "?".to_string();
+        if let (
+            Some(left_bkpt0), 
+            Some(right_bkpt0)
+        ) = (
+            hap_on_scf_map[..(SCAFFOLD_FLANK_LEN - 1) as usize].iter().rev().find_map(|&x| x),
+            hap_on_scf_map[scf.len() - SCAFFOLD_FLANK_LEN as usize..].iter().find_map(|&x| x)
+        ) {
+            jxn_pos0 = Some(left_bkpt0 + (right_bkpt0 - left_bkpt0) / 2);
+            ins_seq = if right_bkpt0 - left_bkpt0 > 1 {
+                unsafe{ from_utf8_unchecked(&haplotype[left_bkpt0 + 1..right_bkpt0]).to_string() }
+            } else {
+                "-".to_string()
             }
         }
+        jxn.push_info_string(SVINSSEQ_TAG, &[ins_seq.as_bytes()])?;
 
-        // add RE fragment metadata INFO tags and write the final VCF record
-        let ins_seqs: Vec<_> = ins_seqs.iter().map(|x| x.as_bytes()).collect();
-        sv.push_info_string(SVINSSEQS_TAG, &ins_seqs)?;
+        // get fragment metadata for each RE
         for re in &tool.res {
-            sv.push_info_integer(&re.size_tag, &site_metadata[&re.size_tag])?;
-            sv.push_info_integer(&re.dist_tag, &site_metadata[&re.dist_tag])?;
+            let (frag_size, min_site_dist) = if let Some(jxn_pos0) = jxn_pos0 {
+                get_site_data(haplotype_str, &re.site, jxn_pos0)
+            } else {
+                (-1, -1)
+            };
+            jxn.push_info_integer(&re.size_tag, &[frag_size])?;
+            jxn.push_info_integer(&re.dist_tag, &[min_site_dist])?;
         }
-        vcf.write(sv)?;
+
+        // write the final VCF record
+        tx_jxn_mod.send(jxn)?;
     };
 
+    eprintln!("Worker {} done.", worker_i0 + 1);
     Ok(())
 }
 
@@ -522,93 +575,3 @@ fn get_site_data(haplotype_str: &str, site: &str, jxn_pos0: usize) -> (i32, i32)
 
     (frag_size as i32, left_site_dist.min(right_site_dist) as i32)
 }
-
-// DEL (Deletion)
-// DUP (Duplication)
-// INV (Inversion)
-// BND (Breakend)
-// INS (Insertion)
-
-// ##fileformat=VCFv4.2
-// ##source=Sniffles2_2.8.1
-// ##command="sniffles ...."
-// ##fileDate="2026/11/06 18:20:34"
-// ##contig=<ID=chr1,length=248387328>
-// ...
-// ##contig=<ID=chr21,length=45090682>
-// ##ALT=<ID=INS,Description="Insertion">
-// ##ALT=<ID=DEL,Description="Deletion">
-// ##ALT=<ID=DUP,Description="Duplication">
-// ##ALT=<ID=INV,Description="Inversion">
-// ##ALT=<ID=BND,Description="Breakend; Translocation">
-// ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-// ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
-// ##FORMAT=<ID=DR,Number=1,Type=Integer,Description="Number of reference reads">
-// ##FORMAT=<ID=DV,Number=1,Type=Integer,Description="Number of variant reads">
-// ##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase-block, zero if none or not phased">
-// ##FORMAT=<ID=ID,Number=1,Type=String,Description="Individual sample SV ID for multi-sample output">
-// ##FILTER=<ID=PASS,Description="All filters passed">
-// ##FILTER=<ID=GT,Description="Genotype filter">
-// ##FILTER=<ID=SUPPORT_MIN,Description="Minimum read support filter">
-// ##FILTER=<ID=STDEV_POS,Description="SV Breakpoint standard deviation filter">
-// ##FILTER=<ID=STDEV_LEN,Description="SV length standard deviation filter">
-// ##FILTER=<ID=COV_MIN,Description="Minimum coverage filter">
-// ##FILTER=<ID=COV_MIN_GT,Description="Minimum coverage filter (missing genotype)">
-// ##FILTER=<ID=COV_CHANGE_DEL,Description="Coverage change filter for DEL">
-// ##FILTER=<ID=COV_CHANGE_DUP,Description="Coverage change filter for DUP">
-// ##FILTER=<ID=COV_CHANGE_INS,Description="Coverage change filter for INS">
-// ##FILTER=<ID=COV_CHANGE_FRAC_US,Description="Coverage fractional change filter: upstream-start">
-// ##FILTER=<ID=COV_CHANGE_FRAC_SC,Description="Coverage fractional change filter: start-center">
-// ##FILTER=<ID=COV_CHANGE_FRAC_CE,Description="Coverage fractional change filter: center-end">
-// ##FILTER=<ID=COV_CHANGE_FRAC_ED,Description="Coverage fractional change filter: end-downstream">
-// ##FILTER=<ID=COV_VAR,Description="Coverage variance exceeded">
-// ##FILTER=<ID=MOSAIC_VAF,Description="Mosaic variant allele fraction filter">
-// ##FILTER=<ID=NOT_MOSAIC_VAF,Description="Variant allele fraction filter for non-mosaic">
-// ##FILTER=<ID=ALN_NM,Description="Length adjusted mismatch filter">
-// ##FILTER=<ID=STRAND_BND,Description="Strand support filter for BNDs">
-// ##FILTER=<ID=STRAND,Description="Strand support filter for germline SVs">
-// ##FILTER=<ID=STRAND_MOSAIC,Description="Strand support filter for mosaic SVs">
-// ##FILTER=<ID=SVLEN_MIN,Description="SV length filter">
-// ##FILTER=<ID=SVLEN_MIN_MOSAIC,Description="SV length filter for mosaic SVs (min)">
-// ##FILTER=<ID=SVLEN_MAX_MOSAIC,Description="SV length filter for mosaic SVs (max)">
-// ##FILTER=<ID=SINGLE_BREAK,Description="A single break point was detected but not classified as an SV.">
-// ##FILTER=<ID=INLINE_SA,Description="INLINE/CIGAR-based SV is mostly supported by SA reads">
-// ##FILTER=<ID=MOSAIC_SV_CLOSE_EDGE,Description="For mosaic SVs, the location is close to the end of the read (either end)">
-// ##FILTER=<ID=GT_FAILED,Description="Sniffles was unable to genotype this call.">
-// ##FILTER=<ID=UNRESOLVED,Description="Call is within an unresolved region.">
-// ##INFO=<ID=PRECISE,Number=0,Type=Flag,Description="Structural variation with precise breakpoints">
-// ##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Structural variation with imprecise breakpoints">
-// ##INFO=<ID=MOSAIC,Number=0,Type=Flag,Description="Structural variation classified as putative mosaic">
-// ##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="Length of structural variation">
-// ##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variation">
-// ##INFO=<ID=CHR2,Number=1,Type=String,Description="Mate chromsome for BND SVs">
-// ##INFO=<ID=SUPPORT,Number=1,Type=Integer,Description="Number of reads supporting the structural variation">
-// ##INFO=<ID=SUPPORT_INLINE,Number=1,Type=Integer,Description="Number of reads supporting an INS/DEL SV (non-split events only), or reads for a DUP SV reported as INS by the mapper.">
-// ##INFO=<ID=SUPPORT_SA,Number=1,Type=Integer,Description="Number of reads supporting a DEL SV through supplementary alignments (split events)">
-// ##INFO=<ID=SUPPORT_LONG,Number=1,Type=Integer,Description="Number of soft-clipped reads putatively supporting the long insertion SV">
-// ##INFO=<ID=SUPPORT_UNSCALED,Number=1,Type=Float,Description="Base support for long insertions, before adjustment">
-// ##INFO=<ID=END,Number=1,Type=Integer,Description="End position of structural variation">
-// ##INFO=<ID=STDEV_POS,Number=1,Type=Float,Description="Standard deviation of structural variation start position">
-// ##INFO=<ID=STDEV_LEN,Number=1,Type=Float,Description="Standard deviation of structural variation length">
-// ##INFO=<ID=COVERAGE,Number=.,Type=Float,Description="Coverages near upstream, start, center, end, downstream of structural variation">
-// ##INFO=<ID=STRAND,Number=1,Type=String,Description="Strands of supporting reads for structural variant">
-// ##INFO=<ID=AC,Number=.,Type=Integer,Description="Allele count, summed up over all samples">
-// ##INFO=<ID=SUPP_VEC,Number=1,Type=String,Description="List of read support for all samples">
-// ##INFO=<ID=CONSENSUS_SUPPORT,Number=1,Type=Integer,Description="Number of reads that support the generated insertion (INS) consensus sequence">
-// ##INFO=<ID=RNAMES,Number=.,Type=String,Description="Names of supporting reads (if enabled with --output-rnames)">
-// ##INFO=<ID=VAF,Number=1,Type=Float,Description="Variant Allele Fraction">
-// ##INFO=<ID=COVERAGE_VAR,Number=1,Type=Float,Description="Variance of coverage across large events">
-// ##INFO=<ID=NM,Number=.,Type=Float,Description="Mean number of query alignment length adjusted mismatches of supporting reads">
-// ##INFO=<ID=PHASE,Number=.,Type=String,Description="Phasing information derived from supporting reads, represented as list of: HAPLOTYPE,PHASESET,HAPLOTYPE_SUPPORT,PHASESET_SUPPORT,HAPLOTYPE_FILTER,PHASESET_FILTER">
-// ##INFO=<ID=LASM,Number=0,Type=Flag,Description="Local assembly used to detect the structural variant">
-// #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  SAMPLE
-
-// chr1    2707    Sniffles2.DEL.53DS0     TCTgca...ccg      T       60      PASS    PRECISE;SVTYPE=DEL;SVLEN=-259;END=2966;SUPPORT=4;RNAMES=m64049_210425_091619/25821819/ccs,m64018_210503_204922/153747606/ccs,m64049_210424_024840/112986691/ccs,m64018_210505_030429/14092581/ccs;COVERAGE=5,5,16,21,22;STRAND=+-;NM=0.027;PHASE=0,NULL,4,4,PASS,FAIL;STDEV_LEN=0.000;STDEV_POS=0.000;SUPPORT_SA=0;VAF=0.286        GT:GQ:DR:DV:PS  0/1:12:10:4:.
-
-// chr1    3009031 Sniffles2.DUP.B92S0     G       <DUP>   60      PASS    IMPRECISE;SVTYPE=DUP;SVLEN=1394;END=3010425;SUPPORT=20;RNAMES=m64109_200807_075817/122487993/ccs,m64049_210425_091619/157156687/ccs,m64018_210505_030429/147261366/ccs,m64049_210424_024840/14484519/ccs,m64049_210424_024840/28770683/ccs,m64049_210424_024840/145623701/ccs,m64018_210505_030429/49219233/ccs;COVERAGE=71,87,85,85,70;STRAND=+-;NM=0.008;PHASE=0,NULL,7,7,PASS,FAIL;STDEV_LEN=17.964;STDEV_POS=14.789;SUPPORT_INLINE=13;VAF=0.286 GT:GQ:DR:DV:PS  0/1:60:50:20:.
-
-// chr1    16396440        Sniffles2.INV.BBBS0     C       <INV>   59      PASS    PRECISE;SVTYPE=INV;SVLEN=128772785;END=145169225;SUPPORT=57;RNAMES=m64109_200805_204709/125502700/ccs,m64018_210503_204922/24182989/ccs,...;COVERAGE=75,137,66,76,138;STRAND=+;NM=0.019;PHASE=0,NULL,57,57,PASS,FAIL;STDEV_LEN=0.000;STDEV_POS=0.000;VAF=0.425    GT:GQ:DR:DV:PS    0/1:60:77:57:.
-
-// chr1    16396441        Sniffles2.BND.BDCS0     C       [chr1:145169227[C       59      PASS    PRECISE;SVTYPE=BND;SUPPORT=60;RNAMES=m64109_200805_204709/125502700/ccs,m64018_210503_204922/24182989/ccs,...;COVERAGE=75,75,138,140,143;STRAND=+-;NM=606.417;CHR2=chr1;PHASE=0,NULL,60,60,PASS,FAIL;STDEV_POS=0.000;VAF=0.508       GT:GQ:DR:DV:PS  0/1:60:58:60:.
-
-// chr1    2566    Sniffles2.INS.0S0       c       cCCTCACCCTCACCCTCACCCTCACCCTGACCCTGACCCTGACCCTCACCCTGACCCTCACCCTCACCCTCA        60      PASS    IMPRECISE;SVTYPE=INS;SVLEN=71;END=2566;SUPPORT=3;RNAMES=m64018_210505_030429/14092581/ccs,m64018_210503_204922/153747606/ccs,...;COVERAGE=5,5,5,5,22;STRAND=+-;NM=0.026;PHASE=0,NULL,3,3,PASS,FAIL;STDEV_LEN=5.033;STDEV_POS=54.271;SUPPORT_LONG=0;SUPPORT_UNSCALED=3;VAF=0.600      GT:GQ:DR:DV:PS  0/1:11:2:3:.
