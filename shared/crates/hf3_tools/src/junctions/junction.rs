@@ -2,6 +2,7 @@
 
 // dependencies
 use std::mem::take;
+use genomex::sam::junction::JunctionType;
 use rustc_hash::FxHashMap;
 use rust_htslib::bam::record::Record as BamRecord;
 use rayon::prelude::*;
@@ -681,7 +682,7 @@ impl FinalJunction {
             .filter(|&s| !s.is_empty())
             .filter_map(|s| {
                 if let Ok(num) = s.parse::<i32>() {
-                    Some(num.unsigned_abs())
+                    Some(num.unsigned_abs()) // drop the sign, which reflects size selection filtering
                 } else {
                     eprintln!("bad insert size: {}", s);
                     None
@@ -711,4 +712,108 @@ impl FinalJunction {
         format!("{}{}", strand1, strand2)
     } 
 
+    /// Adjust previously extracted HiFiRe3 junction metadata to 
+    /// Sniffles-compatible VCF encoding. 
+    /// 
+    /// Resulting corrected positions and `sv_size` were empirically determined
+    /// to adjust most HiFiRe3 junctions to Sniffles VCF coordinates and are
+    /// consistent with the behavior of Sniffles in working from the last
+    /// retained, i.e., aligned, bases, which is broadly similar to HiFiRe3, 
+    /// except that HiFiRe3 performs complete junction characterization.
+    /// 
+    /// CuteSV POS, SVLEN and END encoding are NOT the same. See 
+    pub fn adjust_to_vcf(
+        &self,
+        chrom_1: &mut String,
+        pos1_1:  &mut u32,
+        chrom_2: &mut String,
+        pos1_2:  &mut u32,
+        strands: &mut String, // as +- (DEL), -+ (DUP), ++ (INVF), -- (INVR)
+    ) -> u32 {
+        // HiFiRe3 and VCF both sort same-chrom junctions by position
+        // but breakpoint assignments differ.       
+        let sv_size: u32;
+        match self.jxn_type {
+            // DEL (+-)
+            x if x == JunctionType::Deletion as u8 => {
+                // -----MMM-----
+                // -----MMM~~~~~~~MMM-----
+                // H      1       2
+                // S      1      2        H=HiFiRe3, S=Sniffles, empirically derived
+                // -----|-----
+                // -----~~~~~~~-----
+                // H   1       2
+                // S   1      2
+                *pos1_2 -= 1;
+                sv_size = *pos1_2 - *pos1_1; // thus does not count microhomology bases in the deletion
+            },
+            // DUP (-+)
+            x if x == JunctionType::Duplication as u8 => {
+                // -----MMM~~~~~~MMM~~~~~~MMM-----
+                // -----MMM~~~~~~MMM-----
+                // H    1          2
+                // S   1           2
+                // -----~~~~~~~|~~~~~~~-----
+                // -----~~~~~~~-----
+                // H    1     2
+                // S   1      2
+                *pos1_1 -= 1;
+                sv_size = *pos1_2 - *pos1_1;
+            },
+            // INV-F (++)
+            x if x == JunctionType::Inversion as u8 && self.strand_index0_1 == 0 => {
+                // -----MMM7654321
+                // -----MMM1234567mmm-----
+                // H      1         2
+                // S      1         2     
+                // -----7654321
+                // -----1234567-----
+                // H   1      2
+                // S   1      2
+                sv_size = *pos1_2 - *pos1_1;
+            },
+            // INV-R (--)
+            x if x == JunctionType::Inversion as u8 && self.strand_index0_1 == 1 => {
+                //         7654321MMM-----
+                // -----mmm1234567MMM-----
+                // H    1         2
+                // V   1         2
+                //      7654321-----
+                // -----1234567-----
+                // H    1      2
+                // V   1      2
+                *pos1_2 += 1;
+                sv_size = *pos1_2 - *pos1_1;
+            },
+            // TRANS - orient junctions using lexical-sorted chroms
+            _ => {
+                // TODO: adjust positions for microhomologies
+                if chrom_1 > chrom_2 {
+                    (*chrom_1, *pos1_1, *chrom_2, *pos1_2) = 
+                    (chrom_2.clone(), pos1_2.clone(), chrom_1.clone(), pos1_1.clone());
+                    *strands = match strands.as_str() {
+                        "-+" => "+-".to_string(),
+                        "+-" => "-+".to_string(),
+                        _ => strands.clone() // INV types do not invert, they are the same regardless of node order
+                    }
+                }
+                sv_size = 999_999_999;
+            },
+        } 
+        sv_size
+    }
+
+    /// Adjust previously extracted HiFiRe3 junction metadata to CuteSV-compatible 
+    /// VCF encoding. This is necessary for fuzzy matching of DEL events where
+    /// HiFiRe3 and Sniffles2 `pos1_2` differ significantly from CuteSV.
+    pub fn adjust_pos1_2_to_cutesv (
+        &self,
+        pos1_2: u32,
+    ) -> u32 {  
+        if self.jxn_type == JunctionType::Deletion as u8 {
+            (pos1_2 as i32 - self.offset as i32) as u32
+        } else {
+            pos1_2
+        }
+    }
 }

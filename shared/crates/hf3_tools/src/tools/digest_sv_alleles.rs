@@ -11,7 +11,6 @@
 //!     - use mini_consensus to assemble a read consensus bounding the junction, i.e., a haplotype
 //!     - locate the junction in the consensus
 //!     - in silico digest the consensus with each enzyme and report:
-//!         - any de novo base insertions in INFO/SVINSSEQ
 //!         - fragment sizes in INFO/<RE_NAME>SIZE
 //!         - nearest RE site distances in INFO/<RE_NAME>DIST
 
@@ -212,7 +211,12 @@ fn scan_vcf (w: &mut Workflow, tool: &mut DigestionTool) -> Result<bcf::Writer, 
                 //      chr10  91443587  cuteSV.INV.41        c  <INV>              SVTYPE=INV;SVLEN=2442;END=91446029;RE=47;STRAND=++;
                 //      chr10  91443588  cuteSV.INV.42        c  <INV>              SVTYPE=INV;SVLEN=2442;END=91446030;RE=46;STRAND=--;
                 // in all, (POS + LEN = END)
-                let strand = get_vcf_strand_bytes(&jxn, &SvSource::CuteSV)?;
+                let strand = get_vcf_strand_bytes(
+                    &jxn, 
+                    &SvSource::CuteSV,
+                    b"INV",
+                    alt,
+                )?;
                 let strand_str = unsafe{ from_utf8_unchecked(&strand) };
                 match strand_str {
                     "++" => {
@@ -268,8 +272,6 @@ fn scan_vcf (w: &mut Workflow, tool: &mut DigestionTool) -> Result<bcf::Writer, 
 /// Establish a bcf::Writer updates to the required new tags:
 fn get_bcf_writer(tool: &DigestionTool, mut header: bcf::Header) -> Result<bcf::Writer, Box<dyn Error>>{
     for re in &tool.res {
-        let record = format!("##INFO=<ID={},Number=1,Type=String,Description=\"de novo base insertion at junction\">", SVINSSEQ);
-        header.push_record(record.as_bytes());  
         let record = format!("##INFO=<ID={},Number=1,Type=Integer,Description=\"{} fragment size\">", re.size_tag_str, re.name);
         header.push_record(record.as_bytes());  
         let record = format!("##INFO=<ID={},Number=1,Type=Integer,Description=\"{} nearest site distance\">", re.dist_tag_str, re.name);
@@ -291,7 +293,11 @@ fn get_ref_seq(
     end1:   u32,
     rc:     bool,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let seq = faidx.fetch_seq(chrom, (start1 - 1) as usize, end1 as usize)?;
+    let seq = faidx.fetch_seq(
+        chrom, 
+        (start1 - 1) as usize, 
+        (end1   - 1) as usize
+    )?;
     let mut seq = seq.to_ascii_uppercase();
     if rc { 
         seq = seq.iter().rev().map(|&b| match b {
@@ -416,10 +422,6 @@ fn process_jxn_tags(
         }).collect();
         resolver.set_scaffold_with_aligner(scf);
         resolver.par_set_seqs(seqs, |_, _| true);
-        // for qname in downsampled_qnames {
-        //     let seq = tool.seqs.get(qname).unwrap();
-        //     /let _ = resolver.add_seq(seq, |_aln| true);
-        // }
         let haplotype = resolver.get_consensus(&mut poa_pool);
         let haplotype_str = unsafe{ from_utf8_unchecked(&haplotype) };
 
@@ -439,22 +441,18 @@ fn process_jxn_tags(
             process_cs_tag(&mut hap_on_scf_map, mapping);
         }
         let mut jxn_pos0 = None::<usize>;
-        let mut ins_seq: String = "?".to_string();
         if let (
-            Some(left_bkpt0), 
-            Some(right_bkpt0)
+            Some(mut left_bkpt0), 
+            Some(mut right_bkpt0)
         ) = (
-            hap_on_scf_map[..(SCAFFOLD_FLANK_LEN - 1) as usize].iter().rev().find_map(|&x| x),
+            hap_on_scf_map[..SCAFFOLD_FLANK_LEN as usize].iter().rev().find_map(|&x| x),
             hap_on_scf_map[scf.len() - SCAFFOLD_FLANK_LEN as usize..].iter().find_map(|&x| x)
         ) {
-            jxn_pos0 = Some(left_bkpt0 + (right_bkpt0 - left_bkpt0) / 2);
-            ins_seq = if right_bkpt0 - left_bkpt0 > 1 {
-                unsafe{ from_utf8_unchecked(&haplotype[left_bkpt0 + 1..right_bkpt0]).to_string() }
-            } else {
-                "-".to_string()
+            if left_bkpt0 > right_bkpt0 {
+                (left_bkpt0, right_bkpt0) = (right_bkpt0, left_bkpt0)
             }
+            jxn_pos0 = Some(left_bkpt0 + (right_bkpt0 - left_bkpt0) / 2);
         }
-        jxn.push_info_string(SVINSSEQ_TAG, &[ins_seq.as_bytes()])?;
 
         // get fragment metadata for each RE
         for re in &tool.res {

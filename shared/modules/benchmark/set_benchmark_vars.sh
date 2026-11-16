@@ -18,4 +18,5 @@ export SNIFFLES_FRAGSIZES_VCF=${BENCHMARK_PREFIX}.sniffles.frag_sizes.vcf.gz
 export CUTESV_VCF_TMP=${BENCHMARK_PREFIX}.cutesv.vcf
 export CUTESV_VCF=${BENCHMARK_PREFIX}.cutesv.vcf.gz
 export CUTESV_FRAGSIZES_VCF=${BENCHMARK_PREFIX}.cutesv.frag_sizes.vcf.gz
-export ADMIXED_CALLS_CSV=${BENCHMARK_PREFIX}.${TRUTHSET_NAME}.admixed_calls.csv
+export BENCHMARK_ADMIXED_CALLS=${BENCHMARK_PREFIX}.${TRUTHSET_NAME}.admixed_calls.txt
+export BENCHMARK_AGGREGATED_CALLS=${BENCHMARK_PREFIX}.${TRUTHSET_NAME}.aggregated_calls.txt
